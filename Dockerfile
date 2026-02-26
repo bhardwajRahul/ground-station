@@ -396,9 +396,10 @@ RUN /app/venv/bin/python3 -c "from satellites.satyaml.satyaml import SatYAML; pr
 # Compile SatDump (without GUI, using system libvolk-dev and libnng-dev)
 # Pin to a specific commit to avoid upstream CLI/behavior changes breaking decoding.
 WORKDIR /src
-ARG SATDUMP_COMMIT=1.2.2
+ARG SATDUMP_COMMIT=7aef0fe8441bc3eb440b1b6ba053556da5e40991
 RUN git clone --depth=1 https://github.com/SatDump/SatDump.git && \
     cd SatDump && \
+    git fetch --depth=1 origin ${SATDUMP_COMMIT} && \
     git checkout ${SATDUMP_COMMIT} && \
     mkdir build && \
     cd build && \
