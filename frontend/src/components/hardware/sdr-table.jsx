@@ -60,6 +60,8 @@ import {
     fetchLocalRtlSdrDevices,
 } from './sdr-slice.jsx';
 import Paper from "@mui/material/Paper";
+import MemoryIcon from '@mui/icons-material/Memory';
+import DnsIcon from '@mui/icons-material/Dns';
 
 // SDR type field configurations with default values
 const sdrTypeFields = {
@@ -520,11 +522,16 @@ export default function SDRsPage() {
                                     }
                                 }}
                             >
-                                <MenuItem value="">{t('sdr.select_rtl_device', 'RTL-SDR Device')}</MenuItem>
+                                <MenuItem value="" disabled>Select SDR</MenuItem>
                                 {localRtlDevices.map((device, index) => (
                                     <MenuItem key={index} value={index}>
-                                        {device.label || `RTL-SDR ${index}`}
-                                        {device.serial ? ` :: ${device.serial}` : ''}
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <MemoryIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                                            <Box component="span">
+                                                {device.label || `RTL-SDR ${index}`}
+                                                {device.serial ? ` :: ${device.serial}` : ''}
+                                            </Box>
+                                        </Box>
                                     </MenuItem>
                                 ))}
                             </Select>
@@ -618,11 +625,16 @@ export default function SDRsPage() {
                                     }
                                 }}
             >
-                                <MenuItem value="">Select SDR Device</MenuItem>
+                                <MenuItem value="" disabled>Select SDR</MenuItem>
                                 {localSoapyDevices.map((sdr, index) => (
                                     <MenuItem key={index} value={index}>
-                                        {sdr.label || sdr.driver || `SDR Device ${index}`}
-                                        {sdr.serial ? ` :: ${sdr.serial}` : ''}
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <MemoryIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                                            <Box component="span">
+                                                {sdr.label || sdr.driver || `SDR Device ${index}`}
+                                                {sdr.serial ? ` :: ${sdr.serial}` : ''}
+                                            </Box>
+                                        </Box>
                                     </MenuItem>
                                 ))}
                             </Select>
@@ -690,7 +702,12 @@ export default function SDRsPage() {
             >
                                 {Object.entries(soapyServers).map(([key, server]) => (
                                     <MenuItem key={key} value={server.ip}>
-                                        {key}: {server.ip}:{server.port} ({server.sdrs.length} SDRs)
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <DnsIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                                            <Box component="span">
+                                                {key}: {server.ip}:{server.port} ({server.sdrs.length} SDRs)
+                                            </Box>
+                                        </Box>
                                     </MenuItem>
                                 ))}
                             </Select>
@@ -732,11 +749,16 @@ export default function SDRsPage() {
                                             }
                                         }}
                     >
-                                        <MenuItem value="">Select SDR Device</MenuItem>
+                                        <MenuItem value="" disabled>Select SDR</MenuItem>
                                         {selectedServerInfo.sdrs.map((sdr, index) => (
                                             <MenuItem key={index} value={index}>
-                                                {sdr.label || sdr.driver || `SDR Device ${index}`}
-                                                {sdr.serial ? ` :: ${sdr.serial}` : ''}
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                    <MemoryIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                                                    <Box component="span">
+                                                        {sdr.label || sdr.driver || `SDR Device ${index}`}
+                                                        {sdr.serial ? ` :: ${sdr.serial}` : ''}
+                                                    </Box>
+                                                </Box>
                                             </MenuItem>
                                         ))}
                                     </Select>
