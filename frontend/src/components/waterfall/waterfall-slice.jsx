@@ -29,16 +29,6 @@ import {getAvailableColorMaps} from "./worker-modules/color-maps.js";
 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 const getDefaultWaterfallRendererMode = () => {
-    try {
-        if (typeof window !== 'undefined') {
-            const saved = window.localStorage.getItem('waterfallRendererMode');
-            if (saved === 'worker' || saved === 'dom-tiles') {
-                return saved;
-            }
-        }
-    } catch (error) {
-        // Ignore localStorage errors and fall back to default.
-    }
     return 'worker';
 };
 
