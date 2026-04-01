@@ -165,7 +165,8 @@ const MaintenanceForm = () => {
 
     useEffect(() => {
         if (panelRef.current) {
-            panelRef.current.focus();
+            // Keep keyboard accessibility focus without forcing viewport scroll.
+            panelRef.current.focus({ preventScroll: true });
         }
     }, [activeTabKey]);
 
