@@ -49,7 +49,7 @@
       "elevation_below_horizon": "Το ύψος του στόχου είναι κάτω από τον ορίζοντα",
       "azimuth_out_of_bounds": "Το αζιμούθιο του στόχου είναι εκτός ορίων",
       "below_min_elevation": "Ο στόχος είναι κάτω από το ελάχιστο ύψος",
-      "satellite_changed": "Άλλαξε ο δορυφόρος στόχος",
+      "satellite_changed": "Αλλαξε ο δορυφόρος στόχος",
       "satellite_info": "{{name}} (NORAD {{noradId}})"
     }
   },

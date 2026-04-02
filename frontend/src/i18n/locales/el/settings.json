@@ -65,15 +65,18 @@
     "station_name": "Ονομα Σταθμού",
     "horizon_mask": "Μάσκα Ορίζοντα",
     "actions": "Ενέργειες",
-    "get_current_location": "Λήψη Τρέχουσας Τοποθεσίας",
-    "copy_coordinates": "Αντιγραφή Συντεταγμένων",
-    "save_location": "Αποθήκευση τοποθεσίας",
+    "get_current_location": "Ληψη Τρεχουσας Τοποθεσιας",
+    "copy_coordinates": "Αντιγραφη Συντεταγμενων",
+    "save_location": "Αποθηκευση τοποθεσιας",
     "your_selected_location": "Η Επιλεγμένη Τοποθεσία Σας",
     "location_retrieved": "Η τοποθεσία ανακτήθηκε",
     "failed_get_location": "Αποτυχία λήψης της τρέχουσας τοποθεσίας",
     "geolocation_not_supported": "Ο εντοπισμός γεωγραφικής θέσης δεν υποστηρίζεται από το πρόγραμμα περιήγησής σας.",
-    "coordinates_copied": "Οι συντεταγμένες αντιγράφηκαν στο πρόχειρο",
-    "failed_copy": "Αποτυχία λήψης της τρέχουσας τοποθεσίας"
+    "coordinates_copied": "Οι συντεταγμενες αντιγραφηκαν στο προχειρο",
+    "failed_copy": "Αποτυχια ληψης της τρεχουσας τοποθεσιας",
+    "state_locating": "Εντοπισμος...",
+    "state_saving": "Αποθηκευση...",
+    "map_recenter": "Επανακεντραρισμα"
   },
   "maintenance": {
     "title": "Συντήρηση",

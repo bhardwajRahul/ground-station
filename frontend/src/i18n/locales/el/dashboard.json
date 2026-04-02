@@ -34,7 +34,7 @@
     "altitude": "Υψόμετρο:",
     "velocity": "Ταχύτητα:",
     "azimuth": "Αζιμούθιο:",
-    "elevation": "Ύψωση:",
+    "elevation": "Υψωση:",
     "launched": "Εκτοξεύτηκε:",
     "deployed": "Αναπτύχθηκε:",
     "decayed": "Αποσυντέθηκε:",
@@ -71,7 +71,7 @@
     "received": "Ληφθέντα:",
     "messages": "{{count}} μηνύματα",
     "transport_upgrades": "Αναβαθμίσεις Μεταφοράς:",
-    "audio_buffer": "Ενδιάμεση Μνήμη Ήχου",
+    "audio_buffer": "Ενδιάμεση Μνήμη Ηχου",
     "browser_buffer_length": "Μήκος Ενδιάμεσης Μνήμης Περιηγητή:"
   },
   "hardware_popover": {

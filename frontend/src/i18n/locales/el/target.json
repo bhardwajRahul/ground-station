@@ -132,10 +132,10 @@
     "noPassesAvailable": "Δεν υπάρχουν διαθέσιμες διελεύσεις δορυφόρου",
     "noPassesForSelected": "Δεν υπάρχουν διελεύσεις για τις επιλεγμένες {{hours}} ώρες",
     "active": "ΕΝΕΡΓΗ",
-    "start": "Έναρξη",
+    "start": "Εναρξη",
     "end": "Λήξη",
     "duration": "Διάρκεια",
-    "maxElevation": "Μέγιστο Ύψος",
+    "maxElevation": "Μέγιστο Υψος",
     "minDistance": "Ελάχιστη Απόσταση"
   },
   "satellite_transmitters": {

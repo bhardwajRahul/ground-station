@@ -159,20 +159,20 @@ export default function RigTable() {
     };
 
     const validationErrors = {};
-    if (!formValues.name?.trim()) validationErrors.name = 'Required';
-    if (!formValues.host?.trim()) validationErrors.host = 'Required';
+    if (!formValues.name?.trim()) validationErrors.name = t('shared.required');
+    if (!formValues.host?.trim()) validationErrors.host = t('shared.required');
     if (!formValues.port && formValues.port !== 0) {
-        validationErrors.port = 'Required';
+        validationErrors.port = t('shared.required');
     } else if (Number(formValues.port) <= 0 || Number(formValues.port) > 65535) {
-        validationErrors.port = 'Port must be 1-65535';
+        validationErrors.port = t('shared.port_range');
     }
     if (!formValues.retune_interval_ms && formValues.retune_interval_ms !== 0) {
-        validationErrors.retune_interval_ms = 'Required';
+        validationErrors.retune_interval_ms = t('shared.required');
     } else if (
         Number(formValues.retune_interval_ms) < 100
         || Number(formValues.retune_interval_ms) > 60000
     ) {
-        validationErrors.retune_interval_ms = 'Retune interval must be 100-60000 ms';
+        validationErrors.retune_interval_ms = t('rig.validation.retune_interval_range');
     }
     const hasValidationErrors = Object.keys(validationErrors).length > 0;
 
@@ -200,7 +200,7 @@ export default function RigTable() {
                             },
                         }}
                         pageSize={pageSize}
-                        pageSizeOptions={[5, 10, 25, {value: -1, label: 'All'}]}
+                        pageSizeOptions={[5, 10, 25, {value: -1, label: t('shared.all')}]}
                         onPageSizeChange={(newPageSize) => setPageSize(newPageSize)}
                         rowsPerPageOptions={[5, 10, 25]}
                         getRowId={(row) => row.id}
@@ -459,7 +459,9 @@ export default function RigTable() {
                                 {t('rig.confirm_delete_message')}
                             </Typography>
                             <Typography variant="body2" sx={{ mb: 2, fontWeight: 600, color: 'text.secondary' }}>
-                                {selected.length === 1 ? 'Rig to be deleted:' : `${selected.length} Rigs to be deleted:`}
+                                {selected.length === 1
+                                    ? t('rig.delete_list_single')
+                                    : t('rig.delete_list_plural', { count: selected.length })}
                             </Typography>
                             {requiresDeleteConfirmationText && (
                                 <TextField
@@ -494,21 +496,21 @@ export default function RigTable() {
                                             </Typography>
                                             <Box sx={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 1, columnGap: 2 }}>
                                                 <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.secondary', fontWeight: 500 }}>
-                                                    Host:
+                                                    {t('rig.host')}:
                                                 </Typography>
                                                 <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.primary' }}>
                                                     {rig.host}:{rig.port}
                                                 </Typography>
 
                                                 <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.secondary', fontWeight: 500 }}>
-                                                    Radio Mode:
+                                                    {t('rig.radio_mode')}:
                                                 </Typography>
                                                 <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.primary' }}>
                                                     {rig.radio_mode || 'duplex'}
                                                 </Typography>
 
                                                 <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.secondary', fontWeight: 500 }}>
-                                                    TX Control:
+                                                    {t('rig.tx_control_mode')}:
                                                 </Typography>
                                                 <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.primary' }}>
                                                     {rig.tx_control_mode || 'auto'}

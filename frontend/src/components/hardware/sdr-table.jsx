@@ -363,33 +363,33 @@ export default function SDRsPage() {
         if (!selectedType || !config) return errors;
 
         const nameValue = getFieldValue('name');
-        if (!String(nameValue || '').trim()) errors.name = 'Required';
+        if (!String(nameValue || '').trim()) errors.name = t('shared.required');
 
         if (!config.excludeFields.includes('host')) {
             const hostValue = getFieldValue('host');
-            if (!String(hostValue || '').trim()) errors.host = 'Required';
+            if (!String(hostValue || '').trim()) errors.host = t('shared.required');
         }
 
         if (!config.excludeFields.includes('port')) {
             const portValue = getFieldValue('port');
             if (portValue === '' || portValue === null || portValue === undefined) {
-                errors.port = 'Required';
+                errors.port = t('shared.required');
             } else if (Number(portValue) <= 0 || Number(portValue) > 65535) {
-                errors.port = 'Port must be 1-65535';
+                errors.port = t('shared.port_range');
             }
         }
         if (!config.excludeFields.includes('serial')) {
             const serialValue = getFieldValue('serial');
-            if (!String(serialValue || '').trim()) errors.serial = 'Required';
+            if (!String(serialValue || '').trim()) errors.serial = t('shared.required');
         }
 
         const minFreq = getFieldValue('frequency_min');
         const maxFreq = getFieldValue('frequency_max');
-        if (minFreq !== '' && Number.isNaN(Number(minFreq))) errors.frequency_min = 'Must be a number';
-        if (maxFreq !== '' && Number.isNaN(Number(maxFreq))) errors.frequency_max = 'Must be a number';
+        if (minFreq !== '' && Number.isNaN(Number(minFreq))) errors.frequency_min = t('shared.must_be_number');
+        if (maxFreq !== '' && Number.isNaN(Number(maxFreq))) errors.frequency_max = t('shared.must_be_number');
         if (minFreq !== '' && maxFreq !== '' && Number(minFreq) > Number(maxFreq)) {
-            errors.frequency_min = 'Min must be <= max';
-            errors.frequency_max = 'Min must be <= max';
+            errors.frequency_min = t('shared.min_lte_max');
+            errors.frequency_max = t('shared.min_lte_max');
         }
 
         return errors;
@@ -529,7 +529,7 @@ export default function SDRsPage() {
                                     }
                                 }}
                             >
-                                <MenuItem value="" disabled>Select SDR</MenuItem>
+                                <MenuItem value="" disabled>{t('sdr.select_sdr')}</MenuItem>
                                 {localRtlDevices.map((device, index) => (
                                     <MenuItem key={index} value={index}>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -605,10 +605,10 @@ export default function SDRsPage() {
                 } else if (localSoapyDevices && localSoapyDevices.length > 0) {
                     fields.push(
                         <FormControl key="local-sdr-device-select" fullWidth size="small">
-                            <InputLabel id="local-sdr-device-label">Local SDR Device</InputLabel>
+                            <InputLabel id="local-sdr-device-label">{t('sdr.local_sdr_device')}</InputLabel>
                             <Select
                                 labelId="local-sdr-device-label"
-                                label="Local SDR Device"
+                                label={t('sdr.local_sdr_device')}
                                 size="small"
                                 value={selectedSdrDevice}
                                 onChange={(e) => {
@@ -632,7 +632,7 @@ export default function SDRsPage() {
                                     }
                                 }}
             >
-                                <MenuItem value="" disabled>Select SDR</MenuItem>
+                                <MenuItem value="" disabled>{t('sdr.select_sdr')}</MenuItem>
                                 {localSoapyDevices.map((sdr, index) => (
                                     <MenuItem key={index} value={index}>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -661,7 +661,7 @@ export default function SDRsPage() {
                 } else {
                     fields.push(
                         <Alert key="no-local-devices" severity="info" sx={{ mt: 1 }}>
-                            No local SoapySDR devices detected. Please connect a device and refresh.
+                            {t('sdr.no_soapy_devices')}
                         </Alert>
                     );
                     fields.push(
@@ -684,11 +684,11 @@ export default function SDRsPage() {
                     // For SoapySDRRemote, create a dropdown of available servers
                     fields.push(
                         <FormControl key="host-select" fullWidth size="small">
-                            <InputLabel id="host-label">SoapySDR Server</InputLabel>
+                            <InputLabel id="host-label">{t('sdr.soapysdr_server')}</InputLabel>
                             <Select
                                 name="host"
                                 labelId="host-label"
-                                label="SoapySDR Server"
+                                label={t('sdr.soapysdr_server')}
                                 size="small"
                                 value={formValues.host || ''}
                                 onChange={(e) => {
@@ -729,10 +729,10 @@ export default function SDRsPage() {
                         if (selectedServerInfo && selectedServerInfo.sdrs && selectedServerInfo.sdrs.length > 0) {
                             fields.push(
                                 <FormControl key="sdr-device-select" fullWidth size="small">
-                                    <InputLabel id="sdr-device-label">SDR Device</InputLabel>
+                                    <InputLabel id="sdr-device-label">{t('sdr.sdr_device')}</InputLabel>
                                     <Select
                                         labelId="sdr-device-label"
-                                        label="SDR Device"
+                                        label={t('sdr.sdr_device')}
                                         size="small"
                                         value={selectedSdrDevice}
                                         onChange={(e) => {
@@ -756,7 +756,7 @@ export default function SDRsPage() {
                                             }
                                         }}
                     >
-                                        <MenuItem value="" disabled>Select SDR</MenuItem>
+                                        <MenuItem value="" disabled>{t('sdr.select_sdr')}</MenuItem>
                                         {selectedServerInfo.sdrs.map((sdr, index) => (
                                             <MenuItem key={index} value={index}>
                                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -778,7 +778,7 @@ export default function SDRsPage() {
                         <TextField
                             key="host"
                             name="host"
-                            label="Host"
+                            label={t('sdr.host')}
                             fullWidth
                             size="small"
                             onChange={handleChange}
@@ -796,7 +796,7 @@ export default function SDRsPage() {
                     <TextField
                         key="port"
                         name="port"
-                        label="Port"
+                        label={t('sdr.port')}
                         fullWidth
                         size="small"
                         type="number"
@@ -813,7 +813,7 @@ export default function SDRsPage() {
                 <TextField
                     key="name"
                     name="name"
-                    label="Name"
+                    label={t('sdr.name')}
                     fullWidth
                     size="small"
                     onChange={handleChange}
@@ -824,7 +824,7 @@ export default function SDRsPage() {
                 <TextField
                     key="frequency_min"
                     name="frequency_min"
-                    label="Minimum Frequency (MHz)"
+                    label={t('sdr.min_frequency_mhz')}
                     fullWidth
                     size="small"
                     type="number"
@@ -836,7 +836,7 @@ export default function SDRsPage() {
                 <TextField
                     key="frequency_max"
                     name="frequency_max"
-                    label="Maximum Frequency (MHz)"
+                    label={t('sdr.max_frequency_mhz')}
                     fullWidth
                     size="small"
                     type="number"
@@ -853,7 +853,7 @@ export default function SDRsPage() {
                     <TextField
                         key="driver"
                         name="driver"
-                        label="Driver"
+                        label={t('sdr.driver')}
                         fullWidth
                         size="small"
                         onChange={handleChange}
@@ -868,7 +868,7 @@ export default function SDRsPage() {
                     <TextField
                         key="serial"
                         name="serial"
-                    label="Serial"
+                    label={t('sdr.serial')}
                     fullWidth
                     size="small"
                     onChange={handleChange}
@@ -897,7 +897,7 @@ export default function SDRsPage() {
                         <Box key={key} sx={{pl: 2, mt: 1}}>
                             <Typography component="div" variant="body2" color="text.secondary"
                                         sx={{fontFamily: 'monospace'}}>
-                                {key}: {server['ip']}:{server['port']} with {server['sdrs'].length} SDRs
+                                {t('sdr.server_entry', { key, ip: server['ip'], port: server['port'], count: server['sdrs'].length })}
                             </Typography>
                         </Box>
                     ))}
@@ -928,7 +928,7 @@ export default function SDRsPage() {
                         }}
                         rowSelectionModel={rowSelectionModel}
                         pageSize={pageSize}
-                        pageSizeOptions={[5, 10, 25, {value: -1, label: 'All'}]}
+                        pageSizeOptions={[5, 10, 25, {value: -1, label: t('shared.all')}]}
                         onPageSizeChange={(newPageSize) => setPageSize(newPageSize)}
                         rowsPerPageOptions={[5, 10, 25]}
                         getRowId={(row) => row.id}
@@ -1142,7 +1142,9 @@ export default function SDRsPage() {
                                     {t('sdr.confirm_delete_message')}
                                 </Typography>
                                 <Typography variant="body2" sx={{ mb: 2, fontWeight: 600, color: 'text.secondary' }}>
-                                    {selected.length === 1 ? 'SDR to be deleted:' : `${selected.length} SDRs to be deleted:`}
+                                    {selected.length === 1
+                                        ? t('sdr.delete_list_single')
+                                        : t('sdr.delete_list_plural', { count: selected.length })}
                                 </Typography>
                                 {requiresDeleteConfirmationText && (
                                     <TextField
@@ -1177,7 +1179,7 @@ export default function SDRsPage() {
                                                 </Typography>
                                                 <Box sx={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 1, columnGap: 2 }}>
                                                     <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.secondary', fontWeight: 500 }}>
-                                                        Type:
+                                                        {t('sdr.type')}:
                                                     </Typography>
                                                     <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.primary' }}>
                                                         {getTypeLabel(sdr.type)}
@@ -1186,7 +1188,7 @@ export default function SDRsPage() {
                                                     {sdr.host && sdr.host !== '-' && (
                                                         <>
                                                             <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.secondary', fontWeight: 500 }}>
-                                                                Host:
+                                                                {t('sdr.host')}:
                                                             </Typography>
                                                             <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.primary' }}>
                                                                 {sdr.host}{sdr.port && sdr.port !== '-' ? `:${sdr.port}` : ''}
@@ -1197,7 +1199,7 @@ export default function SDRsPage() {
                                                     {sdr.serial && sdr.serial !== '-' && (
                                                         <>
                                                             <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.secondary', fontWeight: 500 }}>
-                                                                Serial:
+                                                                {t('sdr.serial')}:
                                                             </Typography>
                                                             <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.primary' }}>
                                                                 {sdr.serial}
@@ -1206,7 +1208,7 @@ export default function SDRsPage() {
                                                     )}
 
                                                     <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.secondary', fontWeight: 500 }}>
-                                                        Range:
+                                                        {t('sdr.frequency_range')}:
                                                     </Typography>
                                                     <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.primary' }}>
                                                         {sdr.frequency_min} - {sdr.frequency_max} MHz
