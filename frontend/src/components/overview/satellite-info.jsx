@@ -149,6 +149,22 @@ const OverviewSatelliteInfoCard = () => {
         ))
         : [];
 
+    const getModulationColor = (modulation) => {
+        const mod = String(modulation || '').toUpperCase();
+
+        // Analog voice/narrowband family.
+        if (['AM', 'FM', 'FMN', 'SSB', 'USB', 'LSB', 'CW'].includes(mod)) return '#1565C0';
+
+        // LoRa and spread-spectrum style.
+        if (['LORA'].includes(mod)) return '#6A1B9A';
+
+        // Common digital packet/PSK/FSK family.
+        if (['AFSK', 'FSK', 'GFSK', 'GMSK', 'BPSK', 'QPSK', 'MSK', 'DOKA', 'OOK'].includes(mod)) return '#2E7D32';
+
+        // Fallback for unknown/rare modes.
+        return '#455A64';
+    };
+
     const DataPoint = ({ icon: Icon, label, value, color = 'text.primary', unit = '' }) => (
         <Box sx={{ mb: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
@@ -435,7 +451,7 @@ const OverviewSatelliteInfoCard = () => {
                                                 label={modulation}
                                                 size="small"
                                                 sx={{
-                                                    backgroundColor: 'primary.main',
+                                                    backgroundColor: getModulationColor(modulation),
                                                     color: 'common.white',
                                                     fontSize: '0.7rem',
                                                     height: 24
