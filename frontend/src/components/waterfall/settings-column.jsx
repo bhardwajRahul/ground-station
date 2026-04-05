@@ -212,18 +212,6 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
         // No cleanup function - let the ref stay true to prevent any subsequent calls for StrictMode
     }, []);
 
-    const handleAccordionChange = (panel) => (event, isExpanded) => {
-        const updateExpandedPanels = (expandedPanels) => {
-            if (isExpanded) {
-                return expandedPanels.includes(panel)
-                    ? expandedPanels
-                    : [...expandedPanels, panel];
-            }
-            return expandedPanels.filter(p => p !== panel);
-        };
-        dispatch(setExpandedPanels(updateExpandedPanels(expandedPanels)));
-    };
-
     const getValidGainElements = useCallback((sdrId) => {
         const caps = sdrCapabilities?.[sdrId];
         return Array.isArray(caps?.gain_elements?.rx) ? caps.gain_elements.rx : [];
@@ -521,21 +509,6 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
         return sendSDRConfigToBackend({rtlAgc: enabled});
     };
 
-    const updateFFTSize = (fftSize) => (dispatch) => {
-        dispatch(setFFTSize(fftSize));
-        return sendSDRConfigToBackend({fftSize: fftSize});
-    };
-
-    const updateFFTWindow = (fftWindow) => (dispatch) => {
-        dispatch(setFFTWindow(fftWindow));
-        return sendSDRConfigToBackend({fftWindow: fftWindow});
-    };
-
-    const updateFFTAveraging = (fftAveraging) => (dispatch) => {
-        dispatch(setFFTAveraging(fftAveraging));
-        return sendSDRConfigToBackend({fftAveraging: fftAveraging});
-    };
-
     const updateSelectedAntenna = (antenna) => (dispatch) => {
         dispatch(setSelectedAntenna(antenna));
         return sendSDRConfigToBackend({antenna: antenna});
@@ -822,6 +795,70 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
         };
         dispatch(setExpandedPanels(updateExpandedPanels(expandedPanels)));
     }, [dispatch, expandedPanels]);
+
+    const handleFftAccordionChange = useCallback((event, isExpanded) => {
+        const panel = 'fft';
+        const updateExpandedPanels = (currentExpandedPanels) => {
+            if (isExpanded) {
+                return currentExpandedPanels.includes(panel)
+                    ? currentExpandedPanels
+                    : [...currentExpandedPanels, panel];
+            }
+            return currentExpandedPanels.filter(p => p !== panel);
+        };
+        dispatch(setExpandedPanels(updateExpandedPanels(expandedPanels)));
+    }, [dispatch, expandedPanels]);
+
+    const handleRecordingAccordionChange = useCallback((event, isExpanded) => {
+        const panel = 'recording';
+        const updateExpandedPanels = (currentExpandedPanels) => {
+            if (isExpanded) {
+                return currentExpandedPanels.includes(panel)
+                    ? currentExpandedPanels
+                    : [...currentExpandedPanels, panel];
+            }
+            return currentExpandedPanels.filter(p => p !== panel);
+        };
+        dispatch(setExpandedPanels(updateExpandedPanels(expandedPanels)));
+    }, [dispatch, expandedPanels]);
+
+    const handlePlaybackAccordionChange = useCallback((event, isExpanded) => {
+        const panel = 'playback';
+        const updateExpandedPanels = (currentExpandedPanels) => {
+            if (isExpanded) {
+                return currentExpandedPanels.includes(panel)
+                    ? currentExpandedPanels
+                    : [...currentExpandedPanels, panel];
+            }
+            return currentExpandedPanels.filter(p => p !== panel);
+        };
+        dispatch(setExpandedPanels(updateExpandedPanels(expandedPanels)));
+    }, [dispatch, expandedPanels]);
+
+    const handleFFTSizeChange = useCallback((value) => {
+        setLocalFFTSize(value);
+        dispatch(setFFTSize(value));
+        sendSDRConfigToBackend({ fftSize: value });
+    }, [dispatch, sendSDRConfigToBackend]);
+
+    const handleFFTWindowChange = useCallback((value) => {
+        dispatch(setFFTWindow(value));
+        sendSDRConfigToBackend({ fftWindow: value });
+    }, [dispatch, sendSDRConfigToBackend]);
+
+    const handleFFTAveragingChange = useCallback((value) => {
+        dispatch(setFFTAveraging(value));
+        sendSDRConfigToBackend({ fftAveraging: value });
+    }, [dispatch, sendSDRConfigToBackend]);
+
+    const handleColorMapChange = useCallback((value) => {
+        setLocalColorMap(value);
+        dispatch(setColorMap(value));
+    }, [dispatch]);
+
+    const handleRecordingNameChange = useCallback((name) => {
+        dispatch(setRecordingName(name));
+    }, [dispatch]);
 
     const handleVfoCenterFrequencyChange = useCallback((newFreq) => {
         dispatch(setCenterFrequency(newFreq));
@@ -1126,34 +1163,28 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
 
                 <FftAccordion
                     expanded={expandedPanels.includes('fft')}
-                    onAccordionChange={handleAccordionChange('fft')}
+                    onAccordionChange={handleFftAccordionChange}
                     gettingSDRParameters={gettingSDRParameters}
                     fftSizeValues={fftSizeValues}
                     localFFTSize={localFFTSize}
-                    onFFTSizeChange={(value) => {
-                        setLocalFFTSize(value);
-                        dispatch(updateFFTSize(value));
-                    }}
+                    onFFTSizeChange={handleFFTSizeChange}
                     fftWindowValues={fftWindowValues}
                     fftWindow={fftWindow}
-                    onFFTWindowChange={(value) => dispatch(updateFFTWindow(value))}
+                    onFFTWindowChange={handleFFTWindowChange}
                     fftAveraging={fftAveraging}
-                    onFFTAveragingChange={(value) => dispatch(updateFFTAveraging(value))}
+                    onFFTAveragingChange={handleFFTAveragingChange}
                     colorMaps={colorMaps}
                     localColorMap={localColorMap}
-                    onColorMapChange={(value) => {
-                        setLocalColorMap(value);
-                        dispatch(setColorMap(value));
-                    }}
+                    onColorMapChange={handleColorMapChange}
                 />
 
                 <RecordingAccordion
                     expanded={expandedPanels.includes('recording')}
-                    onAccordionChange={handleAccordionChange('recording')}
+                    onAccordionChange={handleRecordingAccordionChange}
                     isRecording={isRecording}
                     recordingDuration={recordingDuration}
                     recordingName={recordingName}
-                    onRecordingNameChange={(name) => dispatch(setRecordingName(name))}
+                    onRecordingNameChange={handleRecordingNameChange}
                     onStartRecording={handleStartRecording}
                     onStopRecording={handleStopRecording}
                     isStreaming={isStreaming}
@@ -1163,7 +1194,7 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
 
                 <PlaybackAccordion
                     expanded={expandedPanels.includes('playback')}
-                    onAccordionChange={handleAccordionChange('playback')}
+                    onAccordionChange={handlePlaybackAccordionChange}
                     isStreaming={isStreaming}
                     selectedPlaybackRecording={selectedPlaybackRecording}
                     onRecordingSelect={handleRecordingSelect}

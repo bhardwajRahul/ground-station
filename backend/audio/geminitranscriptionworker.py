@@ -113,6 +113,13 @@ class GeminiTranscriptionWorker(TranscriptionWorker):
                 # Use input transcription stream for clean, narration-free text.
                 "input_audio_transcription": {},
             }
+            output_constraints = (
+                "Output rules: Return ONLY the final transcript text for the current speech segment. "
+                "Do NOT explain, analyze, describe your process, or mention translation steps. "
+                "Do NOT use markdown, headings, bullet points, or labels. "
+                "Do NOT include phrases like 'analyzing', 'refining', 'transcribing', or similar meta commentary. "
+                "If speech is unclear, use [inaudible] only where needed."
+            )
 
             # Build system instruction based on language and translation settings
             if self.translate_to != "none":
@@ -128,7 +135,8 @@ class GeminiTranscriptionWorker(TranscriptionWorker):
                         f"Squelch is not applied. Ignore static noise and only transcribe actual speech. "
                         f"Mark unclear words with [inaudible]. "
                         f"Preserve numbers, callsigns, and codes exactly as spoken. "
-                        f"Identify and label different speakers if multiple voices are present."
+                        f"Identify and label different speakers if multiple voices are present. "
+                        f"{output_constraints}"
                     )
                 else:
                     system_instruction = (
@@ -142,7 +150,8 @@ class GeminiTranscriptionWorker(TranscriptionWorker):
                         f"Squelch is not applied. Ignore static noise and only transcribe actual speech. "
                         f"Mark unclear words with [inaudible]. "
                         f"Preserve numbers, callsigns, and codes exactly as spoken. "
-                        f"Identify and label different speakers if multiple voices are present."
+                        f"Identify and label different speakers if multiple voices are present. "
+                        f"{output_constraints}"
                     )
                 config["system_instruction"] = system_instruction
             elif self.language != "auto":
@@ -153,7 +162,8 @@ class GeminiTranscriptionWorker(TranscriptionWorker):
                     f"Squelch is not applied. Ignore static noise and only transcribe actual speech. "
                     f"Mark unclear words with [inaudible]. "
                     f"Preserve numbers, callsigns, and codes exactly as spoken. "
-                    f"Identify and label different speakers if multiple voices are present."
+                    f"Identify and label different speakers if multiple voices are present. "
+                    f"{output_constraints}"
                 )
                 config["system_instruction"] = system_instruction
             else:
@@ -164,7 +174,8 @@ class GeminiTranscriptionWorker(TranscriptionWorker):
                     "Squelch is not applied. Ignore static noise and only transcribe actual speech. "
                     "Mark unclear words with [inaudible]. "
                     "Preserve numbers, callsigns, and codes exactly as spoken. "
-                    "Identify and label different speakers if multiple voices are present."
+                    "Identify and label different speakers if multiple voices are present. "
+                    f"{output_constraints}"
                 )
                 config["system_instruction"] = system_instruction
 
@@ -245,63 +256,21 @@ class GeminiTranscriptionWorker(TranscriptionWorker):
             # Receive responses
             while self.running and self.connected:
                 try:
-                    response = await self.gemini_session._receive()
+                    received_any = False
+                    async for response in self._iter_provider_responses():
+                        received_any = True
+                        if not response:
+                            continue
 
-                    if not response:
-                        continue
-
-                    # Prefer input transcription stream to avoid narrated assistant output.
-                    server_content = getattr(response, "server_content", None)
-                    input_transcription = None
-                    if server_content:
-                        # SDKs differ: attributes or dict keys (snake_case/camelCase).
-                        if hasattr(server_content, "input_transcription"):
-                            input_transcription = server_content.input_transcription
-                        elif isinstance(server_content, dict):
-                            input_transcription = server_content.get(
-                                "input_transcription"
-                            ) or server_content.get("inputTranscription")
-                    if input_transcription:
-                        if isinstance(input_transcription, dict):
-                            text = (input_transcription.get("text") or "").strip()
-                        else:
-                            text = (getattr(input_transcription, "text", None) or "").strip()
+                        text, is_complete = self._extract_transcription_from_response(response)
                         if text:
-                            if isinstance(input_transcription, dict):
-                                is_complete = bool(input_transcription.get("finished"))
-                            else:
-                                is_complete = bool(getattr(input_transcription, "finished", False))
-                            if not is_complete:
-                                if server_content:
-                                    is_complete = getattr(
-                                        server_content, "turn_complete", False
-                                    ) or (
-                                        isinstance(server_content, dict)
-                                        and server_content.get("turn_complete")
-                                    )
-
-                            # Determine language
-                            if self.translate_to and self.translate_to != "none":
-                                # Translation mode - use source language
-                                if self.language and self.language != "auto":
-                                    detected_language = self.language
-                                else:
-                                    detected_language = "unknown"
-                            elif self.language and self.language != "auto":
-                                detected_language = self.language
-                            else:
-                                # Auto-detect using langdetect
-                                detected_language = "unknown"
-                                if LANGDETECT_AVAILABLE and text:
-                                    try:
-                                        detected_language = detect(text)
-                                    except LangDetectException:
-                                        detected_language = "unknown"
-
-                            # Emit transcription
+                            detected_language = self._determine_detected_language(text)
                             await self._emit_transcription(
                                 text=text, language=detected_language, is_final=is_complete
                             )
+
+                    if not received_any:
+                        await asyncio.sleep(0.05)
 
                 except Exception as e:
                     error_str = str(e).lower()
@@ -323,6 +292,80 @@ class GeminiTranscriptionWorker(TranscriptionWorker):
             if self.gemini_session:
                 logger.error(f"Gemini receiver error: {e}")
             self.connected = False
+
+    async def _iter_provider_responses(self):
+        """Yield provider responses using public SDK APIs when available."""
+        if self.gemini_session is None:
+            return
+
+        if hasattr(self.gemini_session, "receive"):
+            async for response in self.gemini_session.receive():
+                yield response
+            return
+
+        if hasattr(self.gemini_session, "_receive"):
+            yield await self.gemini_session._receive()
+            return
+
+        raise RuntimeError("Gemini session does not expose a receive API")
+
+    def _extract_transcription_from_response(self, response: Any) -> tuple[str, bool]:
+        """
+        Extract transcription text from a Gemini Live response.
+
+        Supports both modern input transcription stream and legacy model_turn text output.
+        """
+        server_content = getattr(response, "server_content", None)
+
+        # Preferred path: input transcription stream.
+        input_transcription = None
+        if server_content:
+            if hasattr(server_content, "input_transcription"):
+                input_transcription = server_content.input_transcription
+            elif isinstance(server_content, dict):
+                input_transcription = server_content.get(
+                    "input_transcription"
+                ) or server_content.get("inputTranscription")
+
+        if input_transcription:
+            if isinstance(input_transcription, dict):
+                text = (input_transcription.get("text") or "").strip()
+                is_complete = bool(input_transcription.get("finished"))
+            else:
+                text = (getattr(input_transcription, "text", None) or "").strip()
+                is_complete = bool(getattr(input_transcription, "finished", False))
+
+            if not is_complete and server_content:
+                is_complete = getattr(server_content, "turn_complete", False) or (
+                    isinstance(server_content, dict) and bool(server_content.get("turn_complete"))
+                )
+            return text, is_complete
+
+        # Legacy fallback: model_turn text parts.
+        model_turn = getattr(server_content, "model_turn", None) if server_content else None
+        parts = getattr(model_turn, "parts", None)
+        if parts:
+            text_parts = [part.text.strip() for part in parts if getattr(part, "text", None)]
+            text = " ".join(text_parts).strip()
+            is_complete = bool(getattr(server_content, "turn_complete", False))
+            return text, is_complete
+
+        return "", False
+
+    def _determine_detected_language(self, text: str) -> str:
+        """Determine language for outgoing transcription payload."""
+        if self.translate_to and self.translate_to != "none":
+            return self.language if self.language and self.language != "auto" else "unknown"
+        if self.language and self.language != "auto":
+            return str(self.language)
+
+        if LANGDETECT_AVAILABLE and text:
+            try:
+                return str(detect(text))
+            except LangDetectException:
+                return "unknown"
+
+        return "unknown"
 
     def stop(self):
         """Stop the Gemini worker"""

@@ -252,4 +252,21 @@ const RecordingAccordion = ({
     );
 };
 
-export default RecordingAccordion;
+function areRecordingAccordionPropsEqual(prevProps, nextProps) {
+    return (
+        prevProps.expanded === nextProps.expanded &&
+        prevProps.onAccordionChange === nextProps.onAccordionChange &&
+        prevProps.isRecording === nextProps.isRecording &&
+        prevProps.recordingDuration === nextProps.recordingDuration &&
+        prevProps.recordingName === nextProps.recordingName &&
+        prevProps.actualRecordingName === nextProps.actualRecordingName &&
+        prevProps.onRecordingNameChange === nextProps.onRecordingNameChange &&
+        prevProps.onStartRecording === nextProps.onStartRecording &&
+        prevProps.onStopRecording === nextProps.onStopRecording &&
+        prevProps.isStreaming === nextProps.isStreaming &&
+        prevProps.selectedSDRId === nextProps.selectedSDRId &&
+        prevProps.centerFrequency === nextProps.centerFrequency
+    );
+}
+
+export default React.memo(RecordingAccordion, areRecordingAccordionPropsEqual);

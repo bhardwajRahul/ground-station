@@ -524,4 +524,18 @@ const PlaybackAccordion = ({
     );
 };
 
-export default PlaybackAccordion;
+function arePlaybackAccordionPropsEqual(prevProps, nextProps) {
+    return (
+        prevProps.expanded === nextProps.expanded &&
+        prevProps.onAccordionChange === nextProps.onAccordionChange &&
+        prevProps.isStreaming === nextProps.isStreaming &&
+        prevProps.selectedPlaybackRecording === nextProps.selectedPlaybackRecording &&
+        prevProps.onRecordingSelect === nextProps.onRecordingSelect &&
+        prevProps.onPlaybackPlay === nextProps.onPlaybackPlay &&
+        prevProps.onPlaybackStop === nextProps.onPlaybackStop &&
+        prevProps.playbackStartTime === nextProps.playbackStartTime &&
+        prevProps.playbackRemainingSecondsRef === nextProps.playbackRemainingSecondsRef
+    );
+}
+
+export default React.memo(PlaybackAccordion, arePlaybackAccordionPropsEqual);

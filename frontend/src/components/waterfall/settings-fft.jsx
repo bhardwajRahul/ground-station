@@ -125,4 +125,23 @@ const FftAccordion = ({
     );
 };
 
-export default FftAccordion;
+function areFftAccordionPropsEqual(prevProps, nextProps) {
+    return (
+        prevProps.expanded === nextProps.expanded &&
+        prevProps.onAccordionChange === nextProps.onAccordionChange &&
+        prevProps.gettingSDRParameters === nextProps.gettingSDRParameters &&
+        prevProps.fftSizeValues === nextProps.fftSizeValues &&
+        prevProps.localFFTSize === nextProps.localFFTSize &&
+        prevProps.onFFTSizeChange === nextProps.onFFTSizeChange &&
+        prevProps.fftWindowValues === nextProps.fftWindowValues &&
+        prevProps.fftWindow === nextProps.fftWindow &&
+        prevProps.onFFTWindowChange === nextProps.onFFTWindowChange &&
+        prevProps.fftAveraging === nextProps.fftAveraging &&
+        prevProps.onFFTAveragingChange === nextProps.onFFTAveragingChange &&
+        prevProps.colorMaps === nextProps.colorMaps &&
+        prevProps.localColorMap === nextProps.localColorMap &&
+        prevProps.onColorMapChange === nextProps.onColorMapChange
+    );
+}
+
+export default React.memo(FftAccordion, areFftAccordionPropsEqual);
