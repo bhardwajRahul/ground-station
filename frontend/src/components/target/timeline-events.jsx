@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import { Y_AXIS_WIDTH, ZOOM_FACTOR } from './timeline-constants.jsx';
+import { Y_AXIS_WIDTH, X_AXIS_HEIGHT, Y_AXIS_TOP_MARGIN, ZOOM_FACTOR } from './timeline-constants.jsx';
 
 // Internal constant for past offset (30 minutes)
 const PAST_OFFSET_HOURS = 0.1;
@@ -83,6 +83,14 @@ export const useTimelineEvents = ({
     const percentage = (xAdjusted / availableWidth) * 100;
     const yPercentage = (y / rect.height) * 100;
 
+    // Convert cursor Y to an elevation value using chart area coordinates.
+    const chartTop = Y_AXIS_TOP_MARGIN;
+    const chartBottom = rect.height - X_AXIS_HEIGHT;
+    const chartHeight = Math.max(1, chartBottom - chartTop);
+    const clampedY = Math.max(chartTop, Math.min(chartBottom, y));
+    const yPercentInChart = ((clampedY - chartTop) / chartHeight) * 100;
+    const cursorElevation = 90 - ((yPercentInChart / 100) * 90);
+
     // Handle panning
     if (isPanning && panStartXRef.current !== null && panStartTimeRef.current !== null) {
       const deltaX = x - panStartXRef.current;
@@ -127,9 +135,8 @@ export const useTimelineEvents = ({
     const totalMs = actualEndTime.getTime() - actualStartTime.getTime();
     const timeAtPosition = new Date(actualStartTime.getTime() + (percentage / 100) * totalMs);
 
-    // Find which pass (if any) we're hovering over and calculate actual elevation
-    let actualElevation = null;
-    let hoveredPass = null;
+    // Find best pass candidate by selecting the curve closest to cursor Y.
+    let bestHoverMatch = null;
     for (const pass of timelineData) {
       // If we have elevation_curve data, check against actual curve time range
       if (pass.elevation_curve && pass.elevation_curve.length > 0) {
@@ -149,8 +156,11 @@ export const useTimelineEvents = ({
             if (timeAtPosition.getTime() >= time1 && timeAtPosition.getTime() <= time2) {
               // Linear interpolation between the two points
               const t = (timeAtPosition.getTime() - time1) / (time2 - time1);
-              actualElevation = point1.elevation + t * (point2.elevation - point1.elevation);
-              hoveredPass = pass;
+              const elevation = point1.elevation + t * (point2.elevation - point1.elevation);
+              const distance = Math.abs(elevation - cursorElevation);
+              if (!bestHoverMatch || distance < bestHoverMatch.distance) {
+                bestHoverMatch = { pass, elevation, distance };
+              }
               found = true;
               break;
             }
@@ -163,11 +173,13 @@ export const useTimelineEvents = ({
 
             // If hovering on or after the last point, use its elevation
             if (timeAtPosition.getTime() >= lastTime) {
-              actualElevation = lastPoint.elevation;
-              hoveredPass = pass;
+              const elevation = lastPoint.elevation;
+              const distance = Math.abs(elevation - cursorElevation);
+              if (!bestHoverMatch || distance < bestHoverMatch.distance) {
+                bestHoverMatch = { pass, elevation, distance };
+              }
             }
           }
-          break;
         }
       } else if (pass.left !== undefined && pass.width !== undefined) {
         // Fallback to pass.left/width if elevation_curve not available
@@ -175,9 +187,11 @@ export const useTimelineEvents = ({
           // Fallback to parabolic curve formula
           const positionInPass = (percentage - pass.left) / pass.width;
           const elevationRatio = 4 * positionInPass * (1 - positionInPass);
-          actualElevation = pass.peak_altitude * elevationRatio;
-          hoveredPass = pass;
-          break;
+          const elevation = pass.peak_altitude * elevationRatio;
+          const distance = Math.abs(elevation - cursorElevation);
+          if (!bestHoverMatch || distance < bestHoverMatch.distance) {
+            bestHoverMatch = { pass, elevation, distance };
+          }
         }
       }
     }
@@ -185,8 +199,8 @@ export const useTimelineEvents = ({
     setHoverPosition({
       x: percentage,
       y: yPercentage,
-      elevation: actualElevation,
-      passName: hoveredPass ? hoveredPass.name : null,
+      elevation: bestHoverMatch ? bestHoverMatch.elevation : null,
+      passName: bestHoverMatch ? bestHoverMatch.pass.name : null,
     });
     setHoverTime(timeAtPosition);
   }, [isPanning, timeWindowHours, timeWindowStart, timelineData, panStartXRef, panStartTimeRef, setTimeWindowStart, setHoverPosition, setHoverTime, pastOffsetHours, nextPassesHours, startTime, endTime]);
