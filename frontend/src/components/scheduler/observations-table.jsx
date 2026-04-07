@@ -663,14 +663,30 @@ const ObservationsTable = () => {
                             outline: 'none',
                         },
                         '& .MuiDataGrid-columnHeaders': {
-                            backgroundColor: (theme) => alpha(
+                            backgroundColor: 'background.paper',
+                            backgroundImage: (theme) => `linear-gradient(${alpha(
                                 theme.palette.primary.main,
                                 theme.palette.mode === 'dark' ? 0.18 : 0.10
-                            ),
+                            )}, ${alpha(
+                                theme.palette.primary.main,
+                                theme.palette.mode === 'dark' ? 0.18 : 0.10
+                            )})`,
                             borderBottom: (theme) => `2px solid ${alpha(theme.palette.primary.main, 0.45)}`,
+                            zIndex: 2,
                         },
                         '& .MuiDataGrid-columnHeader': {
-                            backgroundColor: 'transparent',
+                            backgroundColor: 'inherit',
+                            backgroundImage: 'inherit',
+                        },
+                        '& .MuiDataGrid-filler, & .MuiDataGrid-scrollbarFiller': {
+                            backgroundColor: 'background.paper',
+                            backgroundImage: (theme) => `linear-gradient(${alpha(
+                                theme.palette.primary.main,
+                                theme.palette.mode === 'dark' ? 0.18 : 0.10
+                            )}, ${alpha(
+                                theme.palette.primary.main,
+                                theme.palette.mode === 'dark' ? 0.18 : 0.10
+                            )})`,
                         },
                         '& .MuiDataGrid-columnHeaderTitle': {
                             fontSize: '0.8125rem',
