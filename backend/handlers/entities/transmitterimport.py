@@ -179,7 +179,9 @@ def to_int(value):
 
 
 def _normalize_optional_json(value):
-    if value in {None, "", "-"}:
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip() in {"", "-"}:
         return None
 
     parsed = value

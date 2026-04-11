@@ -81,3 +81,39 @@ class TestTransmitterImport:
         json_valid, urls = stored.one()
         assert json_valid == 1
         assert urls == "[]"
+
+    async def test_upsert_transmitters_accepts_dict_itu_notification(self, db_session):
+        await add_satellite(
+            db_session,
+            {
+                "name": "Test Satellite",
+                "sat_id": "TEST-001",
+                "norad_id": 25544,
+                "status": "alive",
+                "is_frequency_violator": False,
+                "tle1": TLE1_TEMPLATE.format(norad=25544),
+                "tle2": TLE2_TEMPLATE.format(norad=25544),
+            },
+        )
+
+        row = {
+            "id": str(uuid.uuid4()),
+            "norad_cat_id": 25544,
+            "status": "active",
+            "source": "satdump",
+            "added": dt.datetime.now(dt.timezone.utc),
+            "updated": dt.datetime.now(dt.timezone.utc),
+            "itu_notification": {"urls": []},
+        }
+        await upsert_transmitters([row], session=db_session)
+
+        stored = await db_session.execute(
+            text(
+                "SELECT json_valid(itu_notification), json_extract(itu_notification, '$.urls') "
+                "FROM transmitters WHERE id = :id"
+            ),
+            {"id": row["id"]},
+        )
+        json_valid, urls = stored.one()
+        assert json_valid == 1
+        assert urls == "[]"
