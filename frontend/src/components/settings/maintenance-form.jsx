@@ -292,7 +292,7 @@ const MaintenanceForm = () => {
                 <TabPanel tabKey="redux-inspector">
                     <Stack spacing={2}>
                         <Grid container spacing={2}>
-                            <Grid size={{ xs: 12, md: 6 }}>
+                            <Grid size={{ xs: 12, md: 12 }}>
                                 <Paper
                                     variant="outlined"
                                     sx={{
