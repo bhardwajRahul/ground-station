@@ -41,6 +41,23 @@ export const TleIcon = (props) => {
 };
 
 /**
+ * Custom icon for celestial navigation - simple solar system motif.
+ */
+export const CelestialSolarIcon = (props) => {
+    return (
+        <SvgIcon {...props} viewBox="0 0 24 24">
+            <g transform="translate(12 12) scale(1.36) translate(-12 -12)">
+                <circle cx="12" cy="12" r="2.1" fill="currentColor"/>
+                <ellipse cx="12" cy="12" rx="7.2" ry="5.1" fill="none" stroke="currentColor" strokeWidth="1.6" opacity="0.95"/>
+                <ellipse cx="12" cy="12" rx="4.7" ry="3.2" fill="none" stroke="currentColor" strokeWidth="1.4" opacity="0.8"/>
+                <circle cx="18.5" cy="12.4" r="1.2" fill="currentColor"/>
+                <circle cx="9.1" cy="9.1" r="0.9" fill="currentColor" opacity="0.9"/>
+            </g>
+        </SvgIcon>
+    );
+};
+
+/**
  * Custom icon displaying "VFO" with "1" underneath
  */
 export const VFO1Icon = (props) => {

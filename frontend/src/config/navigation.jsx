@@ -30,7 +30,7 @@ import WavesIcon from '@mui/icons-material/Waves';
 import VideocamIcon from '@mui/icons-material/Videocam';
 import FolderIcon from '@mui/icons-material/Folder';
 import i18n from '../i18n/config.js';
-import { TleIcon } from '../components/common/custom-icons.jsx';
+import { CelestialSolarIcon, TleIcon } from '../components/common/custom-icons.jsx';
 import { Box, CircularProgress } from '@mui/material';
 import SyncIcon from '@mui/icons-material/Sync';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -38,7 +38,6 @@ import FiberNewIcon from '@mui/icons-material/FiberNew';
 import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive';
 import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord';
 import EventNoteIcon from '@mui/icons-material/EventNote';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
@@ -262,7 +261,7 @@ export const getNavigation = ({ showCelestial = false } = {}) => {
             ? [{
                 segment: 'celestial',
                 title: 'Celestial',
-                icon: <AutoAwesomeIcon />,
+                icon: <CelestialSolarIcon />,
             }]
             : []),
         {

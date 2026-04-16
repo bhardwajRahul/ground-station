@@ -18,6 +18,21 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 1200;
 const WHEEL_COMMIT_DELAY_MS = 180;
 const DEFAULT_VIEWPORT = { zoom: 18, panX: 0, panY: 0 };
+const DEFAULT_DISPLAY_OPTIONS = {
+    showGrid: true,
+    showPlanets: true,
+    showPlanetLabels: true,
+    showPlanetOrbits: true,
+    showTrackedObjects: true,
+    showTrackedOrbits: true,
+    showTrackedLabels: true,
+    showAsteroidZones: true,
+    showZoneLabels: true,
+    showResonanceMarkers: true,
+    showTimestamp: true,
+    showScaleIndicator: true,
+    showGestureHint: true,
+};
 const normalizeViewport = (viewport) => ({
     zoom: clamp(Number(viewport?.zoom ?? DEFAULT_VIEWPORT.zoom), MIN_ZOOM, MAX_ZOOM),
     panX: Number(viewport?.panX ?? DEFAULT_VIEWPORT.panX) || 0,
@@ -26,6 +41,44 @@ const normalizeViewport = (viewport) => ({
 const formatAu = (value) => {
     if (value >= 1) return `${value.toFixed(value >= 10 ? 0 : 1)} AU`;
     return `${value.toFixed(2)} AU`;
+};
+const hexToRgba = (hex, alpha) => {
+    const value = String(hex || '').trim().replace('#', '');
+    if (!/^[0-9a-fA-F]{6}$/.test(value)) return `rgba(120,150,190,${alpha})`;
+    const r = Number.parseInt(value.slice(0, 2), 16);
+    const g = Number.parseInt(value.slice(2, 4), 16);
+    const b = Number.parseInt(value.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+};
+const ASTEROID_ZONE_FALLBACK_COLORS = {
+    imb: '#4F8CFF',
+    mmb: '#4FC3A1',
+    omb: '#E0A458',
+    tjn: '#D97AA8',
+    kuiper: '#5EC8E5',
+    scattered: '#8BA6FF',
+};
+const resolveAsteroidZoneColor = (zone) => {
+    if (zone?.color_hex) return zone.color_hex;
+
+    const normalizedId = String(zone?.id || '').trim().toLowerCase();
+    if (ASTEROID_ZONE_FALLBACK_COLORS[normalizedId]) {
+        return ASTEROID_ZONE_FALLBACK_COLORS[normalizedId];
+    }
+
+    const normalizedClass = String(zone?.class_code || '').trim().toLowerCase();
+    if (ASTEROID_ZONE_FALLBACK_COLORS[normalizedClass]) {
+        return ASTEROID_ZONE_FALLBACK_COLORS[normalizedClass];
+    }
+
+    const normalizedName = String(zone?.name || '').trim().toLowerCase();
+    if (normalizedName.includes('inner')) return ASTEROID_ZONE_FALLBACK_COLORS.imb;
+    if (normalizedName.includes('middle')) return ASTEROID_ZONE_FALLBACK_COLORS.mmb;
+    if (normalizedName.includes('outer')) return ASTEROID_ZONE_FALLBACK_COLORS.omb;
+    if (normalizedName.includes('trojan')) return ASTEROID_ZONE_FALLBACK_COLORS.tjn;
+    if (normalizedName.includes('kuiper')) return ASTEROID_ZONE_FALLBACK_COLORS.kuiper;
+    if (normalizedName.includes('scattered')) return ASTEROID_ZONE_FALLBACK_COLORS.scattered;
+    return '#7F9CB8';
 };
 const getTwoPointerGesture = (pointerMap) => {
     if (pointerMap.size < 2) return null;
@@ -65,13 +118,63 @@ const drawArrowHead = (ctx, fromX, fromY, toX, toY, color) => {
     ctx.fillStyle = color;
     ctx.fill();
 };
+const drawTextOnArc = (ctx, text, cx, cy, radius, centerAngle, style = {}) => {
+    const value = String(text || '');
+    if (!value || radius <= 0) return;
 
-const SolarSystemCanvas = ({ scene, fitAllSignal = 0, initialViewport = null, onViewportCommit = null }) => {
+    const {
+        font = '10px monospace',
+        color = 'rgba(220,230,240,0.42)',
+        clockwise = true,
+    } = style;
+
+    ctx.save();
+    ctx.font = font;
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const chars = Array.from(value);
+    const charWidths = chars.map((char) => Math.max(1, ctx.measureText(char).width));
+    const totalArc = charWidths.reduce((sum, width) => sum + (width / radius), 0);
+    let angle = centerAngle - totalArc / 2;
+
+    chars.forEach((char, index) => {
+        const charArc = charWidths[index] / radius;
+        const charAngle = angle + charArc / 2;
+        const x = cx + radius * Math.cos(charAngle);
+        const y = cy + radius * Math.sin(charAngle);
+
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(charAngle + (clockwise ? Math.PI / 2 : -Math.PI / 2));
+        ctx.fillText(char, 0, 0);
+        ctx.restore();
+
+        angle += charArc;
+    });
+
+    ctx.restore();
+};
+
+const SolarSystemCanvas = ({
+    scene,
+    fitAllSignal = 0,
+    zoomInSignal = 0,
+    zoomOutSignal = 0,
+    resetZoomSignal = 0,
+    initialViewport = null,
+    onViewportCommit = null,
+    displayOptions = DEFAULT_DISPLAY_OPTIONS,
+}) => {
     const theme = useTheme();
     const containerRef = useRef(null);
     const canvasRef = useRef(null);
     const wheelCommitTimeoutRef = useRef(null);
     const lastFitSignalRef = useRef(fitAllSignal);
+    const lastZoomInSignalRef = useRef(zoomInSignal);
+    const lastZoomOutSignalRef = useRef(zoomOutSignal);
+    const lastResetZoomSignalRef = useRef(resetZoomSignal);
     const hasPersistentViewportRef = useRef(!!initialViewport);
     const viewportRef = useRef(DEFAULT_VIEWPORT);
     const activePointersRef = useRef(new Map());
@@ -92,6 +195,12 @@ const SolarSystemCanvas = ({ scene, fitAllSignal = 0, initialViewport = null, on
 
     const planets = scene?.planets || [];
     const tracked = scene?.celestial || [];
+    const asteroidZones = scene?.asteroid_zones || [];
+    const asteroidResonanceGaps = scene?.asteroid_resonance_gaps || [];
+    const effectiveDisplayOptions = {
+        ...DEFAULT_DISPLAY_OPTIONS,
+        ...(displayOptions || {}),
+    };
 
     const commitViewport = useCallback((nextViewport) => {
         hasPersistentViewportRef.current = true;
@@ -166,6 +275,35 @@ const SolarSystemCanvas = ({ scene, fitAllSignal = 0, initialViewport = null, on
         commitViewport(nextViewport);
     }, [planets, tracked, commitViewport]);
 
+    const applyZoomAtScreenPoint = useCallback((zoomFactor, anchorX, anchorY) => {
+        const container = containerRef.current;
+        if (!container || !Number.isFinite(zoomFactor) || zoomFactor <= 0) return null;
+
+        const rect = container.getBoundingClientRect();
+        const width = rect.width;
+        const height = rect.height;
+        if (width <= 0 || height <= 0) return null;
+
+        const prev = viewportRef.current;
+        const nextZoom = clamp(prev.zoom * zoomFactor, MIN_ZOOM, MAX_ZOOM);
+        const prevCx = width / 2 + prev.panX;
+        const prevCy = height / 2 + prev.panY;
+
+        const worldX = (anchorX - prevCx) / prev.zoom;
+        const worldY = (prevCy - anchorY) / prev.zoom;
+        const nextCx = anchorX - worldX * nextZoom;
+        const nextCy = anchorY + worldY * nextZoom;
+
+        const next = {
+            zoom: nextZoom,
+            panX: nextCx - width / 2,
+            panY: nextCy - height / 2,
+        };
+        viewportRef.current = next;
+        setViewport(next);
+        return next;
+    }, []);
+
     const drawScene = useCallback(() => {
         const container = containerRef.current;
         const canvas = canvasRef.current;
@@ -206,30 +344,86 @@ const SolarSystemCanvas = ({ scene, fitAllSignal = 0, initialViewport = null, on
         };
 
         // World-space grid (moves with pan/zoom).
-        const gridStepAu = scale > 80 ? 0.5 : scale > 30 ? 1 : scale > 12 ? 2 : 5;
-        const worldMinX = (0 - cx) / scale;
-        const worldMaxX = (width - cx) / scale;
-        const worldMaxY = (cy - 0) / scale;
-        const worldMinY = (cy - height) / scale;
-        const startGridX = Math.floor(worldMinX / gridStepAu) * gridStepAu;
-        const startGridY = Math.floor(worldMinY / gridStepAu) * gridStepAu;
+        if (effectiveDisplayOptions.showGrid) {
+            const gridStepAu = scale > 80 ? 0.5 : scale > 30 ? 1 : scale > 12 ? 2 : 5;
+            const worldMinX = (0 - cx) / scale;
+            const worldMaxX = (width - cx) / scale;
+            const worldMaxY = (cy - 0) / scale;
+            const worldMinY = (cy - height) / scale;
+            const startGridX = Math.floor(worldMinX / gridStepAu) * gridStepAu;
+            const startGridY = Math.floor(worldMinY / gridStepAu) * gridStepAu;
 
-        ctx.strokeStyle = theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-        ctx.lineWidth = 1;
+            ctx.strokeStyle = theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+            ctx.lineWidth = 1;
 
-        for (let gx = startGridX; gx <= worldMaxX; gx += gridStepAu) {
-            const sx = cx + gx * scale;
-            ctx.beginPath();
-            ctx.moveTo(sx, 0);
-            ctx.lineTo(sx, height);
-            ctx.stroke();
+            for (let gx = startGridX; gx <= worldMaxX; gx += gridStepAu) {
+                const sx = cx + gx * scale;
+                ctx.beginPath();
+                ctx.moveTo(sx, 0);
+                ctx.lineTo(sx, height);
+                ctx.stroke();
+            }
+            for (let gy = startGridY; gy <= worldMaxY; gy += gridStepAu) {
+                const sy = cy - gy * scale;
+                ctx.beginPath();
+                ctx.moveTo(0, sy);
+                ctx.lineTo(width, sy);
+                ctx.stroke();
+            }
         }
-        for (let gy = startGridY; gy <= worldMaxY; gy += gridStepAu) {
-            const sy = cy - gy * scale;
-            ctx.beginPath();
-            ctx.moveTo(0, sy);
-            ctx.lineTo(width, sy);
-            ctx.stroke();
+
+        // Static asteroid zone annuli (subtle background guides).
+        if (effectiveDisplayOptions.showAsteroidZones && Array.isArray(asteroidZones) && asteroidZones.length) {
+            asteroidZones.forEach((zone) => {
+                const innerAu = Math.max(0, Number(zone?.a_min_au) || 0);
+                const outerAu = Math.max(innerAu, Number(zone?.a_max_au) || innerAu);
+                const innerPx = innerAu * scale;
+                const outerPx = outerAu * scale;
+                if (outerPx <= 2) return;
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, outerPx, 0, Math.PI * 2);
+                ctx.arc(cx, cy, innerPx, 0, Math.PI * 2, true);
+                ctx.closePath();
+                ctx.fillStyle = hexToRgba(resolveAsteroidZoneColor(zone), theme.palette.mode === 'dark' ? 0.14 : 0.1);
+                ctx.fill();
+
+                const midRadiusPx = ((innerAu + outerAu) / 2) * scale;
+                if (effectiveDisplayOptions.showZoneLabels && midRadiusPx > 55) {
+                    drawTextOnArc(
+                        ctx,
+                        zone?.name || '',
+                        cx,
+                        cy,
+                        midRadiusPx,
+                        -Math.PI / 4,
+                        {
+                            font: '10px monospace',
+                            color: theme.palette.mode === 'dark'
+                                ? 'rgba(220,230,240,0.42)'
+                                : 'rgba(55,70,90,0.38)',
+                            clockwise: true,
+                        },
+                    );
+                }
+            });
+        }
+
+        // Kirkwood gap markers (subtle dashed annuli).
+        if (effectiveDisplayOptions.showResonanceMarkers && Array.isArray(asteroidResonanceGaps) && asteroidResonanceGaps.length) {
+            ctx.setLineDash([5, 6]);
+            ctx.lineWidth = 1;
+            asteroidResonanceGaps.forEach((gap) => {
+                const radiusPx = (Number(gap?.a_au) || 0) * scale;
+                if (radiusPx <= 3) return;
+                ctx.beginPath();
+                ctx.arc(cx, cy, radiusPx, 0, Math.PI * 2);
+                ctx.strokeStyle = theme.palette.mode === 'dark'
+                    ? 'rgba(245,200,120,0.28)'
+                    : 'rgba(158,116,40,0.2)';
+                ctx.stroke();
+            });
+            ctx.setLineDash([]);
         }
 
         // Sun.
@@ -240,42 +434,48 @@ const SolarSystemCanvas = ({ scene, fitAllSignal = 0, initialViewport = null, on
         ctx.strokeStyle = '#f4a261';
         ctx.stroke();
 
-        // Planet orbits (sampled paths).
-        ctx.lineWidth = 1;
-        planets.forEach((planet) => {
-            const samples = planet.orbit_samples_xyz_au || [];
-            if (!samples.length) return;
-            ctx.beginPath();
-            samples.forEach((sample, index) => {
-                const [sx, sy] = toScreen(sample);
-                if (index === 0) ctx.moveTo(sx, sy);
-                else ctx.lineTo(sx, sy);
+        if (effectiveDisplayOptions.showPlanets && effectiveDisplayOptions.showPlanetOrbits) {
+            // Planet orbits (sampled paths).
+            ctx.lineWidth = 1;
+            planets.forEach((planet) => {
+                const samples = planet.orbit_samples_xyz_au || [];
+                if (!samples.length) return;
+                ctx.beginPath();
+                samples.forEach((sample, index) => {
+                    const [sx, sy] = toScreen(sample);
+                    if (index === 0) ctx.moveTo(sx, sy);
+                    else ctx.lineTo(sx, sy);
+                });
+                ctx.closePath();
+                ctx.strokeStyle = theme.palette.mode === 'dark' ? 'rgba(180,180,200,0.35)' : 'rgba(90,90,120,0.3)';
+                ctx.stroke();
             });
-            ctx.closePath();
-            ctx.strokeStyle = theme.palette.mode === 'dark' ? 'rgba(180,180,200,0.35)' : 'rgba(90,90,120,0.3)';
-            ctx.stroke();
-        });
+        }
 
-        // Planets.
-        ctx.font = '11px monospace';
-        planets.forEach((planet) => {
-            const id = String(planet.id || '').toLowerCase();
-            const color = PLANET_COLORS[id] || '#bbbbbb';
-            const [sx, sy] = toScreen(planet.position_xyz_au);
+        if (effectiveDisplayOptions.showPlanets) {
+            // Planets.
+            ctx.font = '11px monospace';
+            planets.forEach((planet) => {
+                const id = String(planet.id || '').toLowerCase();
+                const color = PLANET_COLORS[id] || '#bbbbbb';
+                const [sx, sy] = toScreen(planet.position_xyz_au);
 
-            ctx.beginPath();
-            ctx.arc(sx, sy, 4, 0, Math.PI * 2);
-            ctx.fillStyle = color;
-            ctx.fill();
+                ctx.beginPath();
+                ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
 
-            ctx.fillStyle = theme.palette.text.secondary;
-            ctx.fillText(planet.name || id, sx + 7, sy - 6);
-        });
+                if (effectiveDisplayOptions.showPlanetLabels) {
+                    ctx.fillStyle = theme.palette.text.secondary;
+                    ctx.fillText(planet.name || id, sx + 7, sy - 6);
+                }
+            });
+        }
 
         // Tracked objects from Horizons.
-        tracked.forEach((body) => {
+        if (effectiveDisplayOptions.showTrackedObjects) tracked.forEach((body) => {
             const samples = body.orbit_samples_xyz_au || [];
-            if (!samples.length) return;
+            if (!samples.length || !effectiveDisplayOptions.showTrackedOrbits) return;
 
             const strokeColor = body.stale
                 ? (theme.palette.mode === 'dark' ? 'rgba(239,71,111,0.45)' : 'rgba(196,47,89,0.45)')
@@ -306,17 +506,33 @@ const SolarSystemCanvas = ({ scene, fitAllSignal = 0, initialViewport = null, on
         });
 
         // Tracked object markers from Horizons.
-        ctx.font = '11px monospace';
-        tracked.forEach((body) => {
-            const [sx, sy] = toScreen(body.position_xyz_au);
+        if (effectiveDisplayOptions.showTrackedObjects) {
+            ctx.font = '11px monospace';
+            tracked.forEach((body) => {
+                const [sx, sy] = toScreen(body.position_xyz_au);
 
-            ctx.fillStyle = body.stale ? '#ef476f' : '#06d6a0';
-            ctx.fillRect(sx - 3, sy - 3, 6, 6);
+                ctx.fillStyle = body.stale ? '#ef476f' : '#06d6a0';
+                ctx.fillRect(sx - 3, sy - 3, 6, 6);
 
-            ctx.fillStyle = theme.palette.text.secondary;
-            ctx.fillText(body.name || body.command || 'object', sx + 8, sy + 4);
-        });
-    }, [planets, tracked, theme.palette.background.default, theme.palette.mode, theme.palette.text.secondary, viewport.panX, viewport.panY, viewport.zoom]);
+                if (effectiveDisplayOptions.showTrackedLabels) {
+                    ctx.fillStyle = theme.palette.text.secondary;
+                    ctx.fillText(body.name || body.command || 'object', sx + 8, sy + 4);
+                }
+            });
+        }
+    }, [
+        asteroidResonanceGaps,
+        asteroidZones,
+        displayOptions,
+        planets,
+        tracked,
+        theme.palette.background.default,
+        theme.palette.mode,
+        theme.palette.text.secondary,
+        viewport.panX,
+        viewport.panY,
+        viewport.zoom,
+    ]);
 
     useEffect(() => {
         drawScene();
@@ -331,6 +547,44 @@ const SolarSystemCanvas = ({ scene, fitAllSignal = 0, initialViewport = null, on
         lastFitSignalRef.current = fitAllSignal;
         fitAll();
     }, [fitAllSignal, fitAll]);
+
+    useEffect(() => {
+        if (zoomInSignal === lastZoomInSignalRef.current) return;
+        lastZoomInSignalRef.current = zoomInSignal;
+        hasPersistentViewportRef.current = true;
+
+        const container = containerRef.current;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const next = applyZoomAtScreenPoint(1.08, rect.width / 2, rect.height / 2);
+        if (next) commitViewport(next);
+    }, [zoomInSignal, applyZoomAtScreenPoint, commitViewport]);
+
+    useEffect(() => {
+        if (zoomOutSignal === lastZoomOutSignalRef.current) return;
+        lastZoomOutSignalRef.current = zoomOutSignal;
+        hasPersistentViewportRef.current = true;
+
+        const container = containerRef.current;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const next = applyZoomAtScreenPoint(0.92, rect.width / 2, rect.height / 2);
+        if (next) commitViewport(next);
+    }, [zoomOutSignal, applyZoomAtScreenPoint, commitViewport]);
+
+    useEffect(() => {
+        if (resetZoomSignal === lastResetZoomSignalRef.current) return;
+        lastResetZoomSignalRef.current = resetZoomSignal;
+        hasPersistentViewportRef.current = true;
+
+        const next = {
+            ...viewportRef.current,
+            zoom: DEFAULT_VIEWPORT.zoom,
+        };
+        viewportRef.current = next;
+        setViewport(next);
+        commitViewport(next);
+    }, [resetZoomSignal, commitViewport]);
 
     useEffect(() => {
         const container = containerRef.current;
@@ -561,35 +815,14 @@ const SolarSystemCanvas = ({ scene, fitAllSignal = 0, initialViewport = null, on
         }
         event.preventDefault();
         hasPersistentViewportRef.current = true;
-        const direction = event.deltaY > 0 ? 0.92 : 1.08;
         const container = containerRef.current;
         if (!container) return;
 
         const rect = container.getBoundingClientRect();
         const mouseX = event.clientX - rect.left;
         const mouseY = event.clientY - rect.top;
-        const width = rect.width;
-        const height = rect.height;
-
-        setViewport((prev) => {
-            const nextZoom = clamp(prev.zoom * direction, MIN_ZOOM, MAX_ZOOM);
-            const prevCx = width / 2 + prev.panX;
-            const prevCy = height / 2 + prev.panY;
-
-            // Keep world position under cursor fixed while zooming.
-            const worldX = (mouseX - prevCx) / prev.zoom;
-            const worldY = (prevCy - mouseY) / prev.zoom;
-            const nextCx = mouseX - worldX * nextZoom;
-            const nextCy = mouseY + worldY * nextZoom;
-
-            const next = {
-                zoom: nextZoom,
-                panX: nextCx - width / 2,
-                panY: nextCy - height / 2,
-            };
-            viewportRef.current = next;
-            return next;
-        });
+        const zoomFactor = event.deltaY > 0 ? 0.92 : 1.08;
+        applyZoomAtScreenPoint(zoomFactor, mouseX, mouseY);
 
         if (wheelCommitTimeoutRef.current) {
             window.clearTimeout(wheelCommitTimeoutRef.current);
@@ -631,57 +864,63 @@ const SolarSystemCanvas = ({ scene, fitAllSignal = 0, initialViewport = null, on
             >
                 <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
             </Box>
-            <Typography
-                variant="caption"
-                sx={{
-                    position: 'absolute',
-                    left: 10,
-                    top: 8,
-                    color: 'text.secondary',
-                    backgroundColor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.6)',
-                    px: 0.8,
-                    py: 0.3,
-                    borderRadius: 0.5,
-                    fontFamily: 'monospace',
-                }}
-            >
-                {timestampText}
-            </Typography>
-            <Box
-                sx={{
-                    position: 'absolute',
-                    left: 10,
-                    bottom: 8,
-                    color: 'text.secondary',
-                    backgroundColor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.52)',
-                    px: 0.8,
-                    py: 0.35,
-                    borderRadius: 0.5,
-                    fontFamily: 'monospace',
-                    opacity: 0.9,
-                }}
-            >
-                <Typography variant="caption" sx={{ fontFamily: 'inherit', lineHeight: 1.1 }}>
-                    Touch: 2-finger pan/zoom | Mouse: drag + Shift+wheel
+            {effectiveDisplayOptions.showTimestamp ? (
+                <Typography
+                    variant="caption"
+                    sx={{
+                        position: 'absolute',
+                        left: 10,
+                        top: 8,
+                        color: 'text.secondary',
+                        backgroundColor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.6)',
+                        px: 0.8,
+                        py: 0.3,
+                        borderRadius: 0.5,
+                        fontFamily: 'monospace',
+                    }}
+                >
+                    {timestampText}
                 </Typography>
-            </Box>
-            <Box
-                sx={{
-                    position: 'absolute',
-                    right: 10,
-                    bottom: 8,
-                    color: 'text.secondary',
-                    backgroundColor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.6)',
-                    px: 0.8,
-                    py: 0.5,
-                    borderRadius: 0.5,
-                    fontFamily: 'monospace',
-                }}
-            >
-                <Typography variant="caption" sx={{ fontFamily: 'inherit', lineHeight: 1.1 }}>
-                    {scaleIndicator.label}
-                </Typography>
-            </Box>
+            ) : null}
+            {effectiveDisplayOptions.showGestureHint ? (
+                <Box
+                    sx={{
+                        position: 'absolute',
+                        left: 10,
+                        bottom: 8,
+                        color: 'text.secondary',
+                        backgroundColor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.28)' : 'rgba(255,255,255,0.52)',
+                        px: 0.8,
+                        py: 0.35,
+                        borderRadius: 0.5,
+                        fontFamily: 'monospace',
+                        opacity: 0.9,
+                    }}
+                >
+                    <Typography variant="caption" sx={{ fontFamily: 'inherit', lineHeight: 1.1 }}>
+                        Touch: 2-finger pan/zoom | Mouse: drag + Shift+wheel
+                    </Typography>
+                </Box>
+            ) : null}
+            {effectiveDisplayOptions.showScaleIndicator ? (
+                <Box
+                    sx={{
+                        position: 'absolute',
+                        right: 10,
+                        bottom: 8,
+                        color: 'text.secondary',
+                        backgroundColor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.6)',
+                        px: 0.8,
+                        py: 0.5,
+                        borderRadius: 0.5,
+                        fontFamily: 'monospace',
+                    }}
+                >
+                    <Typography variant="caption" sx={{ fontFamily: 'inherit', lineHeight: 1.1 }}>
+                        {scaleIndicator.label}
+                    </Typography>
+                </Box>
+            ) : null}
         </Box>
     );
 };

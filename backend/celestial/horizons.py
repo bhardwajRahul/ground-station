@@ -52,6 +52,23 @@ def _parse_horizons_datetime(raw_value: str) -> Optional[datetime]:
     return None
 
 
+def _parse_horizons_observer_datetime(raw_value: str) -> Optional[datetime]:
+    text = raw_value.strip()
+    if not text:
+        return None
+
+    formats = (
+        "%Y-%b-%d %H:%M:%S",
+        "%Y-%b-%d %H:%M",
+    )
+    for fmt in formats:
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
 def _parse_vector_line(line: str) -> Optional[Dict[str, object]]:
     parts = [part.strip() for part in line.split(",")]
     if len(parts) < 8:
@@ -71,6 +88,37 @@ def _parse_vector_line(line: str) -> Optional[Dict[str, object]]:
         "epoch_utc": _parse_horizons_datetime(parts[1]),
         "position_xyz_au": [x_val, y_val, z_val],
         "velocity_xyz_au_per_day": [vx_val, vy_val, vz_val],
+    }
+
+
+def _parse_observer_line(line: str) -> Optional[Dict[str, object]]:
+    parts = [part.strip() for part in line.split(",")]
+    if len(parts) < 9:
+        return None
+
+    epoch = _parse_horizons_observer_datetime(parts[0])
+    if not epoch:
+        return None
+
+    try:
+        az_deg = float(parts[7])
+        el_deg = float(parts[8])
+    except (ValueError, IndexError):
+        return None
+
+    sky_position: Dict[str, object] = {
+        "az_deg": az_deg,
+        "el_deg": el_deg,
+    }
+
+    # If available from requested quantities, include apparent RA/DEC strings.
+    if len(parts) > 6 and parts[5] and parts[6]:
+        sky_position["ra_apparent"] = parts[5]
+        sky_position["dec_apparent"] = parts[6]
+
+    return {
+        "epoch_utc": epoch,
+        "sky_position": sky_position,
     }
 
 
@@ -156,5 +204,82 @@ def fetch_celestial_vectors(
         },
         "source": "horizons",
         "horizons_signature": signature,
+        "fetched_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def fetch_celestial_observer_state(
+    command: str,
+    epoch: datetime,
+    observer_lat_deg: float,
+    observer_lon_deg: float,
+    observer_alt_km: float = 0.0,
+    timeout_seconds: float = 10.0,
+) -> Dict[str, object]:
+    """Fetch observer-centric sky position (az/el) from Horizons for a target."""
+    utc_epoch = epoch.astimezone(timezone.utc)
+    start_time = (utc_epoch - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M")
+    stop_time = (utc_epoch + timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M")
+
+    params = {
+        "format": "json",
+        "COMMAND": f"'{command}'",
+        "MAKE_EPHEM": "YES",
+        "EPHEM_TYPE": "OBSERVER",
+        "CENTER": "'coord@399'",
+        "COORD_TYPE": "'GEODETIC'",
+        "SITE_COORD": f"'{observer_lon_deg:.8f},{observer_lat_deg:.8f},{observer_alt_km:.6f}'",
+        "START_TIME": f"'{start_time}'",
+        "STOP_TIME": f"'{stop_time}'",
+        "STEP_SIZE": "'5 m'",
+        "QUANTITIES": "'1,2,4,20,23,24'",
+        "CSV_FORMAT": "YES",
+    }
+
+    response = requests.get(HORIZONS_API_URL, params=params, timeout=timeout_seconds)
+    response.raise_for_status()
+
+    payload = response.json()
+    result_text = payload.get("result", "")
+    data_lines = _extract_ephemeris_lines(result_text)
+
+    if not data_lines:
+        raise ValueError(f"No observer ephemeris data returned by Horizons for command '{command}'")
+
+    parsed_rows = [row for row in (_parse_observer_line(line) for line in data_lines) if row]
+    if not parsed_rows:
+        raise ValueError(f"Failed parsing Horizons observer line for command '{command}'")
+
+    chosen_row = parsed_rows[0]
+    chosen_dt = chosen_row.get("epoch_utc")
+    chosen_delta = (
+        abs((chosen_dt - utc_epoch).total_seconds())
+        if isinstance(chosen_dt, datetime)
+        else float("inf")
+    )
+    for row in parsed_rows[1:]:
+        row_dt = row.get("epoch_utc")
+        if not isinstance(row_dt, datetime):
+            continue
+        row_delta = abs((row_dt - utc_epoch).total_seconds())
+        if row_delta < chosen_delta:
+            chosen_row = row
+            chosen_delta = row_delta
+
+    sky_position = chosen_row.get("sky_position")
+    if not isinstance(sky_position, dict):
+        raise ValueError(f"Missing sky position data for command '{command}'")
+
+    el_deg = float(sky_position.get("el_deg", 0.0))
+
+    return {
+        "command": command,
+        "sky_position": sky_position,
+        "visibility": {
+            "above_horizon": el_deg > 0.0,
+            "visible": el_deg > 0.0,
+            "horizon_threshold_deg": 0.0,
+        },
+        "source": "horizons-observer",
         "fetched_at_utc": datetime.now(timezone.utc).isoformat(),
     }

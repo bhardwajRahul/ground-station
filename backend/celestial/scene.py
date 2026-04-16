@@ -16,8 +16,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from celestial.horizons import fetch_celestial_vectors
+import crud.locations as crud_locations
+from celestial.asteroidzones import get_static_asteroid_zones
+from celestial.horizons import fetch_celestial_observer_state, fetch_celestial_vectors
 from celestial.solarsystem import compute_solar_system_snapshot
+from db import AsyncSessionLocal
 
 CACHE_TTL_SECONDS = 86400
 DEFAULT_CELESTIAL_TARGETS: List[Dict[str, str]] = []
@@ -97,12 +100,79 @@ def _parse_projection_options(data: Optional[Dict[str, Any]]) -> Tuple[int, int,
     return past_hours, future_hours, step_minutes
 
 
+async def _load_observer_location() -> Optional[Dict[str, Any]]:
+    """Load the first configured ground-station location for observer sky coordinates."""
+    async with AsyncSessionLocal() as dbsession:
+        result = await crud_locations.fetch_all_locations(dbsession)
+
+    rows_obj = result.get("data") if isinstance(result, dict) else None
+    rows = rows_obj if isinstance(rows_obj, list) else []
+    if not rows:
+        return None
+
+    first = rows[0]
+    try:
+        lat = float(first.get("lat"))
+        lon = float(first.get("lon"))
+        alt_m = float(first.get("alt") or 0.0)
+    except (TypeError, ValueError):
+        return None
+
+    return {
+        "id": first.get("id"),
+        "name": first.get("name"),
+        "lat": lat,
+        "lon": lon,
+        "alt_m": alt_m,
+    }
+
+
+async def _attach_observer_view(
+    row: Dict[str, Any],
+    command: str,
+    epoch: datetime,
+    observer_location: Optional[Dict[str, Any]],
+    logger: Any,
+) -> None:
+    """Attach observer-centric sky position and visibility metadata to one celestial row."""
+    if not observer_location:
+        row["sky_position"] = None
+        row["visibility"] = {
+            "above_horizon": None,
+            "visible": None,
+            "horizon_threshold_deg": 0.0,
+        }
+        return
+
+    try:
+        observer_view = await asyncio.to_thread(
+            fetch_celestial_observer_state,
+            command,
+            epoch,
+            float(observer_location["lat"]),
+            float(observer_location["lon"]),
+            float(observer_location.get("alt_m", 0.0)) / 1000.0,
+        )
+        row["sky_position"] = observer_view.get("sky_position")
+        row["visibility"] = observer_view.get("visibility")
+    except Exception as exc:
+        logger.warning(f"Horizons observer fetch failed for celestial '{command}': {exc}")
+        row["sky_position"] = None
+        row["visibility"] = {
+            "above_horizon": None,
+            "visible": None,
+            "horizon_threshold_deg": 0.0,
+            "error": str(exc),
+        }
+
+
 async def _fetch_celestial_with_cache(
     targets: List[Dict[str, str]],
     epoch: datetime,
     past_hours: int,
     future_hours: int,
     step_minutes: int,
+    observer_location: Optional[Dict[str, Any]],
     force_refresh: bool,
     logger,
 ) -> List[Dict[str, Any]]:
@@ -112,7 +182,17 @@ async def _fetch_celestial_with_cache(
     for target in targets:
         command = target["command"]
         name = target["name"]
-        cache_key = f"{command}|p{past_hours}|f{future_hours}|s{step_minutes}"
+        observer_cache_key = "no-observer"
+        if observer_location:
+            observer_cache_key = (
+                f"{observer_location.get('id')}"
+                f"|{observer_location.get('lat')}"
+                f"|{observer_location.get('lon')}"
+                f"|{observer_location.get('alt_m')}"
+            )
+        cache_key = (
+            f"{command}|p{past_hours}|f{future_hours}|s{step_minutes}|obs:{observer_cache_key}"
+        )
 
         use_cached = False
         cached_entry: Optional[CacheEntry] = None
@@ -131,6 +211,13 @@ async def _fetch_celestial_with_cache(
             cached_payload["name"] = name
             cached_payload["stale"] = False
             cached_payload["cache"] = "hit"
+            await _attach_observer_view(
+                cached_payload,
+                command=command,
+                epoch=epoch,
+                observer_location=observer_location,
+                logger=logger,
+            )
             rows.append(cached_payload)
             continue
 
@@ -147,9 +234,21 @@ async def _fetch_celestial_with_cache(
             fetched["stale"] = False
             fetched["cache"] = "miss"
 
+            await _attach_observer_view(
+                fetched,
+                command=command,
+                epoch=epoch,
+                observer_location=observer_location,
+                logger=logger,
+            )
+
             with _celestial_cache_lock:
                 _celestial_cache[cache_key] = CacheEntry(
-                    payload=fetched,
+                    payload={
+                        key: value
+                        for key, value in fetched.items()
+                        if key not in {"sky_position", "visibility"}
+                    },
                     fetched_at_monotonic=time.monotonic(),
                 )
 
@@ -168,17 +267,30 @@ async def _fetch_celestial_with_cache(
                 fallback_payload["stale"] = True
                 fallback_payload["cache"] = "stale"
                 fallback_payload["error"] = str(exc)
+                await _attach_observer_view(
+                    fallback_payload,
+                    command=command,
+                    epoch=epoch,
+                    observer_location=observer_location,
+                    logger=logger,
+                )
                 rows.append(fallback_payload)
             else:
-                rows.append(
-                    {
-                        "name": name,
-                        "command": command,
-                        "source": "horizons",
-                        "stale": True,
-                        "error": str(exc),
-                    }
+                error_row = {
+                    "name": name,
+                    "command": command,
+                    "source": "horizons",
+                    "stale": True,
+                    "error": str(exc),
+                }
+                await _attach_observer_view(
+                    error_row,
+                    command=command,
+                    epoch=epoch,
+                    observer_location=observer_location,
+                    logger=logger,
                 )
+                rows.append(error_row)
 
     return rows
 
@@ -192,14 +304,17 @@ async def build_celestial_scene(
     epoch = _parse_epoch(data)
     targets = _normalize_targets(data)
     past_hours, future_hours, step_minutes = _parse_projection_options(data)
+    observer_location = await _load_observer_location()
 
     solar_meta, planets = compute_solar_system_snapshot(epoch)
+    asteroid_zones, asteroid_resonance_gaps, asteroid_meta = get_static_asteroid_zones()
     celestial = await _fetch_celestial_with_cache(
         targets,
         epoch,
         past_hours,
         future_hours,
         step_minutes,
+        observer_location,
         force_refresh,
         logger,
     )
@@ -216,15 +331,20 @@ async def build_celestial_scene(
             },
             "planets": planets,
             "celestial": celestial,
+            "asteroid_zones": asteroid_zones,
+            "asteroid_resonance_gaps": asteroid_resonance_gaps,
             "meta": {
                 "solar_system": solar_meta,
                 "celestial_source": "horizons",
+                "asteroid_zones": asteroid_meta,
                 "cache_ttl_seconds": CACHE_TTL_SECONDS,
                 "projection": {
                     "past_hours": past_hours,
                     "future_hours": future_hours,
                     "step_minutes": step_minutes,
                 },
+                "observer_location": observer_location,
+                "visibility_definition": "visible == elevation_deg > 0",
             },
         },
     }
@@ -238,6 +358,7 @@ async def build_solar_system_scene(
     epoch = _parse_epoch(data)
     past_hours, future_hours, step_minutes = _parse_projection_options(data)
     solar_meta, planets = compute_solar_system_snapshot(epoch)
+    asteroid_zones, asteroid_resonance_gaps, asteroid_meta = get_static_asteroid_zones()
 
     return {
         "success": True,
@@ -250,8 +371,11 @@ async def build_solar_system_scene(
                 "velocity": "au/day",
             },
             "planets": planets,
+            "asteroid_zones": asteroid_zones,
+            "asteroid_resonance_gaps": asteroid_resonance_gaps,
             "meta": {
                 "solar_system": solar_meta,
+                "asteroid_zones": asteroid_meta,
                 "projection": {
                     "past_hours": past_hours,
                     "future_hours": future_hours,
@@ -271,12 +395,14 @@ async def build_celestial_tracks(
     epoch = _parse_epoch(data)
     targets = _normalize_targets(data)
     past_hours, future_hours, step_minutes = _parse_projection_options(data)
+    observer_location = await _load_observer_location()
     celestial = await _fetch_celestial_with_cache(
         targets,
         epoch,
         past_hours,
         future_hours,
         step_minutes,
+        observer_location,
         force_refresh,
         logger,
     )
@@ -300,6 +426,8 @@ async def build_celestial_tracks(
                     "future_hours": future_hours,
                     "step_minutes": step_minutes,
                 },
+                "observer_location": observer_location,
+                "visibility_definition": "visible == elevation_deg > 0",
             },
         },
     }

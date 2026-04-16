@@ -1,5 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Box, CircularProgress, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import {
+    Box,
+    Button,
+    CircularProgress,
+    Dialog,
+    DialogActions,
+    DialogContent,
+    DialogTitle,
+    FormControlLabel,
+    IconButton,
+    Stack,
+    Switch,
+    Tooltip,
+    Typography,
+} from '@mui/material';
 import { useDispatch, useSelector } from 'react-redux';
 import { Responsive, useContainerWidth } from 'react-grid-layout';
 import { absoluteStrategy } from 'react-grid-layout/core';
@@ -26,6 +40,11 @@ import SolarSystemCanvas from './solarsystem-canvas.jsx';
 import CelestialTopBar from './celestial-topbar.jsx';
 import MonitoredCelestialGridIsland from './monitored-grid-island.jsx';
 import SettingsIcon from '@mui/icons-material/Settings';
+import {
+    DEFAULT_SOLAR_SYSTEM_DISPLAY_OPTIONS,
+    resetSolarSystemDisplayOptions,
+    setSolarSystemDisplayOption,
+} from './celestial-display-slice.jsx';
 
 const gridLayoutStoreName = 'celestial-layouts';
 const SHARED_RESIZE_HANDLES = ['s', 'sw', 'w', 'se', 'nw', 'ne', 'e'];
@@ -117,6 +136,7 @@ const CelestialMainLayout = () => {
     const { socket } = useSocket();
     const isEditing = useSelector((state) => state.dashboard?.isEditing);
     const celestialState = useSelector((state) => state.celestial);
+    const solarSystemDisplayOptions = useSelector((state) => state.celestialDisplay?.solarSystem);
     const monitoredState = useSelector((state) => state.celestialMonitored);
     const { width, containerRef, mounted } = useContainerWidth({ measureBeforeMount: true });
 
@@ -125,6 +145,10 @@ const CelestialMainLayout = () => {
         return ensureRequiredLayoutItems(normalizeLayoutsResizeHandles(loaded ?? defaultLayouts));
     });
     const [fitAllSignal, setFitAllSignal] = useState(0);
+    const [zoomInSignal, setZoomInSignal] = useState(0);
+    const [zoomOutSignal, setZoomOutSignal] = useState(0);
+    const [resetZoomSignal, setResetZoomSignal] = useState(0);
+    const [openSolarSystemLayoutOptionsDialog, setOpenSolarSystemLayoutOptionsDialog] = useState(false);
 
     const projectionSettings = React.useMemo(() => {
         const mapSettings = celestialState.mapSettings || {};
@@ -234,11 +258,28 @@ const CelestialMainLayout = () => {
     const gridContents = [
         <StyledIslandParentNoScrollbar key="solar-system">
             <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <TitleBar className={getClassNamesBasedOnGridEditing(isEditing, [])}>
-                    Solar System Layout
+                <TitleBar
+                    className={getClassNamesBasedOnGridEditing(isEditing, [])}
+                    sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                >
+                    <Box component="span">Solar System Layout</Box>
+                    <Tooltip title="Layout options">
+                        <span>
+                            <IconButton
+                                size="small"
+                                onClick={() => setOpenSolarSystemLayoutOptionsDialog(true)}
+                                sx={{ p: 0.25 }}
+                            >
+                                <SettingsIcon fontSize="small" />
+                            </IconButton>
+                        </span>
+                    </Tooltip>
                 </TitleBar>
                 <CelestialToolbar
                     onFitAll={() => setFitAllSignal((value) => value + 1)}
+                    onZoomIn={() => setZoomInSignal((value) => value + 1)}
+                    onZoomOut={() => setZoomOutSignal((value) => value + 1)}
+                    onZoomReset={() => setResetZoomSignal((value) => value + 1)}
                     onRefresh={async () => {
                         if (!socket) return;
                         await dispatch(refreshMonitoredCelestialNow({ socket, payload: sceneRequestPayload }));
@@ -262,8 +303,12 @@ const CelestialMainLayout = () => {
                             <SolarSystemCanvas
                                 scene={combinedScene}
                                 fitAllSignal={fitAllSignal}
+                                zoomInSignal={zoomInSignal}
+                                zoomOutSignal={zoomOutSignal}
+                                resetZoomSignal={resetZoomSignal}
                                 initialViewport={celestialState.mapSettings?.solarSystemViewport}
                                 onViewportCommit={handleViewportCommit}
+                                displayOptions={solarSystemDisplayOptions}
                             />
                         </Box>
                     )}
@@ -302,6 +347,62 @@ const CelestialMainLayout = () => {
 
     return (
         <Box sx={{ width: '100%', height: '100%' }}>
+            <Dialog
+                open={openSolarSystemLayoutOptionsDialog}
+                onClose={() => setOpenSolarSystemLayoutOptionsDialog(false)}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>Solar System Layout Options</DialogTitle>
+                <DialogContent>
+                    <Stack spacing={0.25} sx={{ pt: 0.5 }}>
+                        {[
+                            ['showGrid', 'Show grid'],
+                            ['showPlanets', 'Show planets'],
+                            ['showPlanetLabels', 'Show planet labels'],
+                            ['showPlanetOrbits', 'Show planet orbits'],
+                            ['showTrackedObjects', 'Show tracked objects'],
+                            ['showTrackedOrbits', 'Show tracked orbits'],
+                            ['showTrackedLabels', 'Show tracked labels'],
+                            ['showAsteroidZones', 'Show asteroid zones'],
+                            ['showZoneLabels', 'Show asteroid zone labels'],
+                            ['showResonanceMarkers', 'Show resonance markers'],
+                            ['showTimestamp', 'Show epoch label'],
+                            ['showScaleIndicator', 'Show scale label'],
+                            ['showGestureHint', 'Show gesture hint'],
+                        ].map(([key, label]) => (
+                            <FormControlLabel
+                                key={key}
+                                control={(
+                                    <Switch
+                                        checked={Boolean(
+                                            solarSystemDisplayOptions?.[key]
+                                            ?? DEFAULT_SOLAR_SYSTEM_DISPLAY_OPTIONS[key]
+                                        )}
+                                        onChange={(event) => {
+                                            dispatch(
+                                                setSolarSystemDisplayOption({
+                                                    key,
+                                                    value: event.target.checked,
+                                                }),
+                                            );
+                                        }}
+                                    />
+                                )}
+                                label={label}
+                            />
+                        ))}
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => dispatch(resetSolarSystemDisplayOptions())}>
+                        Reset
+                    </Button>
+                    <Button onClick={() => setOpenSolarSystemLayoutOptionsDialog(false)} variant="contained">
+                        Close
+                    </Button>
+                </DialogActions>
+            </Dialog>
             <CelestialTopBar
                 projectionPastHours={projectionSettings.past_hours}
                 projectionFutureHours={projectionSettings.future_hours}
