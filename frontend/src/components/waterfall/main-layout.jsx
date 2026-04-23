@@ -43,7 +43,7 @@ export const handleSetGridEditableWaterfall = function (value) {
 };
 
 export const gridLayoutStoreName = 'waterfall-view-layouts';
-const LAYOUT_SCHEMA_VERSION = 2;
+const LAYOUT_SCHEMA_VERSION = 3;
 const SHARED_RESIZE_HANDLES = ['s', 'sw', 'w', 'se', 'nw', 'ne', 'e'];
 
 // load / save layouts from localStorage
@@ -114,50 +114,109 @@ const MainLayout = React.memo(function MainLayout() {
     // Default layout if none in localStorage
     const defaultLayouts = {
         "lg": [{
+            "i": "waterfall",
+            "x": 0,
+            "y": 0,
             "w": 10,
             "h": 25,
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }, {
+            "i": "settings",
+            "x": 10,
+            "y": 0,
+            "w": 2,
+            "h": 25,
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }],
+        "md": [{
+            "i": "waterfall",
             "x": 0,
             "y": 0,
-            "i": "waterfall",
+            "w": 7,
+            "h": 25,
             "moved": false,
-            "static": false
-        }, {"w": 2, "h": 25, "x": 10, "y": 0, "i": "settings", "moved": false, "static": false}],
-        "md": [{"w": 10, "h": 22, "x": 0, "y": 0, "i": "waterfall", "moved": false, "static": false}, {
-            "w": 10,
-            "h": 13,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }, {
+            "i": "settings",
+            "x": 7,
+            "y": 0,
+            "w": 3,
+            "h": 25,
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }],
+        "sm": [{
+            "i": "waterfall",
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 22,
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }, {
+            "i": "settings",
             "x": 0,
             "y": 22,
-            "i": "settings",
-            "moved": false,
-            "static": false
-        }],
-        "sm": [{"w": 6, "h": 22, "x": 0, "y": 0, "i": "waterfall", "moved": false, "static": false}, {
             "w": 6,
             "h": 14,
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }],
+        "xs": [{
+            "i": "waterfall",
+            "x": 0,
+            "y": 0,
+            "w": 2,
+            "h": 22,
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }, {
+            "i": "settings",
             "x": 0,
             "y": 22,
-            "i": "settings",
-            "moved": false,
-            "static": false
-        }],
-        "xs": [{"w": 2, "h": 22, "x": 0, "y": 0, "i": "waterfall", "moved": false, "static": false}, {
             "w": 2,
             "h": 13,
-            "x": 0,
-            "y": 22,
-            "i": "settings",
             "moved": false,
-            "static": false
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
         }],
-        "xxs": [{"w": 2, "h": 22, "x": 0, "y": 13, "i": "waterfall", "moved": false, "static": false}, {
+        "xxs": [{
+            "w": 2,
+            "h": 22,
+            "x": 0,
+            "y": 13,
+            "i": "waterfall",
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }, {
             "w": 2,
             "h": 13,
             "x": 0,
             "y": 0,
             "i": "settings",
             "moved": false,
-            "static": false
-        }, {"w": 2, "h": 9, "x": 0, "y": 35, "i": "rig-control", "moved": false, "static": false}]
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }, {
+            "w": 2,
+            "h": 9,
+            "x": 0,
+            "y": 35,
+            "i": "rig-control",
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }]
     };
 
     useEffect(() => {

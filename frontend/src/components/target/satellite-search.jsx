@@ -1,10 +1,9 @@
 import * as React from "react";
 import {useSocket} from "../common/socket.jsx";
-import {useDispatch, useSelector} from "react-redux";
-import {Fragment, useCallback, useEffect} from "react";
+import {Fragment} from "react";
 import { toast } from "../../utils/toast-with-timestamp.jsx";
 import Autocomplete from "@mui/material/Autocomplete";
-import {CircularProgress, TextField} from "@mui/material";
+import {Box, CircularProgress, Divider, Paper, TextField, Typography} from "@mui/material";
 import { useTranslation } from 'react-i18next';
 
 
@@ -14,6 +13,9 @@ const SatelliteSearchAutocomplete = React.memo(function SatelliteSearchAutocompl
     const [open, setOpen] = React.useState(false);
     const [options, setOptions] = React.useState([]);
     const [loading, setLoading] = React.useState(false);
+    const retargetHint = t('satellite_search.retarget_hint', {
+        defaultValue: 'Selecting a result will immediately retarget the active target.'
+    });
 
     const search = (keyword) => {
         (async () => {
@@ -71,6 +73,17 @@ const SatelliteSearchAutocomplete = React.memo(function SatelliteSearchAutocompl
             }}
             options={options}
             loading={loading}
+            PaperComponent={(paperProps) => (
+                <Paper {...paperProps}>
+                    <Box sx={{ px: 1.5, py: 1 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.25 }}>
+                            {retargetHint}
+                        </Typography>
+                    </Box>
+                    <Divider />
+                    {paperProps.children}
+                </Paper>
+            )}
             renderInput={(params) => (
                 <TextField
                     size="small"
