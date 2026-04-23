@@ -72,7 +72,7 @@ export const handleSetGridEditableTarget = function (value) {
 };
 
 export const gridLayoutStoreName = 'target-sat-track-layouts';
-const LAYOUT_SCHEMA_VERSION = 2;
+const LAYOUT_SCHEMA_VERSION = 3;
 const SHARED_RESIZE_HANDLES = ['s', 'sw', 'w', 'se', 'nw', 'ne', 'e'];
 const FIXED_ISLAND_HEIGHTS = {
     lg: {'rotator-control': 13, 'rig-control': 13},
@@ -356,9 +356,9 @@ const TargetSatelliteLayout = React.memo(function TargetSatelliteLayout() {
         }, {
             "i": "passes",
             "x": 0,
-            "y": 19,
+            "y": 20,
             "w": 12,
-            "h": 7,
+            "h": 6,
             "minH": 6,
             "moved": false,
             "static": false,
@@ -368,7 +368,7 @@ const TargetSatelliteLayout = React.memo(function TargetSatelliteLayout() {
             "x": 0,
             "y": 13,
             "w": 12,
-            "h": 6,
+            "h": 7,
             "moved": false,
             "static": false,
             "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
@@ -396,150 +396,181 @@ const TargetSatelliteLayout = React.memo(function TargetSatelliteLayout() {
             "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
         }],
         "md": [{
-            "w": 4,
-            "h": 15,
-            "x": 6,
-            "y": 0,
             "i": "map",
-            "moved": false,
-            "static": false,
-            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
-        }, {
-            "w": 3,
-            "h": 15,
             "x": 0,
             "y": 0,
-            "i": "info",
+            "w": 10,
+            "h": 15,
             "moved": false,
             "static": false,
             "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
         }, {
+            "i": "info",
+            "x": 6,
+            "y": 15,
+            "w": 4,
+            "h": 12,
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }, {
+            "i": "passes",
+            "x": 0,
+            "y": 35,
             "w": 10,
             "h": 9,
-            "x": 0,
-            "y": 21,
-            "i": "passes",
             "minH": 6,
             "moved": false,
             "static": false,
             "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
         }, {
-            "w": 10,
-            "h": 6,
-            "x": 0,
-            "y": 15,
             "i": "timeline",
+            "x": 0,
+            "y": 28,
+            "w": 10,
+            "h": 7,
             "moved": false,
             "static": false,
             "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
         }, {
-            "w": 5,
-            "h": 13,
-            "x": 0,
-            "y": 30,
             "i": "rotator-control",
-            "moved": false,
-            "static": false,
-            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"],
-            "minH": 13,
-            "maxH": 13
-        }, {
-            "w": 5,
+            "x": 0,
+            "y": 15,
+            "w": 3,
             "h": 13,
-            "x": 5,
-            "y": 30,
-            "i": "rig-control",
+            "minH": 13,
+            "maxH": 13,
             "moved": false,
             "static": false,
-            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"],
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }, {
+            "i": "rig-control",
+            "x": 3,
+            "y": 15,
+            "w": 3,
+            "h": 13,
             "minH": 13,
-            "maxH": 13
+            "maxH": 13,
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
         }],
         "sm": [{
-            "w": 6,
-            "h": 15,
+            "i": "map",
             "x": 0,
             "y": 0,
-            "i": "map",
-            "moved": false,
-            "static": false,
-            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
-        }, {
-            "w": 3,
+            "w": 6,
             "h": 15,
-            "x": 0,
-            "y": 30,
-            "i": "info",
             "moved": false,
             "static": false,
             "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
         }, {
+            "i": "info",
+            "x": 2,
+            "y": 28,
+            "w": 4,
+            "h": 12,
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }, {
+            "i": "passes",
+            "x": 0,
+            "y": 60,
             "w": 6,
             "h": 9,
-            "x": 0,
-            "y": 21,
-            "i": "passes",
             "minH": 6,
             "moved": false,
             "static": false,
             "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
         }, {
+            "i": "timeline",
+            "x": 0,
+            "y": 53,
             "w": 6,
-            "h": 6,
+            "h": 7,
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }, {
+            "i": "rotator-control",
             "x": 0,
             "y": 15,
-            "i": "timeline",
+            "w": 3,
+            "h": 13,
+            "minH": 13,
+            "maxH": 13,
             "moved": false,
             "static": false,
             "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
         }, {
-            "w": 3,
-            "h": 13,
-            "x": 0,
-            "y": 45,
-            "i": "rotator-control",
-            "moved": false,
-            "static": false,
-            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"],
-            "minH": 13,
-            "maxH": 13
-        }, {
-            "w": 3,
-            "h": 13,
-            "x": 3,
-            "y": 45,
             "i": "rig-control",
+            "x": 3,
+            "y": 40,
+            "w": 3,
+            "h": 13,
+            "minH": 13,
+            "maxH": 13,
             "moved": false,
             "static": false,
-            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"],
-            "minH": 13,
-            "maxH": 13
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
         }],
         "xs": [{
+            "i": "map",
+            "x": 0,
+            "y": 0,
             "w": 2,
             "h": 15,
-            "x": 0,
-            "y": 6,
-            "i": "map",
             "moved": false,
             "static": false,
             "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
         }, {
+            "i": "info",
+            "x": 0,
+            "y": 28,
             "w": 2,
             "h": 12,
-            "x": 0,
-            "y": 36,
-            "i": "info",
             "moved": false,
             "static": false,
             "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
         }, {
+            "i": "passes",
+            "x": 0,
+            "y": 60,
             "w": 2,
             "h": 9,
-            "x": 0,
-            "y": 27,
-            "i": "passes",
             "minH": 6,
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }, {
+            "i": "timeline",
+            "x": 0,
+            "y": 53,
+            "w": 2,
+            "h": 7,
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }, {
+            "i": "rotator-control",
+            "x": 0,
+            "y": 15,
+            "w": 2,
+            "h": 13,
+            "minH": 13,
+            "maxH": 13,
+            "moved": false,
+            "static": false,
+            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
+        }, {
+            "i": "rig-control",
+            "x": 0,
+            "y": 40,
+            "w": 2,
+            "h": 13,
+            "minH": 13,
+            "maxH": 13,
             "moved": false,
             "static": false,
             "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
@@ -552,37 +583,6 @@ const TargetSatelliteLayout = React.memo(function TargetSatelliteLayout() {
             "moved": false,
             "static": false,
             "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
-        }, {
-            "w": 2,
-            "h": 6,
-            "x": 0,
-            "y": 21,
-            "i": "timeline",
-            "moved": false,
-            "static": false,
-            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"]
-        }, {
-            "w": 2,
-            "h": 13,
-            "x": 0,
-            "y": 64,
-            "i": "rotator-control",
-            "moved": false,
-            "static": false,
-            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"],
-            "minH": 13,
-            "maxH": 13
-        }, {
-            "w": 2,
-            "h": 13,
-            "x": 0,
-            "y": 73,
-            "i": "rig-control",
-            "moved": false,
-            "static": false,
-            "resizeHandles": ["s", "sw", "w", "se", "nw", "ne", "e"],
-            "minH": 13,
-            "maxH": 13
         }]
     };
 

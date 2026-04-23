@@ -24,14 +24,8 @@ import {
     Chip,
     Tooltip,
     Button,
-    FormControl,
-    InputLabel,
-    Select,
-    MenuItem,
     Tabs,
     Tab,
-    useMediaQuery,
-    useTheme,
 } from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
 import { useSocket } from "../common/socket.jsx";
@@ -82,9 +76,6 @@ const TargetSatelliteSelectorBar = React.memo(function TargetSatelliteSelectorBa
     const selectedSatellitePositions = useSelector(state => state.overviewSatTrack.selectedSatellitePositions);
     const trackerViews = useSelector((state) => state.targetSatTrack?.trackerViews || {});
     const { requestRotatorForTarget, dialog: rotatorSelectionDialog } = useTargetRotatorSelectionDialog();
-    const theme = useTheme();
-    const useDropdownSelector = useMediaQuery(theme.breakpoints.down('sm'));
-
     const [countdown, setCountdown] = useState('');
     const [searchResetKey, setSearchResetKey] = useState(0);
 
@@ -98,9 +89,6 @@ const TargetSatelliteSelectorBar = React.memo(function TargetSatelliteSelectorBa
         dispatch(setTrackingStateInBackend({socket, data: newTrackingState}));
     }, [dispatch, socket, trackingState, trackerId]);
 
-    const handleTargetContextChange = useCallback((event) => {
-        dispatch(setTrackerId(event.target.value));
-    }, [dispatch]);
     const handleTargetTabChange = useCallback((event, value) => {
         if (!value) return;
         dispatch(setTrackerId(value));
@@ -275,171 +263,156 @@ const TargetSatelliteSelectorBar = React.memo(function TargetSatelliteSelectorBa
         {rotatorSelectionDialog}
         <Box
             sx={{
-                // Mobile/Tablet: two-column grid (main area + narrow stop column)
-                // Desktop (lg+): single row flex
-                display: { xs: 'grid', lg: 'flex' },
-                gridTemplateColumns: { xs: '1fr auto' },
-                gridTemplateRows: { xs: 'auto auto' },
-                columnGap: { xs: 2 },
-                rowGap: { xs: 1.5 },
-                alignItems: { lg: 'center' },
-                gap: { lg: 2 },
-                px: 1.5,
-                py: { xs: 1, lg: 0 },
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                pl: 0,
+                pr: 1.5,
+                py: 0,
                 bgcolor: 'background.paper',
                 borderBottom: '1px solid',
                 borderColor: 'border.main',
-                minHeight: { xs: 'auto', lg: '64px' },
-                height: { lg: '64px' },
-                maxHeight: { lg: '64px' },
+                minHeight: '64px',
+                height: '64px',
+                maxHeight: '64px',
+                minWidth: 0,
+                overflow: 'hidden',
             }}
         >
             <Box
                 sx={{
-                    gridColumn: { xs: '1 / 2', lg: 'auto' },
-                    gridRow: { xs: '1 / 2', lg: 'auto' },
                     display: 'flex',
                     alignItems: 'center',
-                    flex: { lg: '1 1 auto' },
-                    minWidth: { xs: 0, lg: 320 },
-                    maxWidth: { lg: 'none' },
-                    height: { lg: '100%' },
+                    flex: '1 1 auto',
+                    minWidth: 0,
+                    height: '100%',
                 }}
             >
-                {useDropdownSelector ? (
-                    <FormControl size="small" fullWidth>
-                        <InputLabel id="active-target-context-label">Active Target</InputLabel>
-                        <Select
-                            labelId="active-target-context-label"
-                            value={trackerId || ''}
-                            label="Active Target"
-                            onChange={handleTargetContextChange}
-                        >
-                            {targetOptions.map((option) => (
-                                <MenuItem key={option.trackerId} value={option.trackerId}>
-                                    {`Target ${option.targetNumber} • ${option.satName} • NORAD ${option.satNorad} • Rotator ${option.rotatorId}`}
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                ) : (
-                    <Box
+                <Box
+                    sx={{
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        alignItems: 'stretch',
+                        minWidth: 0,
+                    }}
+                >
+                    <Tabs
+                        value={tabValue}
+                        onChange={handleTargetTabChange}
+                        variant="scrollable"
+                        scrollButtons="auto"
+                        allowScrollButtonsMobile
                         sx={{
                             width: '100%',
+                            minWidth: 0,
+                            minHeight: '100%',
                             height: '100%',
-                            display: 'flex',
-                            alignItems: 'stretch',
-                        }}
-                    >
-                        <Tabs
-                            value={tabValue}
-                            onChange={handleTargetTabChange}
-                            variant="scrollable"
-                            scrollButtons="auto"
-                            allowScrollButtonsMobile
-                            sx={{
-                                width: '100%',
+                            '& .MuiTabs-scroller': {
+                                display: 'flex',
+                                alignItems: 'stretch',
+                            },
+                            '& .MuiTabs-scrollButtons': {
+                                flexShrink: 0,
+                            },
+                            '& .MuiTabs-scrollButtons.Mui-disabled': {
+                                width: 0,
+                                minWidth: 0,
+                                padding: 0,
+                                margin: 0,
+                            },
+                            '& .MuiTabs-flexContainer': {
                                 minHeight: '100%',
                                 height: '100%',
-                                '& .MuiTabs-scroller': {
-                                    display: 'flex',
-                                    alignItems: 'stretch',
-                                },
-                                '& .MuiTabs-flexContainer': {
-                                    minHeight: '100%',
-                                    height: '100%',
-                                    alignItems: 'stretch',
-                                },
-                                '& .MuiTabs-indicator': { display: 'none' },
-                                '& .MuiTab-root': {
-                                    minHeight: '100%',
-                                    height: '100%',
-                                    textTransform: 'none',
-                                    px: 1.5,
-                                    py: 0,
-                                    mr: 0.25,
-                                    minWidth: 120,
-                                    borderRadius: 0,
-                                    border: '1px solid transparent',
-                                    borderColor: 'transparent',
-                                    color: 'text.secondary',
-                                    fontWeight: 600,
-                                    '&.Mui-selected': {
-                                        color: 'primary.contrastText',
-                                        backgroundColor: 'primary.main',
-                                        borderColor: 'primary.dark',
-                                    }
-                                },
-                            }}
-                        >
-                            {targetOptions.map((option) => {
-                                const shortName = option.satName.length > 20
-                                    ? `${option.satName.slice(0, 20)}...`
-                                    : option.satName;
-                                return (
-                                    <Tab
-                                        key={option.trackerId}
-                                        value={option.trackerId}
-                                        label={
-                                            <Tooltip
-                                                title={`Target ${option.targetNumber} | ${option.satName} | NORAD ${option.satNorad} | Rotator ${option.rotatorId}`}
-                                                arrow
-                                            >
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7, maxWidth: 230 }}>
-                                                    <Box
-                                                        sx={{
-                                                            width: 16,
-                                                            height: 16,
-                                                            borderRadius: '50%',
-                                                            bgcolor: option.isTracking ? 'success.light' : 'action.disabled',
-                                                            flexShrink: 0,
-                                                        }}
-                                                    />
-                                                    <Typography variant="caption" sx={{ fontWeight: 900, fontSize: '1.2rem', lineHeight: 1 }}>
-                                                        T{option.targetNumber}
+                                alignItems: 'stretch',
+                            },
+                            '& .MuiTabs-indicator': { display: 'none' },
+                            '& .MuiTab-root': {
+                                minHeight: '100%',
+                                height: '100%',
+                                textTransform: 'none',
+                                px: 1.5,
+                                py: 0,
+                                mr: 0.25,
+                                minWidth: 120,
+                                borderRadius: 0,
+                                border: '1px solid transparent',
+                                borderColor: 'transparent',
+                                color: 'text.secondary',
+                                fontWeight: 600,
+                                '&.Mui-selected': {
+                                    color: 'primary.contrastText',
+                                    backgroundColor: 'primary.main',
+                                    borderColor: 'primary.dark',
+                                }
+                            },
+                        }}
+                    >
+                        {targetOptions.map((option) => {
+                            const shortName = option.satName.length > 20
+                                ? `${option.satName.slice(0, 20)}...`
+                                : option.satName;
+                            return (
+                                <Tab
+                                    key={option.trackerId}
+                                    value={option.trackerId}
+                                    label={
+                                        <Tooltip
+                                            title={`Target ${option.targetNumber} | ${option.satName} | NORAD ${option.satNorad} | Rotator ${option.rotatorId}`}
+                                            arrow
+                                        >
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.7, maxWidth: 230 }}>
+                                                <Box
+                                                    sx={{
+                                                        width: 16,
+                                                        height: 16,
+                                                        borderRadius: '50%',
+                                                        bgcolor: option.isTracking ? 'success.light' : 'action.disabled',
+                                                        flexShrink: 0,
+                                                    }}
+                                                />
+                                                <Typography variant="caption" sx={{ fontWeight: 900, fontSize: '1.2rem', lineHeight: 1 }}>
+                                                    T{option.targetNumber}
+                                                </Typography>
+                                                <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', maxWidth: 190 }}>
+                                                    <Typography
+                                                        variant="caption"
+                                                        noWrap
+                                                        sx={{ fontSize: '0.72rem', maxWidth: '100%', display: 'block', lineHeight: 1.1 }}
+                                                    >
+                                                        {shortName}
                                                     </Typography>
-                                                    <Box sx={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', maxWidth: 190 }}>
-                                                        <Typography
-                                                            variant="caption"
-                                                            noWrap
-                                                            sx={{ fontSize: '0.72rem', maxWidth: '100%', display: 'block', lineHeight: 1.1 }}
-                                                        >
-                                                            {shortName}
-                                                        </Typography>
-                                                        <Typography
-                                                            variant="caption"
-                                                            noWrap
-                                                            sx={{
-                                                                display: 'block',
-                                                                fontSize: '0.61rem',
-                                                                opacity: 0.9,
-                                                                maxWidth: '100%',
-                                                                fontFamily: 'monospace',
-                                                                lineHeight: 1.05,
-                                                            }}
-                                                        >
-                                                            {`Az ${option.satAz != null ? option.satAz.toFixed(1) : '--'}° • El ${option.satEl != null ? option.satEl.toFixed(1) : '--'}°`}
-                                                        </Typography>
-                                                    </Box>
+                                                    <Typography
+                                                        variant="caption"
+                                                        noWrap
+                                                        sx={{
+                                                            display: 'block',
+                                                            fontSize: '0.61rem',
+                                                            opacity: 0.9,
+                                                            maxWidth: '100%',
+                                                            fontFamily: 'monospace',
+                                                            lineHeight: 1.05,
+                                                        }}
+                                                    >
+                                                        {`Az ${option.satAz != null ? option.satAz.toFixed(1) : '--'}° • El ${option.satEl != null ? option.satEl.toFixed(1) : '--'}°`}
+                                                    </Typography>
                                                 </Box>
-                                            </Tooltip>
-                                        }
-                                    />
-                                );
-                            })}
-                        </Tabs>
-                    </Box>
-                )}
+                                            </Box>
+                                        </Tooltip>
+                                    }
+                                />
+                            );
+                        })}
+                    </Tabs>
+                </Box>
             </Box>
             <Box
                 sx={{
-                    gridColumn: { xs: '1 / 2', lg: 'auto' },
-                    gridRow: { xs: '2 / 3', lg: 'auto' },
-                    display: 'flex',
                     alignItems: 'center',
-                    flex: { lg: '0 0 360px' },
-                    minWidth: { xs: 0, lg: 280 },
-                    maxWidth: { lg: 360 },
+                    flex: '0 0 320px',
+                    minWidth: 280,
+                    maxWidth: 360,
+                    display: { xs: 'none', lg: 'flex' },
                 }}
             >
                 <SatelliteSearchAutocomplete
@@ -451,15 +424,12 @@ const TargetSatelliteSelectorBar = React.memo(function TargetSatelliteSelectorBa
             {/* Pills + Stop (desktop row) OR Stop only (mobile/tablet column) */}
             <Box
                 sx={{
-                    // On mobile/tablet: right column spanning both rows
-                    gridColumn: { xs: '2 / 3', lg: 'auto' },
-                    gridRow: { xs: '1 / 3', lg: 'auto' },
                     display: 'flex',
                     alignItems: 'center',
                     gap: '8px',
-                    ml: { lg: 'auto' },
+                    ml: 'auto',
                     flexShrink: 0,
-                    justifyContent: { xs: 'center', lg: 'flex-start' },
+                    minWidth: 0,
                 }}
             >
                 {/* Tracking status badge */}
@@ -494,6 +464,7 @@ const TargetSatelliteSelectorBar = React.memo(function TargetSatelliteSelectorBa
                         color="info"
                         variant="outlined"
                         label={activeTrackerInstance ? `Target ${activeTargetNumber || '?'}` : 'No target'}
+                        sx={{ display: { xs: 'none', xl: 'flex' } }}
                     />
                 </Tooltip>
 
@@ -562,12 +533,17 @@ const TargetSatelliteSelectorBar = React.memo(function TargetSatelliteSelectorBa
                         sx={{
                             textTransform: 'none',
                             fontWeight: 'bold',
-                            minWidth: { xs: 40, sm: 'auto' },
-                            px: { xs: 1, sm: 2 },
+                            minWidth: { xs: 36, lg: 'auto' },
+                            width: { xs: 36, lg: 'auto' },
+                            px: { xs: 0, lg: 2 },
                             height: 36,
+                            '& .MuiButton-startIcon': {
+                                mr: { xs: 0, lg: 1 },
+                                ml: 0,
+                            },
                         }}
                     >
-                        <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                        <Box component="span" sx={{ display: { xs: 'none', lg: 'inline' } }}>
                             {t('satellite_selector.stop_tracking')}
                         </Box>
                     </Button>
