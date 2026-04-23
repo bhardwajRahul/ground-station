@@ -658,7 +658,7 @@ const SatelliteInfoPopover = () => {
                                                     <Typography variant="h6" sx={{
                                                         color: getElevationColor(Number(row.elevation)),
                                                         fontWeight: 'bold',
-                                                        fontFamily: 'Monaco, Consolas, \"Courier New\", monospace'
+                                                        fontFamily: 'Monaco, Consolas, "Courier New", monospace'
                                                     }}>
                                                         {Number(row.elevation).toFixed(1)}°
                                                     </Typography>
