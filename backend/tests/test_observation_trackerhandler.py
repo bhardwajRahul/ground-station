@@ -22,6 +22,10 @@ async def test_start_tracker_unparks_before_tracking_when_requested(monkeypatch)
         "observations.tasks.trackerhandler.get_tracker_manager",
         lambda _tracker_id: manager,
     )
+    monkeypatch.setattr(
+        "observations.tasks.trackerhandler.ensure_tracker_for_rotator",
+        lambda _rotator_id: {"success": True, "tracker_id": "target-1", "created": False},
+    )
 
     async def _mock_update(tracker_id, value, requester_sid=None):
         update_calls.append(
@@ -67,6 +71,10 @@ async def test_stop_tracker_parks_when_requested(monkeypatch):
         "observations.tasks.trackerhandler.update_tracking_state_with_ownership",
         _mock_update,
     )
+    monkeypatch.setattr(
+        "observations.tasks.trackerhandler.get_assigned_tracker_for_rotator",
+        lambda _rotator_id: "target-1",
+    )
 
     handler = TrackerHandler()
     ok = await handler.stop_tracker_task(
@@ -95,6 +103,10 @@ async def test_stop_tracker_leaves_rotator_connected_by_default(monkeypatch):
         "observations.tasks.trackerhandler.update_tracking_state_with_ownership",
         _mock_update,
     )
+    monkeypatch.setattr(
+        "observations.tasks.trackerhandler.get_assigned_tracker_for_rotator",
+        lambda _rotator_id: "target-1",
+    )
 
     handler = TrackerHandler()
     ok = await handler.stop_tracker_task(
@@ -117,6 +129,10 @@ async def test_start_tracker_returns_rotator_in_use_error(monkeypatch):
     monkeypatch.setattr(
         "observations.tasks.trackerhandler.get_tracker_manager",
         lambda _tracker_id: manager,
+    )
+    monkeypatch.setattr(
+        "observations.tasks.trackerhandler.ensure_tracker_for_rotator",
+        lambda _rotator_id: {"success": True, "tracker_id": "target-1", "created": False},
     )
 
     async def _mock_update(tracker_id, value, requester_sid=None):
@@ -146,3 +162,111 @@ async def test_start_tracker_returns_rotator_in_use_error(monkeypatch):
 
     assert result["success"] is False
     assert result["error"] == "rotator_in_use"
+
+
+@pytest.mark.asyncio
+async def test_start_tracker_auto_creates_tracker_slot_when_unassigned(monkeypatch):
+    called = {"update": False, "manager": False}
+
+    manager = _DummyTrackerManager({"rotator_state": "connected"})
+    monkeypatch.setattr(
+        "observations.tasks.trackerhandler.get_tracker_manager",
+        lambda _tracker_id: (called.__setitem__("manager", True), manager)[1],
+    )
+    monkeypatch.setattr(
+        "observations.tasks.trackerhandler.ensure_tracker_for_rotator",
+        lambda _rotator_id: {"success": True, "tracker_id": "target-9", "created": True},
+    )
+
+    async def _mock_update(tracker_id, value, requester_sid=None):
+        called["update"] = True
+        assert tracker_id == "target-9"
+        return {"success": True}
+
+    monkeypatch.setattr(
+        "observations.tasks.trackerhandler.update_tracking_state_with_ownership",
+        _mock_update,
+    )
+
+    handler = TrackerHandler()
+    result = await handler.start_tracker_task(
+        observation_id="obs-5",
+        satellite={"norad_id": 25544, "group_id": "grp-1", "name": "ISS"},
+        rotator_config={
+            "id": "2fb00a81-c0fd-4848-ab40-3101751d0534",
+            "tracking_enabled": True,
+        },
+        tasks=[],
+    )
+
+    assert result["success"] is True
+    assert called["manager"] is True
+    assert called["update"] is True
+
+
+@pytest.mark.asyncio
+async def test_stop_tracker_returns_true_when_tracker_id_missing_and_no_owner(monkeypatch):
+    called = {"update": False}
+
+    async def _mock_update(tracker_id, value, requester_sid=None):
+        called["update"] = True
+        return {"success": True}
+
+    monkeypatch.setattr(
+        "observations.tasks.trackerhandler.update_tracking_state_with_ownership",
+        _mock_update,
+    )
+    monkeypatch.setattr(
+        "observations.tasks.trackerhandler.get_assigned_tracker_for_rotator",
+        lambda _rotator_id: None,
+    )
+
+    handler = TrackerHandler()
+    ok = await handler.stop_tracker_task(
+        observation_id="obs-6",
+        rotator_config={
+            "id": "2fb00a81-c0fd-4848-ab40-3101751d0534",
+            "tracking_enabled": True,
+            "park_after_observation": True,
+        },
+    )
+
+    assert ok is True
+    assert called["update"] is False
+
+
+@pytest.mark.asyncio
+async def test_stop_tracker_ignores_stale_tracker_id_and_uses_current_rotator_owner(monkeypatch):
+    calls = []
+
+    async def _mock_update(tracker_id, value, requester_sid=None):
+        calls.append({"tracker_id": tracker_id, "value": value, "requester_sid": requester_sid})
+        return {"success": True}
+
+    monkeypatch.setattr(
+        "observations.tasks.trackerhandler.update_tracking_state_with_ownership",
+        _mock_update,
+    )
+    monkeypatch.setattr(
+        "observations.tasks.trackerhandler.get_assigned_tracker_for_rotator",
+        lambda _rotator_id: "target-9",
+    )
+
+    handler = TrackerHandler()
+    ok = await handler.stop_tracker_task(
+        observation_id="obs-7",
+        rotator_config={
+            "id": "2fb00a81-c0fd-4848-ab40-3101751d0534",
+            "tracker_id": "target-1",
+            "tracking_enabled": True,
+            "park_after_observation": True,
+        },
+    )
+
+    assert ok is True
+    assert len(calls) == 1
+    assert calls[0]["tracker_id"] == "target-9"
+    assert calls[0]["value"] == {
+        "rotator_state": "parked",
+        "rotator_id": "2fb00a81-c0fd-4848-ab40-3101751d0534",
+    }

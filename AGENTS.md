@@ -24,6 +24,17 @@
 - For pytest runs, set `ALEMBIC_CONTEXT=1` to avoid app CLI argument parsing conflicts (example: `cd backend && ALEMBIC_CONTEXT=1 ./venv/bin/pytest -q`).
 - Frontend E2E tests require the app/backend to be running and reachable by Playwright test config.
 
+## Backend Command Context (Important)
+- Run backend checks from `backend/` (or use absolute paths).
+- Use backend venv binaries, not global tools:
+  - `cd backend && ./venv/bin/pre-commit run ...`
+  - `cd backend && ./venv/bin/mypy ...`
+  - `cd backend && ./venv/bin/isort ...`
+  - `cd backend && ./venv/bin/pytest ...`
+- Default backend DB path is relative to backend cwd (`data/db/gs.db` -> `/home/sgoudelis/projects/ground-station/backend/data/db/gs.db`).
+- If running backend DB checks from repo root, set:
+  - `GS_DB=/home/sgoudelis/projects/ground-station/backend/data/db/gs.db`
+
 ## GitHub Safety
 - Never post/comment/create/update/delete on GitHub (issues/PRs/comments/labels/assignees/milestones/releases) unless the user explicitly asks for that exact write action in the current turn.
 - Default to read-only `gh` usage (list/view/status/check) unless explicit write permission is given in the current turn.

@@ -206,12 +206,14 @@ export default function MonitoredSatelliteDialog() {
     const saveError = useSelector((state) => state.scheduler?.monitoredSatelliteError);
 
     const [activeSessionIndex, setActiveSessionIndex] = useState(0);
-    const targetNumberByTrackerId = useMemo(() => {
+    const trackerInfoByRotatorId = useMemo(() => {
         const mapping = {};
-        trackerInstances.forEach((instance, index) => {
-            const trackerId = instance?.tracker_id;
-            if (!trackerId) return;
-            mapping[String(trackerId)] = Number(instance?.target_number || (index + 1));
+        trackerInstances.forEach((instance) => {
+            const rotatorId = instance?.rotator_id;
+            if (!rotatorId) return;
+            mapping[String(rotatorId)] = {
+                targetNumber: Number(instance?.target_number || 0),
+            };
         });
         return mapping;
     }, [trackerInstances]);
@@ -430,7 +432,7 @@ export default function MonitoredSatelliteDialog() {
             setActiveSessionIndex(0);
             setExpandedTasks({});
         }
-    }, [selectedMonitoredSatellite, open]);
+    }, [selectedMonitoredSatellite, open, trackerInfoByRotatorId]);
 
     // Clear satellite selection state when opening dialog
     useEffect(() => {
@@ -1079,8 +1081,11 @@ export default function MonitoredSatelliteDialog() {
                                                     {[
                                                         rotator.host ? `${rotator.host}:${rotator.port}` : null,
                                                         (() => {
-                                                            const targetNumber = targetNumberByTrackerId[String(rotator.id)];
-                                                            return targetNumber ? `Target ${targetNumber}` : 'Unassigned';
+                                                            const trackerInfo = trackerInfoByRotatorId[String(rotator.id)];
+                                                            if (trackerInfo?.targetNumber) {
+                                                                return `Target ${trackerInfo.targetNumber}`;
+                                                            }
+                                                            return 'Target resolved at runtime';
                                                         })(),
                                                         rotator.min_azimuth != null && rotator.max_azimuth != null ? `Az: ${rotator.min_azimuth}° - ${rotator.max_azimuth}°` : null,
                                                         rotator.min_elevation != null && rotator.max_elevation != null ? `El: ${rotator.min_elevation}° - ${rotator.max_elevation}°` : null,
@@ -1091,6 +1096,9 @@ export default function MonitoredSatelliteDialog() {
                                     ))}
                                 </Select>
                             </FormControl>
+                            <Typography variant="caption" color="text.secondary">
+                                Target assignment is resolved at runtime from current rotator ownership.
+                            </Typography>
                             <FormControlLabel
                                 control={
                                     <Checkbox

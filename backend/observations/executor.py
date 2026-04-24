@@ -48,7 +48,8 @@ from server import runtimestate
 from session.service import session_service
 from session.tracker import session_tracker
 from tasks.registry import get_task
-from tracker.contracts import get_tracking_state_name, normalize_tracker_id
+from tracker.contracts import get_tracking_state_name
+from tracker.runner import get_assigned_tracker_for_rotator
 from vfos.state import INTERNAL_VFO_NUMBER, VFOManager
 
 KNOWN_SATDUMP_PIPELINES = {
@@ -110,11 +111,14 @@ class ObservationExecutor:
 
     @staticmethod
     def _resolve_tracker_id(rotator_config: Dict[str, Any]) -> str:
-        """Prefer explicit tracker_id; fallback to legacy rotator id when needed."""
-        tracker_id: str = normalize_tracker_id(rotator_config.get("tracker_id"))
-        if tracker_id:
-            return tracker_id
-        return str(normalize_tracker_id(rotator_config.get("id")))
+        """Resolve tracker slot id from current rotator ownership only."""
+        owner_tracker_id = get_assigned_tracker_for_rotator(rotator_config.get("id"))
+        if owner_tracker_id is None:
+            return ""
+        tracker_id = str(owner_tracker_id).strip()
+        if not tracker_id or tracker_id.lower() == "none":
+            return ""
+        return tracker_id
 
     async def start_observation(self, observation_id: str) -> Dict[str, Any]:
         """
@@ -194,7 +198,7 @@ class ObservationExecutor:
                 tracker_id = self._resolve_tracker_id(rotator_config)
                 if not tracker_id:
                     logger.warning(
-                        "Observation %s rotator config missing tracker_id; skipping parked-state precheck",
+                        "Observation %s rotator has no assigned tracker slot yet; skipping parked-state precheck",
                         observation_id,
                     )
                 else:

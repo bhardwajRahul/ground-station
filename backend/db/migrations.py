@@ -17,11 +17,21 @@
 """Database migration utilities using Alembic."""
 
 import os
+import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
+
+from sqlalchemy import create_engine
 
 from alembic import command
 from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
+
+BACKUP_KEEP_COUNT = 5
+BACKUP_SUFFIX = ".bak"
+BACKUP_MARKER = ".pre-migration-"
 
 
 def get_alembic_config() -> Config:
@@ -39,6 +49,72 @@ def get_alembic_config() -> Config:
     return alembic_cfg
 
 
+def _resolve_db_path() -> Path:
+    """Resolve the sqlite database path used by migrations."""
+    db_path = os.environ.get("GS_DB", "data/db/gs.db")
+    path = Path(db_path)
+    if path.is_absolute():
+        return path
+
+    backend_dir = Path(__file__).parent.parent
+    cwd_candidate = (Path.cwd() / path).resolve()
+    backend_candidate = (backend_dir / path).resolve()
+
+    if cwd_candidate.exists():
+        return cwd_candidate
+    if backend_candidate.exists():
+        return backend_candidate
+    return cwd_candidate
+
+
+def _has_pending_migrations(alembic_cfg: Config, db_path: Path) -> bool:
+    """Return True when the target DB revision is behind migration head."""
+    script = ScriptDirectory.from_config(alembic_cfg)
+    heads = set(script.get_heads())
+    if not heads:
+        return False
+    if not db_path.exists():
+        return True
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        with engine.connect() as connection:
+            context = MigrationContext.configure(connection)
+            current_revision = context.get_current_revision()
+    finally:
+        engine.dispose()
+
+    return current_revision not in heads
+
+
+def _make_backup_path(db_path: Path) -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_name = f"{db_path.name}{BACKUP_MARKER}{timestamp}{BACKUP_SUFFIX}"
+    return db_path.parent / backup_name
+
+
+def _rotate_migration_backups(db_path: Path, keep_count: int = BACKUP_KEEP_COUNT) -> None:
+    pattern = f"{db_path.name}{BACKUP_MARKER}*{BACKUP_SUFFIX}"
+    backups = sorted(
+        db_path.parent.glob(pattern), key=lambda candidate: candidate.stat().st_mtime, reverse=True
+    )
+    for stale in backups[keep_count:]:
+        try:
+            stale.unlink()
+        except FileNotFoundError:
+            continue
+
+
+def _backup_db_before_migration(db_path: Path) -> Path | None:
+    if not db_path.exists():
+        return None
+
+    backup_path = _make_backup_path(db_path)
+    shutil.copy2(db_path, backup_path)
+    _rotate_migration_backups(db_path)
+    return backup_path
+
+
 def run_migrations():
     """Run all pending database migrations.
 
@@ -50,6 +126,11 @@ def run_migrations():
 
     try:
         alembic_cfg = get_alembic_config()
+        db_path = _resolve_db_path()
+        if _has_pending_migrations(alembic_cfg, db_path):
+            backup_path = _backup_db_before_migration(db_path)
+            if backup_path:
+                print(f"Created pre-migration DB backup: {backup_path}", file=sys.stderr)
 
         # Run migrations to the latest revision
         # Alembic will use the runtime logging configuration from data/configs/log_config.yaml

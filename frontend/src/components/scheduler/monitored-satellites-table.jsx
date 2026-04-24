@@ -75,17 +75,17 @@ const MonitoredSatellitesTable = () => {
 
     const monitoredSatellites = useSelector((state) => state.scheduler?.monitoredSatellites || []);
     const loading = useSelector((state) => state.scheduler?.monitoredSatellitesLoading || false);
-    const trackerInstances = useSelector((state) => state.trackerInstances?.instances || []);
+    const rotators = useSelector((state) => state.rotators?.rotators || []);
     const rowSelectionModel = useMemo(() => toRowSelectionModel(selectedIds), [selectedIds]);
-    const targetNumberByTrackerId = useMemo(() => {
+    const rotatorNameById = useMemo(() => {
         const mapping = {};
-        trackerInstances.forEach((instance, index) => {
-            const trackerId = instance?.tracker_id;
-            if (!trackerId) return;
-            mapping[String(trackerId)] = Number(instance?.target_number || (index + 1));
+        rotators.forEach((rotator) => {
+            const rotatorId = rotator?.id;
+            if (!rotatorId) return;
+            mapping[String(rotatorId)] = rotator?.name || '';
         });
         return mapping;
-    }, [trackerInstances]);
+    }, [rotators]);
 
     useEffect(() => {
         if (socket) {
@@ -270,16 +270,19 @@ const MonitoredSatellitesTable = () => {
         },
         {
             field: 'rotator',
-            headerName: 'Target / Rotator',
+            headerName: 'Rotator',
             minWidth: 180,
             flex: 1,
             cellClassName: 'target-rotator-nowrap-cell',
             headerClassName: 'target-rotator-nowrap-header',
             renderCell: (params) => {
                 const rotator = params.value || {};
-                const trackerId = rotator?.tracker_id || '';
-                const targetNumber = trackerId ? targetNumberByTrackerId[String(trackerId)] : null;
-                const targetLabel = targetNumber ? `Target ${targetNumber}` : 'Unassigned';
+                const rotatorId = rotator?.id || '';
+                const rotatorName = rotator?.name || (rotatorId ? rotatorNameById[String(rotatorId)] : '');
+                const primaryLabel = rotatorName || (rotatorId ? 'Configured rotator' : 'No rotator');
+                const secondaryLabel = rotatorId
+                    ? (rotator?.tracking_enabled ? 'Tracking enabled' : 'Tracking disabled')
+                    : 'Not configured';
                 return (
                     <Stack
                         direction="row"
@@ -289,14 +292,13 @@ const MonitoredSatellitesTable = () => {
                     >
                         <Chip
                             size="small"
-                            color={targetNumber ? 'info' : 'default'}
-                            variant={targetNumber ? 'filled' : 'outlined'}
-                            label={targetLabel}
+                            color={rotatorId ? 'primary' : 'default'}
+                            variant={rotatorId ? 'filled' : 'outlined'}
+                            label={primaryLabel}
                             sx={{ flexShrink: 0 }}
                         />
                         <Typography variant="caption" color="text.secondary" noWrap>
-                            {rotator?.tracking_enabled ? 'Tracking ON' : 'Tracking OFF'}
-                            {trackerId ? ` • ${String(trackerId).slice(0, 8)}` : ''}
+                            {secondaryLabel}
                         </Typography>
                     </Stack>
                 );

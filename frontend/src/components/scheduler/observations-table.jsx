@@ -124,18 +124,18 @@ const ObservationsTable = () => {
     const openSettingsDialog = useSelector((state) => state.scheduler?.openObservationsTableSettingsDialog || false);
     const openDataDialog = useSelector((state) => state.scheduler?.openObservationDataDialog || false);
     const selectedObservationForData = useSelector((state) => state.scheduler?.selectedObservationForData || null);
-    const trackerInstances = useSelector((state) => state.trackerInstances?.instances || []);
+    const rotators = useSelector((state) => state.rotators?.rotators || []);
     const { timezone, locale } = useUserTimeSettings();
     const rowSelectionModel = useMemo(() => toRowSelectionModel(selectedIds), [selectedIds]);
-    const targetNumberByTrackerId = useMemo(() => {
+    const rotatorNameById = useMemo(() => {
         const mapping = {};
-        trackerInstances.forEach((instance, index) => {
-            const trackerId = instance?.tracker_id;
-            if (!trackerId) return;
-            mapping[String(trackerId)] = Number(instance?.target_number || (index + 1));
+        rotators.forEach((rotator) => {
+            const rotatorId = rotator?.id;
+            if (!rotatorId) return;
+            mapping[String(rotatorId)] = rotator?.name || '';
         });
         return mapping;
-    }, [trackerInstances]);
+    }, [rotators]);
 
     // Filter observations based on status filters
     const observations = allObservations.filter(obs => statusFilters[obs.status]);
@@ -386,17 +386,19 @@ const ObservationsTable = () => {
         },
         {
             field: 'tracker_assignment',
-            headerName: 'Target / Rotator',
+            headerName: 'Rotator',
             minWidth: 190,
             flex: 1.2,
             sortable: false,
             filterable: false,
             renderCell: (params) => {
                 const rotator = params.row?.rotator || {};
-                const trackerId = rotator?.tracker_id || '';
-                const targetNumber = trackerId ? targetNumberByTrackerId[String(trackerId)] : null;
-                const targetLabel = targetNumber ? `Target ${targetNumber}` : 'Unassigned';
-                const rotatorLabel = rotator?.tracking_enabled ? 'Tracking ON' : 'Tracking OFF';
+                const rotatorId = rotator?.id || '';
+                const rotatorName = rotator?.name || (rotatorId ? rotatorNameById[String(rotatorId)] : '');
+                const primaryLabel = rotatorName || (rotatorId ? 'Configured rotator' : 'No rotator');
+                const secondaryLabel = rotatorId
+                    ? (rotator?.tracking_enabled ? 'Tracking enabled' : 'Tracking disabled')
+                    : 'Not configured';
                 return (
                     <Stack
                         direction="row"
@@ -406,13 +408,13 @@ const ObservationsTable = () => {
                     >
                         <Chip
                             size="small"
-                            color={targetNumber ? 'info' : 'default'}
-                            variant={targetNumber ? 'filled' : 'outlined'}
-                            label={targetLabel}
+                            color={rotatorId ? 'primary' : 'default'}
+                            variant={rotatorId ? 'filled' : 'outlined'}
+                            label={primaryLabel}
                             sx={{ flexShrink: 0 }}
                         />
                         <Typography variant="caption" color="text.secondary" noWrap>
-                            {`${rotatorLabel}${trackerId ? ` • ${String(trackerId).slice(0, 8)}` : ''}`}
+                            {secondaryLabel}
                         </Typography>
                     </Stack>
                 );

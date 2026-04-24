@@ -20,8 +20,11 @@ import traceback
 from typing import Any, Dict, List
 
 from common.logger import logger
-from tracker.contracts import normalize_tracker_id, require_tracker_id
-from tracker.runner import get_tracker_manager
+from tracker.runner import (
+    ensure_tracker_for_rotator,
+    get_assigned_tracker_for_rotator,
+    get_tracker_manager,
+)
 from tracker.stateupdate import update_tracking_state_with_ownership
 
 
@@ -30,10 +33,13 @@ class TrackerHandler:
 
     @staticmethod
     def _resolve_tracker_id(rotator_config: Dict[str, Any]) -> str:
-        tracker_id: str = normalize_tracker_id(rotator_config.get("tracker_id"))
-        if tracker_id:
-            return tracker_id
-        return str(require_tracker_id(rotator_config.get("id")))
+        owner_tracker_id = get_assigned_tracker_for_rotator(rotator_config.get("id"))
+        if owner_tracker_id is None:
+            return ""
+        tracker_id = str(owner_tracker_id).strip()
+        if not tracker_id or tracker_id.lower() == "none":
+            return ""
+        return tracker_id
 
     async def start_tracker_task(
         self,
@@ -67,7 +73,24 @@ class TrackerHandler:
                     break
 
             # Update tracking state to target this satellite
-            tracker_id = self._resolve_tracker_id(rotator_config)
+            tracker_resolution = ensure_tracker_for_rotator(rotator_config.get("id"))
+            if not tracker_resolution.get("success"):
+                return {
+                    "success": False,
+                    "error": tracker_resolution.get("error", "tracker_resolution_failed"),
+                    "message": (
+                        tracker_resolution.get("message")
+                        or "Failed to resolve tracker for selected rotator."
+                    ),
+                }
+            tracker_id = str(tracker_resolution.get("tracker_id"))
+            if tracker_resolution.get("created"):
+                logger.info(
+                    "Created tracker slot %s for rotator %s (observation %s)",
+                    tracker_id,
+                    rotator_config.get("id"),
+                    observation_id,
+                )
             tracker_manager = get_tracker_manager(tracker_id)
             unpark_before_tracking = bool(rotator_config.get("unpark_before_tracking", False))
             tracking_state = await tracker_manager.get_tracking_state() or {}
@@ -138,6 +161,13 @@ class TrackerHandler:
                 return True
 
             tracker_id = self._resolve_tracker_id(rotator_config)
+            if not tracker_id:
+                logger.debug(
+                    "Skipping tracker stop for observation %s: no tracker currently assigned to rotator %s",
+                    observation_id,
+                    rotator_config.get("id"),
+                )
+                return True
             park_after_observation = bool(rotator_config.get("park_after_observation", False))
 
             if park_after_observation:

@@ -59,6 +59,21 @@ class TrackerSupervisor:
         self.tracker_target_number_map[normalized_tracker_id] = target_number
         return target_number
 
+    def _allocate_tracker_id(self) -> str:
+        """Allocate a new tracker slot id in target-N format."""
+        while True:
+            candidate = f"target-{self._next_target_number}"
+            if (
+                candidate in self.runtimes
+                or candidate in self.managers
+                or candidate in self.tracker_rotator_map
+                or candidate in self.tracker_target_number_map
+            ):
+                self._next_target_number += 1
+                continue
+            self._ensure_target_number(candidate)
+            return candidate
+
     @staticmethod
     def _normalize_rotator_id(candidate: Optional[str]) -> Optional[str]:
         if candidate is None:
@@ -298,6 +313,44 @@ class TrackerSupervisor:
     def get_assigned_rotator(self, tracker_id: str) -> Optional[str]:
         return self.tracker_rotator_map.get(require_tracker_id(tracker_id))
 
+    def get_assigned_tracker_for_rotator(self, rotator_id: Optional[str]) -> Optional[str]:
+        normalized_rotator_id = self._normalize_rotator_id(rotator_id)
+        if not normalized_rotator_id:
+            return None
+        return self.rotator_tracker_map.get(normalized_rotator_id)
+
+    def ensure_tracker_for_rotator(self, rotator_id: Optional[str]) -> Dict[str, Any]:
+        """Resolve owner tracker for rotator, creating a new target-N slot when missing."""
+        normalized_rotator_id = self._normalize_rotator_id(rotator_id)
+        if not normalized_rotator_id:
+            return {
+                "success": False,
+                "error": "invalid_rotator_id",
+                "message": "rotator_id is required to resolve tracker ownership",
+            }
+
+        owner_tracker_id = self.rotator_tracker_map.get(normalized_rotator_id)
+        if owner_tracker_id:
+            self._ensure_target_number(owner_tracker_id)
+            return {
+                "success": True,
+                "tracker_id": owner_tracker_id,
+                "rotator_id": normalized_rotator_id,
+                "created": False,
+            }
+
+        tracker_id = self._allocate_tracker_id()
+        assignment_result = self.assign_rotator(tracker_id, normalized_rotator_id)
+        if not assignment_result.get("success"):
+            return dict(assignment_result)
+
+        return {
+            "success": True,
+            "tracker_id": tracker_id,
+            "rotator_id": normalized_rotator_id,
+            "created": True,
+        }
+
     def get_instances_payload(self) -> Dict[str, Any]:
         tracker_ids = sorted(
             set(self.runtimes.keys())
@@ -378,6 +431,14 @@ def restore_tracker_rotator_assignment(tracker_id: str, rotator_id: Optional[str
 
 def get_assigned_rotator_for_tracker(tracker_id: str) -> Optional[str]:
     return _tracker_supervisor.get_assigned_rotator(tracker_id)
+
+
+def get_assigned_tracker_for_rotator(rotator_id: Optional[str]) -> Optional[str]:
+    return _tracker_supervisor.get_assigned_tracker_for_rotator(rotator_id)
+
+
+def ensure_tracker_for_rotator(rotator_id: Optional[str]) -> Dict[str, Any]:
+    return _tracker_supervisor.ensure_tracker_for_rotator(rotator_id)
 
 
 def swap_rotators_between_trackers(tracker_a_id: str, tracker_b_id: str) -> Dict[str, Any]:
