@@ -207,6 +207,7 @@ const MemoizedStyledDataGrid = React.memo(({
                         {isTracked && (
                             <TargetNumberIcon
                                 targetNumber={targetNumber}
+                                prefix="T"
                                 size={18}
                                 sx={{ mr: 0.7, verticalAlign: 'middle', flexShrink: 0 }}
                             />

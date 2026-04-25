@@ -440,6 +440,7 @@ const PassStatusCell = React.memo(function PassStatusCell({status, isTracked = f
                     <Tooltip title={t('passes_table.tracked_tooltip', { defaultValue: 'Current target satellite' })}>
                         <TargetNumberIcon
                             targetNumber={targetNumber}
+                            prefix="T"
                             sx={{
                                 filter: 'brightness(1.15)',
                                 opacity: markerOpacity,

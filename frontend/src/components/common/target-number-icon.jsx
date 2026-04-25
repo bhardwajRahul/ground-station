@@ -7,11 +7,13 @@ const TargetNumberIcon = React.memo(function TargetNumberIcon({
     size = 18,
     variant = 'filled',
     sx = {},
+    prefix = 'T',
     iconColor = 'info.main',
     badgeBgColor = 'error.main',
     badgeTextColor = 'common.white',
 }) {
-    const value = Number.isFinite(Number(targetNumber)) ? String(targetNumber) : '?';
+    const suffix = Number.isFinite(Number(targetNumber)) ? String(targetNumber) : '?';
+    const value = `${prefix}${suffix}`;
     const isOutlined = variant === 'outlined';
     const isMuted = variant === 'muted';
     const fontSize = Math.max(11, Math.round(size * 0.68));
