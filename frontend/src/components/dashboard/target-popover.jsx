@@ -121,6 +121,18 @@ const SatelliteInfoPopover = () => {
             minElevation: rotatorData?.minel ?? 0,
         };
     }, shallowEqual);
+    const hasAnyVisibleTarget = useMemo(() => {
+        const instances = Array.isArray(trackerInstances) ? trackerInstances : [];
+        const visibleInFleet = instances.some((instance) => {
+            const instanceTrackerId = String(instance?.tracker_id || '').trim();
+            if (!instanceTrackerId) return false;
+            const view = trackerViews?.[instanceTrackerId] || {};
+            const elevation = view?.satelliteData?.position?.el;
+            return Number.isFinite(Number(elevation)) && Number(elevation) > 0;
+        });
+        if (visibleInFleet) return true;
+        return Number.isFinite(Number(targetSummary.elevation)) && Number(targetSummary.elevation) > 0;
+    }, [trackerInstances, trackerViews, targetSummary.elevation]);
 
     const openTargetData = useSelector((state) => {
         if (!open) {
@@ -394,24 +406,9 @@ const SatelliteInfoPopover = () => {
 
     const isTrackingActive = trackingState.norad_id === satelliteData.details.norad_id;
 
-    // Get icon color based on satellite visibility
+    // Fleet rule for top-bar icon: green if any target is visible, otherwise red.
     const getSatelliteIconColor = () => {
-        if (!satelliteData.details.norad_id) {
-            return 'text.secondary'; // Grey when no satellite selected
-        }
-
-        const elevation = satelliteData.position.el;
-        const minElevation = rotatorData.minel ?? 0;
-
-        if (elevation < 0) {
-            return 'error.main'; // Red when satellite is below horizon
-        } else if (elevation < minElevation) {
-            return 'status.polling'; // Orange when satellite is below minimum elevation limit
-        } else if (isTrackingActive) {
-            return 'success.main'; // Bright green when actively tracking and above minimum elevation
-        } else {
-            return 'info.main'; // Light blue when satellite is well above minimum elevation
-        }
+        return hasAnyVisibleTarget ? 'success.main' : 'error.main';
     };
 
     // Get satellite status information
