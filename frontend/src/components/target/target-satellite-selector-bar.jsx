@@ -437,19 +437,19 @@ const TargetSatelliteSelectorBar = React.memo(function TargetSatelliteSelectorBa
         const normalizedRotatorId = createSelectedRotatorId || 'none';
         const nextTransmitters = getTransmittersFromSatellite(createSelectedSatellite);
 
+        // New targets must always start disconnected, regardless of the currently active target state.
         const payload = {
-            ...trackingState,
             tracker_id: trackerSlotId,
             norad_id: createSelectedSatellite.norad_id,
             group_id: selectedGroupId,
             rig_id: normalizedRigId,
             rotator_id: normalizedRotatorId,
             transmitter_id: 'none',
-            rig_state: trackingState?.rig_state || 'disconnected',
-            rotator_state: trackingState?.rotator_state || 'disconnected',
-            rig_vfo: trackingState?.rig_vfo || 'none',
-            vfo1: trackingState?.vfo1 || 'uplink',
-            vfo2: trackingState?.vfo2 || 'downlink',
+            rig_state: 'disconnected',
+            rotator_state: 'disconnected',
+            rig_vfo: 'none',
+            vfo1: 'uplink',
+            vfo2: 'downlink',
         };
 
         try {
