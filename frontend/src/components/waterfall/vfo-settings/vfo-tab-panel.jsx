@@ -106,6 +106,7 @@ const VfoTabPanelComponent = ({
                 vfoIndex={vfoIndex}
                 vfoActive={vfoActive[vfoIndex]}
                 lockedTransmitterId={vfo?.lockedTransmitterId}
+                lockedTransmitterTrackerId={vfo?.lockedTransmitterTrackerId}
                 transmitters={transmitters}
                 onVFOPropertyChange={onVFOPropertyChange}
                 centerFrequency={centerFrequency}

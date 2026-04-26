@@ -95,6 +95,7 @@ import VfoAccordion from "./vfo-settings/settings-vfo.jsx";
 import RecordingAccordion from "./settings-recording.jsx";
 import PlaybackAccordion from "./settings-playback.jsx";
 import { useTranslation } from 'react-i18next';
+import { selectRunningRigTransmitters } from "../target/transmitter-selectors.js";
 
 const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemainingSecondsRef }, ref) {
     const { t } = useTranslation('waterfall');
@@ -206,9 +207,7 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
         vfoColors,
     } = useSelector((state) => state.vfo);
 
-    const {
-        rigData,
-    } = useSelector((state) => state.targetSatTrack);
+    const runningTransmitters = useSelector(selectRunningRigTransmitters);
 
     const {
         sdrs
@@ -609,7 +608,7 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
             return;
         }
 
-        const selectedTransmitterMetadata = (rigData?.transmitters || []).find(t => t.id === event.target.value);
+        const selectedTransmitterMetadata = (runningTransmitters || []).find((t) => t.id === event.target.value);
         if (!selectedTransmitterMetadata) {
             return;
         }
@@ -624,7 +623,7 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
 
         dispatch(setCenterFrequency(newCenterFrequency));
         sendSDRConfigToBackend({centerFrequency: newCenterFrequency});
-    }, [dispatch, rigData, sampleRate, sendSDRConfigToBackend]);
+    }, [dispatch, runningTransmitters, sampleRate, sendSDRConfigToBackend]);
 
     const handleOffsetModeChange = useCallback((event) => {
         const offsetValue = event.target.value;
@@ -650,7 +649,7 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
     }, [dispatch, sendSDRConfigToBackend]);
 
     const getProperTransmitterId = useCallback(() => {
-        const transmitters = rigData?.transmitters || [];
+        const transmitters = runningTransmitters || [];
         if (transmitters.length > 0 && selectedTransmitterId) {
             if (transmitters.find(t => t.id === selectedTransmitterId)) {
                 return selectedTransmitterId;
@@ -660,7 +659,7 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
         } else {
             return "none";
         }
-    }, [rigData, selectedTransmitterId]);
+    }, [runningTransmitters, selectedTransmitterId]);
 
     const handleSdrAccordionChange = useCallback((event, isExpanded) => {
         const panel = 'sdr';
@@ -1208,7 +1207,7 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
                     onAccordionChange={handleFreqAccordionChange}
                     centerFrequency={centerFrequency}
                     onCenterFrequencyChange={handleFrequencyDialChange}
-                    availableTransmitters={rigData?.transmitters || []}
+                    availableTransmitters={runningTransmitters || []}
                     getProperTransmitterId={getProperTransmitterId}
                     onTransmitterChange={handleTransmitterChange}
                     selectedOffsetMode={selectedOffsetMode}

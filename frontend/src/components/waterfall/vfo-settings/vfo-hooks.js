@@ -7,6 +7,7 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { useAudio } from '../../dashboard/audio-provider.jsx';
+import { selectRunningRigTransmitters } from '../../target/transmitter-selectors.js';
 
 /**
  * Hook to manage VFO audio state (mute, buffer, levels, RF power)
@@ -118,8 +119,8 @@ export const useVfoWheelHandlers = (vfoMarkers, vfoActive, onVFOPropertyChange) 
  * @returns {object} Satellite and transmitter data
  */
 export const useVfoSatelliteData = () => {
-    // Get doppler-corrected transmitters from Redux state (includes alive field)
-    const transmitters = useSelector(state => state.targetSatTrack.rigData.transmitters || []);
+    // Get doppler-corrected transmitters from all running tracker views.
+    const transmitters = useSelector(selectRunningRigTransmitters);
 
     // Get target satellite data
     const satelliteDetails = useSelector(state => state.targetSatTrack.satelliteData?.details || null);

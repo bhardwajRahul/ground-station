@@ -3,6 +3,14 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Box, Typography, Paper, useTheme } from '@mui/material';
 import { setVFOProperty } from './vfo-marker/vfo-slice.jsx';
+import { selectRunningRigTransmitters } from '../target/transmitter-selectors.js';
+
+const sameIdentifier = (left, right) => {
+    if (left == null || right == null) {
+        return false;
+    }
+    return String(left) === String(right);
+};
 
 const RotaryEncoder = ({
                            vfoNumber,
@@ -14,7 +22,7 @@ const RotaryEncoder = ({
     const theme = useTheme();
     const dispatch = useDispatch();
     const { vfoMarkers, vfoActive } = useSelector(state => state.vfo);
-    const transmitters = useSelector(state => state.targetSatTrack.rigData.transmitters || []);
+    const transmitters = useSelector(selectRunningRigTransmitters);
 
     const [isDragging, setIsDragging] = useState(false);
     const [rotation, setRotation] = useState(0);
@@ -31,12 +39,23 @@ const RotaryEncoder = ({
     const currentFrequency = currentVFO?.frequency || 0;
     const isLocked = currentVFO?.lockedTransmitterId && currentVFO?.lockedTransmitterId !== 'none';
     const currentOffset = currentVFO?.frequencyOffset || 0;
+    const lockedTrackerId = currentVFO?.lockedTransmitterTrackerId;
 
     // Get the locked transmitter if VFO is locked
     const lockedTransmitter = isLocked
-        ? transmitters.find(tx => tx.id === currentVFO.lockedTransmitterId)
+        ? transmitters.find((tx) => {
+            if (!sameIdentifier(tx.id, currentVFO.lockedTransmitterId)) {
+                return false;
+            }
+            if (!lockedTrackerId) {
+                return true;
+            }
+            return sameIdentifier(tx.trackerId, lockedTrackerId);
+        })
         : null;
-    const correctedFrequency = lockedTransmitter?.downlink_observed_freq || 0;
+    const correctedFrequency = Number.isFinite(Number(lockedTransmitter?.downlink_observed_freq))
+        ? Number(lockedTransmitter.downlink_observed_freq)
+        : 0;
 
     // Format frequency for display
     const formatFrequency = (freq) => {

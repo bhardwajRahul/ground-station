@@ -41,6 +41,7 @@ export const TransmitterLockSelect = ({
     vfoIndex,
     vfoActive,
     lockedTransmitterId,
+    lockedTransmitterTrackerId,
     transmitters,
     onVFOPropertyChange,
     centerFrequency,
@@ -59,10 +60,12 @@ export const TransmitterLockSelect = ({
             const transmitter = transmitters.find(tx => tx.id === transmitterId);
             if (transmitter) {
                 const txFrequency = transmitter.downlink_observed_freq;
+                const parsedSampleRate = typeof sampleRate === 'number' ? sampleRate : Number(sampleRate);
+                const safeSampleRate = Number.isFinite(parsedSampleRate) ? parsedSampleRate : 0;
 
                 // Check if transmitter frequency is within current SDR bandwidth
-                const bandwidthStart = centerFrequency - (sampleRate / 2);
-                const bandwidthEnd = centerFrequency + (sampleRate / 2);
+                const bandwidthStart = centerFrequency - (safeSampleRate / 2);
+                const bandwidthEnd = centerFrequency + (safeSampleRate / 2);
                 const isOutsideBandwidth = txFrequency < bandwidthStart || txFrequency > bandwidthEnd;
 
                 if (isOutsideBandwidth && onCenterFrequencyChange) {
@@ -73,6 +76,7 @@ export const TransmitterLockSelect = ({
                     // Lock VFO to transmitter (frequency is within bandwidth)
                     onVFOPropertyChange(vfoIndex, {
                         lockedTransmitterId: transmitterId,
+                        lockedTransmitterTrackerId: transmitter.trackerId || null,
                         frequency: txFrequency,
                         frequencyOffset: 0
                     });
@@ -82,6 +86,7 @@ export const TransmitterLockSelect = ({
             // Unlocking - just clear the lock and reset offset
             onVFOPropertyChange(vfoIndex, {
                 lockedTransmitterId: 'none',
+                lockedTransmitterTrackerId: null,
                 frequencyOffset: 0
             });
         }
@@ -91,16 +96,19 @@ export const TransmitterLockSelect = ({
         if (pendingTransmitter) {
             const { transmitter, transmitterId } = pendingTransmitter;
             const txFrequency = transmitter.downlink_observed_freq;
+            const parsedSampleRate = typeof sampleRate === 'number' ? sampleRate : Number(sampleRate);
+            const safeSampleRate = Number.isFinite(parsedSampleRate) ? parsedSampleRate : 0;
 
             // Calculate offset to avoid DC spike at center
             // Offset by 25% of sample rate to move target signal away from center
-            const offsetHz = sampleRate * 0.25;
+            const offsetHz = safeSampleRate * 0.25;
             const newCenterFrequency = txFrequency + offsetHz;
             onCenterFrequencyChange(newCenterFrequency);
 
             // Lock VFO to transmitter
             onVFOPropertyChange(vfoIndex, {
                 lockedTransmitterId: transmitterId,
+                lockedTransmitterTrackerId: transmitter.trackerId || null,
                 frequency: txFrequency,
                 frequencyOffset: 0
             });
@@ -118,7 +126,15 @@ export const TransmitterLockSelect = ({
     const currentValue = (() => {
         if (!lockedTransmitterId || lockedTransmitterId === 'none') return 'none';
         // Check if the current value exists in the transmitters list
-        const exists = transmitters.some(tx => sameIdentifier(tx.id, lockedTransmitterId));
+        const exists = transmitters.some((tx) => {
+            if (!sameIdentifier(tx.id, lockedTransmitterId)) {
+                return false;
+            }
+            if (!lockedTransmitterTrackerId) {
+                return true;
+            }
+            return sameIdentifier(tx.trackerId, lockedTransmitterTrackerId);
+        });
         return exists ? lockedTransmitterId : 'none';
     })();
 
@@ -179,7 +195,7 @@ export const TransmitterLockSelect = ({
                                 {band}
                             </ListSubheader>,
                             ...groupTx.map((tx) => (
-                                <MenuItem key={tx.id} value={tx.id} sx={{ fontSize: '0.875rem', pl: 3 }}>
+                                <MenuItem key={tx.uiId || tx.id} value={tx.id} sx={{ fontSize: '0.875rem', pl: 3 }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
                                         <Box
                                             sx={{
@@ -197,9 +213,10 @@ export const TransmitterLockSelect = ({
                                             <Box sx={{ fontWeight: 600 }}>{tx.description}</Box>
                                             <Box sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
                                                 {[
+                                                    tx.trackerLabel || null,
                                                     `Source: ${tx.source || 'Unknown'}`,
                                                     `${(tx.downlink_observed_freq / 1e6).toFixed(6)} MHz (${tx.mode})`,
-                                                ].join(' • ')}
+                                                ].filter(Boolean).join(' • ')}
                                             </Box>
                                         </Box>
                                     </Box>

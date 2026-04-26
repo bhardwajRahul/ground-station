@@ -36,6 +36,22 @@ import CloseIcon from '@mui/icons-material/Close';
 import { useSelector } from 'react-redux';
 import { getDecoderParameters } from './vfo-marker/vfo-config.js';
 import { DecoderConfigSuggestion } from '../scheduler/decoder-config-suggestion.jsx';
+import { selectRunningRigTransmitters } from '../target/transmitter-selectors.js';
+
+const normalizeTrackerId = (value) => {
+    if (typeof value !== 'string') {
+        return '';
+    }
+    const normalized = value.trim();
+    return normalized && normalized.toLowerCase() !== 'none' ? normalized : '';
+};
+
+const sameIdentifier = (left, right) => {
+    if (left == null || right == null) {
+        return false;
+    }
+    return String(left) === String(right);
+};
 
 const DecoderParamsDialog = ({
     open,
@@ -46,8 +62,9 @@ const DecoderParamsDialog = ({
     onVFOPropertyChange,
 }) => {
     // Get satellite and transmitter data from Redux
-    const satellite = useSelector(state => state.targetSatTrack.satelliteData);
-    const transmitters = useSelector(state => state.targetSatTrack.satelliteData?.transmitters || []);
+    const activeSatelliteDetails = useSelector(state => state.targetSatTrack.satelliteData?.details || null);
+    const trackerViews = useSelector(state => state.targetSatTrack?.trackerViews || {});
+    const transmitters = useSelector(selectRunningRigTransmitters);
 
     if (!vfoIndex || !vfoMarkers[vfoIndex]) {
         return null;
@@ -65,10 +82,23 @@ const DecoderParamsDialog = ({
 
     // Get locked transmitter if available
     const lockedTransmitterId = vfo.lockedTransmitterId;
+    const lockedTransmitterTrackerId = normalizeTrackerId(vfo.lockedTransmitterTrackerId);
     const isLocked = lockedTransmitterId && lockedTransmitterId !== 'none';
     const lockedTransmitter = isLocked
-        ? transmitters.find(tx => tx.id === lockedTransmitterId)
+        ? transmitters.find((tx) => {
+            if (!sameIdentifier(tx.id, lockedTransmitterId)) {
+                return false;
+            }
+            if (!lockedTransmitterTrackerId) {
+                return true;
+            }
+            return sameIdentifier(tx.trackerId, lockedTransmitterTrackerId);
+        })
         : null;
+    const lockTrackerSatelliteDetails = lockedTransmitterTrackerId
+        ? trackerViews?.[lockedTransmitterTrackerId]?.satelliteData?.details
+        : null;
+    const suggestionSatellite = lockTrackerSatelliteDetails || activeSatelliteDetails;
 
     return (
         <Dialog
@@ -97,7 +127,7 @@ const DecoderParamsDialog = ({
                     {/* Decoder Configuration Suggestion */}
                     <DecoderConfigSuggestion
                         decoderType={decoder}
-                        satellite={satellite?.norad_id ? satellite : null}
+                        satellite={suggestionSatellite?.norad_id ? suggestionSatellite : null}
                         transmitter={lockedTransmitter}
                         show={isLocked && !!lockedTransmitter}
                         onApply={null}

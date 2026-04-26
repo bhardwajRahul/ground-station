@@ -19,7 +19,7 @@ import {
 } from "@mui/material";
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 
-import { humanizeFrequency, preciseHumanizeFrequency, getFrequencyBand } from "../common/common.jsx";
+import { preciseHumanizeFrequency, getFrequencyBand } from "../common/common.jsx";
 import FrequencyDisplay from "./frequency-dial.jsx";
 import { useTranslation } from 'react-i18next';
 
@@ -58,8 +58,6 @@ const FrequencyControlAccordion = ({
     };
 
     const selectedTransmitter = availableTransmitters.find(t => t.id === getProperTransmitterId());
-    const lastSelectedTransmitter = availableTransmitters[0]; // You might want to store the last selected in state
-
     // Check if we're playing back a SigMF recording
     const isPlayingback = selectedSDRId === 'sigmf-playback' && isStreaming;
 
@@ -153,7 +151,9 @@ const FrequencyControlAccordion = ({
                                             {selectedTransmitter.description}
                                         </Box>
                                         <Box sx={{ fontSize: '0.75rem', opacity: 0.8 }}>
-                                            {preciseHumanizeFrequency(selectedTransmitter.downlink_low)}
+                                            {[selectedTransmitter.trackerLabel, preciseHumanizeFrequency(selectedTransmitter.downlink_low)]
+                                                .filter(Boolean)
+                                                .join(' • ')}
                                         </Box>
                                     </Box>
                                 </Box>
@@ -213,7 +213,7 @@ const FrequencyControlAccordion = ({
                             </ListSubheader>,
                             ...groupTx.map((transmitter) => (
                                 <MenuItem
-                                    key={transmitter.id}
+                                    key={transmitter.uiId || transmitter.id}
                                     onClick={() => handleMenuItemClick(transmitter.id)}
                                     sx={{ fontSize: '0.875rem', pl: 3 }}
                                 >
@@ -232,7 +232,11 @@ const FrequencyControlAccordion = ({
                                         <Box>
                                             <Box sx={{ fontWeight: 600 }}>{transmitter.description}</Box>
                                             <Box sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-                                                {`Source: ${transmitter.source || 'Unknown'} • ${preciseHumanizeFrequency(transmitter.downlink_low)}`}
+                                                {[
+                                                    transmitter.trackerLabel || null,
+                                                    `Source: ${transmitter.source || 'Unknown'}`,
+                                                    preciseHumanizeFrequency(transmitter.downlink_low),
+                                                ].filter(Boolean).join(' • ')}
                                             </Box>
                                         </Box>
                                     </Box>

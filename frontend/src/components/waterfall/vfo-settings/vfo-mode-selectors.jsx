@@ -13,6 +13,13 @@ import { DECODER_SUPPORT } from '../decoder-parameters.js';
 import { formatDecoderParamsSummary } from './vfo-formatters.js';
 import { isLockedBandwidth } from '../vfo-marker/vfo-config.js';
 
+const sameIdentifier = (left, right) => {
+    if (left == null || right == null) {
+        return false;
+    }
+    return String(left) === String(right);
+};
+
 // Common toggle button styles
 const toggleButtonStyles = {
     display: 'flex',
@@ -292,8 +299,17 @@ export const DataDecoderSelector = ({
                 else if (newValue === 'morse') updates.bandwidth = 2500;
                 else if (newValue === 'afsk') updates.bandwidth = 3300;
                 else if (['gmsk', 'gfsk', 'bpsk'].includes(newValue)) {
+                    const lockedTransmitterTrackerId = vfo?.lockedTransmitterTrackerId;
                     const lockedTransmitter = vfo?.lockedTransmitterId
-                        ? transmitters.find(tx => tx.id === vfo.lockedTransmitterId)
+                        ? transmitters.find((tx) => {
+                            if (!sameIdentifier(tx.id, vfo.lockedTransmitterId)) {
+                                return false;
+                            }
+                            if (!lockedTransmitterTrackerId) {
+                                return true;
+                            }
+                            return sameIdentifier(tx.trackerId, lockedTransmitterTrackerId);
+                        })
                         : null;
                     if (lockedTransmitter && lockedTransmitter.baud) {
                         updates.bandwidth = lockedTransmitter.baud * 3;

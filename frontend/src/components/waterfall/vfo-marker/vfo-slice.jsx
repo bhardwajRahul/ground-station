@@ -94,6 +94,7 @@ const createDefaultVFO = (name) => {
         frequency: null,
         color: null,
         lockedTransmitterId: 'none',
+        lockedTransmitterTrackerId: null,
         frequencyOffset: 0,
         ...defaults
     };
