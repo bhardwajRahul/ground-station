@@ -27,10 +27,14 @@ import {
     gaugeClasses,
 } from '@mui/x-charts/Gauge';
 
+const isFiniteNumber = (value) => Number.isFinite(value);
+const hasFiniteGaugeGeometry = (cx, cy, outerRadius) =>
+    [cx, cy, outerRadius].every((value) => Number.isFinite(value));
+
 function GaugePointer() {
     const { valueAngle, outerRadius, cx, cy } = useGaugeState();
 
-    if (valueAngle === null) {
+    if (!isFiniteNumber(valueAngle) || !hasFiniteGaugeGeometry(cx, cy, outerRadius)) {
         // No value to display
         return null;
     }
@@ -70,8 +74,8 @@ function GaugePointer() {
 const EdgeArrow = ({angle, stroke = "currentColor", strokeWidth = 1, opacity = 1, forElevation = false, arrowLength: lineLength = 0}) => {
     const {outerRadius, cx, cy} = useGaugeState();
 
-    if (angle === null) {
-        return;
+    if (!isFiniteNumber(angle) || !hasFiniteGaugeGeometry(cx, cy, outerRadius)) {
+        return null;
     }
 
     const angleInRad = forElevation ?
@@ -131,6 +135,9 @@ const EdgeArrow = ({angle, stroke = "currentColor", strokeWidth = 1, opacity = 1
 
 const Pointer = ({angle, stroke = "currentColor", strokeWidth = 1, opacity = 0.3, forElevation = false, dotted = false}) => {
     const {outerRadius, cx, cy} = useGaugeState();
+    if (!isFiniteNumber(angle) || !hasFiniteGaugeGeometry(cx, cy, outerRadius)) {
+        return null;
+    }
     const angleInRad = forElevation ?
         ((90 - angle) * Math.PI) / 180 :
         (angle * Math.PI) / 180;
@@ -216,6 +223,14 @@ const CircleSlice = ({
                          peakAz = null
                      }) => {
     const { outerRadius, cx, cy } = useGaugeState();
+    if (
+        !hasFiniteGaugeGeometry(cx, cy, outerRadius) ||
+        outerRadius <= 0 ||
+        !isFiniteNumber(startAngle) ||
+        !isFiniteNumber(endAngle)
+    ) {
+        return null;
+    }
 
     // Convert startAngle and endAngle to radians
     const startAngleRad = (startAngle * Math.PI) / 180;
@@ -272,6 +287,17 @@ const CircleSlice = ({
 };
 
 const rescaleToRange = (value, originalMin, originalMax, targetMin, targetMax) => {
+    if (
+        !isFiniteNumber(value) ||
+        !isFiniteNumber(originalMin) ||
+        !isFiniteNumber(originalMax) ||
+        !isFiniteNumber(targetMin) ||
+        !isFiniteNumber(targetMax) ||
+        originalMax === originalMin
+    ) {
+        return null;
+    }
+
     // Calculate what percentage the value is in its original range
     const percentage = (value - originalMin) / (originalMax - originalMin);
 
@@ -286,6 +312,12 @@ function GaugeAz({az, limits = [null, null],
 }) {
     let [maxAz, minAz] = limits;
     let [hwMinAz, hwMaxAz] = hardwareLimits;
+    const safeAz = isFiniteNumber(az) ? az : null;
+    const safeTargetCurrentAz = isFiniteNumber(targetCurrentAz) ? targetCurrentAz : null;
+    minAz = isFiniteNumber(minAz) ? minAz : null;
+    maxAz = isFiniteNumber(maxAz) ? maxAz : null;
+    hwMinAz = isFiniteNumber(hwMinAz) ? hwMinAz : null;
+    hwMaxAz = isFiniteNumber(hwMaxAz) ? hwMaxAz : null;
 
     return (
         <GaugeContainer
@@ -300,7 +332,7 @@ function GaugeAz({az, limits = [null, null],
             height={140}
             startAngle={0}
             endAngle={360}
-            value={az}
+            value={safeAz}
             onTouchStart={(e) => {
                 // Stop event from bubbling up
                 e.stopPropagation();
@@ -332,7 +364,7 @@ function GaugeAz({az, limits = [null, null],
             <text x="124" y="70" textAnchor="middle" dominantBaseline="middle" fontSize="12" fontWeight={"bold"}>90</text>
             <text x="70" y="125" textAnchor="middle" dominantBaseline="middle" fontSize="12" fontWeight={"bold"}>180</text>
             <text x="15" y="70" textAnchor="middle" dominantBaseline="middle" fontSize="12" fontWeight={"bold"}>270</text>
-            <EdgeArrow angle={targetCurrentAz} />
+            <EdgeArrow angle={safeTargetCurrentAz} />
             <GaugePointer/>
             {/* Hardware limits - red restricted zones (rendered last to be on top) */}
             {hwMinAz !== null && hwMaxAz !== null && <>
@@ -358,8 +390,13 @@ function GaugeAz({az, limits = [null, null],
 }
 
 function GaugeEl({el, maxElevation = null, targetCurrentEl = null, hardwareLimits = [null, null]}) {
-    const angle = rescaleToRange(maxElevation, 0, 90, 90, 0);
+    const safeEl = isFiniteNumber(el) ? el : null;
+    const safeMaxElevation = isFiniteNumber(maxElevation) ? maxElevation : null;
+    const safeTargetCurrentEl = isFiniteNumber(targetCurrentEl) ? targetCurrentEl : null;
     let [hwMinEl, hwMaxEl] = hardwareLimits;
+    hwMinEl = isFiniteNumber(hwMinEl) ? hwMinEl : null;
+    hwMaxEl = isFiniteNumber(hwMaxEl) ? hwMaxEl : null;
+    const angle = safeMaxElevation !== null ? rescaleToRange(safeMaxElevation, 0, 90, 90, 0) : null;
 
     const rescaleValue = (value) => {
         return 90 - value;
@@ -382,7 +419,7 @@ function GaugeEl({el, maxElevation = null, targetCurrentEl = null, hardwareLimit
             height={130}
             startAngle={0}
             endAngle={90}
-            value={el}
+            value={safeEl}
             onTouchStart={(e) => {
                 // Stop event from bubbling up
                 e.stopPropagation();
@@ -395,7 +432,7 @@ function GaugeEl({el, maxElevation = null, targetCurrentEl = null, hardwareLimit
             <GaugeReferenceArc/>
             <Pointer angle={0} dotted={true} stroke="#666" opacity={0.3}/>
             {/* Pass limits - green allowed zone */}
-            {maxElevation !== null && hwMinElAngle !== null && <>
+            {safeMaxElevation !== null && hwMinElAngle !== null && <>
                 <Pointer angle={angle} stroke="#888" strokeWidth={1} opacity={0.3}/>
                 <CircleSlice
                     startAngle={hwMinElAngle}
@@ -410,7 +447,7 @@ function GaugeEl({el, maxElevation = null, targetCurrentEl = null, hardwareLimit
             <text x="107" y="120" textAnchor="middle" dominantBaseline="middle" fontSize="12" fontWeight={"bold"}>0</text>
             <text x="80" y="55" textAnchor="middle" dominantBaseline="middle" fontSize="12" fontWeight={"bold"}>45</text>
             <text x="10" y="23" textAnchor="middle" dominantBaseline="middle" fontSize="12" fontWeight={"bold"}>90</text>
-            <EdgeArrow angle={rescaleValue(targetCurrentEl)} />
+            <EdgeArrow angle={safeTargetCurrentEl !== null ? rescaleValue(safeTargetCurrentEl) : null} />
             <GaugePointer/>
             {/* Hardware limits - red restricted zones (rendered last to be on top) */}
             {hwMinElAngle !== null && hwMaxElAngle !== null && <>

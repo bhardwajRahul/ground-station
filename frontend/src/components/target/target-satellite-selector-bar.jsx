@@ -1400,7 +1400,13 @@ const TargetSatelliteSelectorBar = React.memo(function TargetSatelliteSelectorBa
                                                         </Typography>
                                                     </Box>
                                                     <IconButton
+                                                        component="span"
                                                         size="small"
+                                                        aria-label={`Delete ${option.satName} target`}
+                                                        onMouseDown={(event) => {
+                                                            event.preventDefault();
+                                                            event.stopPropagation();
+                                                        }}
                                                         onClick={(event) => handleDeleteTarget(event, option)}
                                                         sx={{
                                                             p: 0.3,

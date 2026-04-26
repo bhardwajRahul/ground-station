@@ -157,6 +157,7 @@ const SdrAccordion = ({
                     <Tooltip title={t('sdr.refresh_params')}>
                         <span>
                             <IconButton
+                                component="span"
                                 size="small"
                                 aria-label={t('sdr.refresh_params')}
                                 onClick={(event) => {
