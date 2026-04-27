@@ -95,11 +95,9 @@ export function drawBandscope({
     const [minDb, maxDb] = dbRange;
     const dbRangeDiff = maxDb - minDb;
 
-    // Visual-only FFT line offset (in pixels): keep axis/grid values true to dbRange.
-    // We derive this from the previous adaptive dB bias behavior so the look remains similar.
-    const visualBiasDb = Math.min(6, Math.max(0, dbRangeDiff * 0.18));
-    const safeRange = dbRangeDiff > 1e-6 ? dbRangeDiff : 1;
-    const lineOffsetPx = (visualBiasDb / safeRange) * height;
+    // Visual-only pan for the FFT trace. This is an intentional viewport nudge
+    // (constant pixels), not a dB-dependent bias.
+    const linePanPx = Math.max(6, Math.round(height * 0.08));
 
     // Draw dB marks and labels using the current range
     bandscopeCtx.fillStyle = 'white';
@@ -135,7 +133,7 @@ export function drawBandscope({
         theme
     });
 
-    // Draw the FFT data with a visual-only downward offset.
+    // Draw the FFT data with a visual-only pan.
     drawFftLine({
         ctx: bandscopeCtx,
         fftData: smoothedFftData,
@@ -144,7 +142,7 @@ export function drawBandscope({
         dbRange,
         colorMap,
         zoomScale,
-        lineOffsetPx
+        linePanPx
     });
 }
 
@@ -266,7 +264,7 @@ function downsampleFftData(fftData, targetPoints) {
  * @param {Array<number>} params.dbRange - [minDb, maxDb]
  * @param {string} params.colorMap - Color map name
  * @param {number} [params.zoomScale=1] - Current horizontal zoom scale
- * @param {number} [params.lineOffsetPx=0] - Visual-only downward offset in pixels
+ * @param {number} [params.linePanPx=0] - Visual-only pan offset in pixels
  */
 export function drawFftLine({
     ctx,
@@ -276,7 +274,7 @@ export function drawFftLine({
     dbRange,
     colorMap,
     zoomScale = 1,
-    lineOffsetPx = 0
+    linePanPx = 0
 }) {
     const [minDb, maxDb] = dbRange;
     const graphWidth = width;
@@ -347,10 +345,7 @@ export function drawFftLine({
 
         // Normalize amplitude to canvas height using dB range
         const normalizedValue = Math.max(0, Math.min(1, (amplitude - minDb) / (maxDb - minDb)));
-        // Apply visual offset mostly near the noise floor and fade it out
-        // toward the top so strong peaks can still reach the true ceiling.
-        const offsetScale = 1 - normalizedValue;
-        const y = Math.min(height, height - (normalizedValue * height) + (lineOffsetPx * offsetScale));
+        const y = Math.min(height, Math.max(0, height - (normalizedValue * height) + linePanPx));
 
         if (i === 0) {
             ctx.moveTo(x, y);
@@ -362,10 +357,9 @@ export function drawFftLine({
             const prevX = prevPoint.x * graphWidth;
             const prevAmplitude = prevPoint.y;
             const prevNormalizedValue = Math.max(0, Math.min(1, (prevAmplitude - minDb) / (maxDb - minDb)));
-            const prevOffsetScale = 1 - prevNormalizedValue;
             const prevY = Math.min(
                 height,
-                height - (prevNormalizedValue * height) + (lineOffsetPx * prevOffsetScale),
+                Math.max(0, height - (prevNormalizedValue * height) + linePanPx),
             );
 
             // Control point is midway between previous and current point
@@ -382,8 +376,7 @@ export function drawFftLine({
         const x = lastPoint.x * graphWidth;
         const amplitude = lastPoint.y;
         const normalizedValue = Math.max(0, Math.min(1, (amplitude - minDb) / (maxDb - minDb)));
-        const offsetScale = 1 - normalizedValue;
-        const y = Math.min(height, height - (normalizedValue * height) + (lineOffsetPx * offsetScale));
+        const y = Math.min(height, Math.max(0, height - (normalizedValue * height) + linePanPx));
         ctx.lineTo(x, y);
     }
 
