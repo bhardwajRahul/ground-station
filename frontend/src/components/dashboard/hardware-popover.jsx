@@ -41,6 +41,7 @@ import { TRACKER_COMMAND_STATUS } from "../target/tracking-constants.js";
 import FleetTargetRow from "../common/fleet-target-row.jsx";
 import {
     hasAssignedHardwareId,
+    resolveAssignedHardwareId,
     resolveRotatorLedStatus,
     resolveRigLedStatus,
     isRotatorWarningStatus,
@@ -147,7 +148,11 @@ const HardwareSettingsPopover = () => {
             const rotatorData = view?.rotatorData || {};
             const rigData = view?.rigData || {};
 
-            const rotatorId = view?.selectedRotator ?? trackingState?.rotator_id ?? instance?.rotator_id ?? 'none';
+            const rotatorId = resolveAssignedHardwareId(
+                view?.selectedRotator,
+                trackingState?.rotator_id,
+                instance?.rotator_id
+            );
             const hasRotatorAssigned = hasAssignedHardwareId(rotatorId);
             if (hasRotatorAssigned) {
                 summary.rotator.assignedCount += 1;
@@ -164,7 +169,11 @@ const HardwareSettingsPopover = () => {
                 else if (rotatorWarning) summary.rotator.warningCount += 1;
             }
 
-            const rigId = view?.selectedRadioRig ?? trackingState?.rig_id ?? instance?.rig_id ?? 'none';
+            const rigId = resolveAssignedHardwareId(
+                view?.selectedRadioRig,
+                trackingState?.rig_id,
+                instance?.rig_id
+            );
             const hasRigAssigned = hasAssignedHardwareId(rigId);
             if (hasRigAssigned) {
                 summary.rig.assignedCount += 1;

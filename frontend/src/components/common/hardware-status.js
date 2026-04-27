@@ -32,6 +32,17 @@ export const hasAssignedHardwareId = (value) => {
     return !['', 'none', 'null', 'undefined'].includes(normalized);
 };
 
+export const resolveAssignedHardwareId = (...candidates) => {
+    for (const candidate of candidates) {
+        // Empty string means "unset in this source", so try the next fallback.
+        // Explicit "none" must be preserved as a deliberate unassignment.
+        if (candidate == null) continue;
+        if (String(candidate).trim() === '') continue;
+        return candidate;
+    }
+    return 'none';
+};
+
 export const resolveRotatorLedStatus = ({ rotatorId, rotatorData = {}, trackingState = {} }) => {
     if (NONE_ID_VALUES.includes(rotatorId)) return ROTATOR_LED_STATUS.NONE;
     if (rotatorData?.connected === false || trackingState?.rotator_state === 'disconnected') return ROTATOR_LED_STATUS.DISCONNECTED;
