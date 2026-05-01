@@ -22,7 +22,10 @@ import crud.locations as crud_locations
 from celestial.asteroidzones import get_static_asteroid_zones
 from celestial.horizons import fetch_celestial_vectors
 from celestial.observermath import compute_observer_sky_position
-from celestial.solarsystem import compute_solar_system_snapshot
+from celestial.solarsystem import (
+    compute_body_position_heliocentric_au,
+    compute_solar_system_snapshot,
+)
 from db import AsyncSessionLocal
 
 CACHE_TTL_SECONDS = 120
@@ -32,6 +35,7 @@ COMPUTED_EPOCH_BUCKET_SECONDS = 60
 MAX_SAMPLES_PER_TARGET = 1500
 DEFAULT_CELESTIAL_TARGETS: List[Dict[str, str]] = []
 NO_EPHEMERIS_ERROR_FRAGMENT = "No ephemeris data returned by Horizons"
+CELESTIAL_PASS_HORIZON_DEG = 0.0
 
 
 @dataclass
@@ -172,6 +176,40 @@ def _parse_projection_options(data: Optional[Dict[str, Any]]) -> Tuple[int, int,
         max_samples=MAX_SAMPLES_PER_TARGET,
     )
     return past_hours, future_hours, adaptive_step_minutes
+
+
+def _parse_iso_utc(value: Any) -> Optional[datetime]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def _build_window_timestamps(
+    epoch: datetime,
+    past_hours: int,
+    future_hours: int,
+    step_minutes: int,
+) -> List[datetime]:
+    start = epoch - timedelta(hours=int(past_hours))
+    end = epoch + timedelta(hours=int(future_hours))
+    step = timedelta(minutes=max(1, int(step_minutes)))
+    timestamps: List[datetime] = []
+    current = start
+    while current <= end:
+        timestamps.append(current)
+        current = current + step
+    if not timestamps or timestamps[-1] < end:
+        timestamps.append(end)
+    return timestamps
 
 
 def _round_up(value: int, base: int) -> int:
@@ -346,6 +384,337 @@ def _attach_observer_view_local(
             "horizon_threshold_deg": 0.0,
             "error": str(exc),
         }
+
+
+def _interpolate_crossing_point(
+    previous: Dict[str, Any],
+    current: Dict[str, Any],
+    horizon_deg: float,
+) -> Dict[str, Any]:
+    prev_el = float(previous["el_deg"])
+    curr_el = float(current["el_deg"])
+    prev_time = previous["time"]
+    curr_time = current["time"]
+    denominator = curr_el - prev_el
+    if abs(denominator) < 1e-9:
+        ratio = 0.0
+    else:
+        ratio = (float(horizon_deg) - prev_el) / denominator
+    ratio = max(0.0, min(1.0, ratio))
+
+    crossing_time = prev_time + timedelta(seconds=(curr_time - prev_time).total_seconds() * ratio)
+    prev_az = float(previous["az_deg"])
+    curr_az = float(current["az_deg"])
+    delta_az = ((curr_az - prev_az + 540.0) % 360.0) - 180.0
+    crossing_az = (prev_az + (delta_az * ratio)) % 360.0
+
+    return {
+        "time": crossing_time,
+        "az_deg": crossing_az,
+        "el_deg": float(horizon_deg),
+    }
+
+
+def _build_pass_events_from_samples(
+    row: Dict[str, Any],
+    samples: List[Dict[str, Any]],
+    horizon_deg: float,
+) -> List[Dict[str, Any]]:
+    if len(samples) < 2:
+        return []
+
+    ordered_samples = sorted(samples, key=lambda item: item["time"])
+    events: List[Dict[str, Any]] = []
+    active_pass: Optional[Dict[str, Any]] = None
+
+    for index, sample in enumerate(ordered_samples):
+        is_above = float(sample["el_deg"]) > float(horizon_deg)
+        previous = ordered_samples[index - 1] if index > 0 else None
+        previous_above = (
+            bool(previous) and float(previous["el_deg"]) > float(horizon_deg) if previous else False
+        )
+
+        if active_pass is None and is_above:
+            if previous and not previous_above:
+                crossing = _interpolate_crossing_point(previous, sample, horizon_deg=horizon_deg)
+                start_time = crossing["time"]
+                start_az = float(crossing["az_deg"])
+                estimated_start = False
+            else:
+                start_time = sample["time"]
+                start_az = float(sample["az_deg"])
+                estimated_start = index == 0
+
+            active_pass = {
+                "start_time": start_time,
+                "start_azimuth_deg": start_az,
+                "peak_time": sample["time"],
+                "peak_elevation_deg": float(sample["el_deg"]),
+                "peak_azimuth_deg": float(sample["az_deg"]),
+                "estimated_start": estimated_start,
+            }
+
+        if active_pass:
+            if float(sample["el_deg"]) > float(active_pass["peak_elevation_deg"]):
+                active_pass["peak_elevation_deg"] = float(sample["el_deg"])
+                active_pass["peak_time"] = sample["time"]
+                active_pass["peak_azimuth_deg"] = float(sample["az_deg"])
+
+            if previous and previous_above and not is_above:
+                crossing = _interpolate_crossing_point(previous, sample, horizon_deg=horizon_deg)
+                end_time = crossing["time"]
+                end_az = float(crossing["az_deg"])
+                duration_seconds = max(
+                    0.0,
+                    (end_time - active_pass["start_time"]).total_seconds(),
+                )
+                target_key = str(row.get("target_key") or "").strip()
+                event_start_iso = active_pass["start_time"].astimezone(timezone.utc).isoformat()
+                events.append(
+                    {
+                        "id": f"{target_key}_{event_start_iso}",
+                        "target_key": target_key,
+                        "target_type": row.get("target_type"),
+                        "name": row.get("name"),
+                        "command": row.get("command"),
+                        "body_id": row.get("body_id"),
+                        "color": row.get("color"),
+                        "source": row.get("source"),
+                        "cache": row.get("cache"),
+                        "stale": bool(row.get("stale")),
+                        "event_start": event_start_iso,
+                        "event_end": end_time.astimezone(timezone.utc).isoformat(),
+                        "peak_time": active_pass["peak_time"].astimezone(timezone.utc).isoformat(),
+                        "duration_seconds": duration_seconds,
+                        "start_azimuth_deg": float(active_pass["start_azimuth_deg"]),
+                        "end_azimuth_deg": end_az,
+                        "peak_azimuth_deg": float(active_pass["peak_azimuth_deg"]),
+                        "peak_elevation_deg": float(active_pass["peak_elevation_deg"]),
+                        "estimated_start": bool(active_pass["estimated_start"]),
+                        "estimated_end": False,
+                        "horizon_threshold_deg": float(horizon_deg),
+                    }
+                )
+                active_pass = None
+
+    if active_pass:
+        final_sample = ordered_samples[-1]
+        end_time = final_sample["time"]
+        end_az = float(final_sample["az_deg"])
+        duration_seconds = max(
+            0.0,
+            (end_time - active_pass["start_time"]).total_seconds(),
+        )
+        target_key = str(row.get("target_key") or "").strip()
+        event_start_iso = active_pass["start_time"].astimezone(timezone.utc).isoformat()
+        events.append(
+            {
+                "id": f"{target_key}_{event_start_iso}",
+                "target_key": target_key,
+                "target_type": row.get("target_type"),
+                "name": row.get("name"),
+                "command": row.get("command"),
+                "body_id": row.get("body_id"),
+                "color": row.get("color"),
+                "source": row.get("source"),
+                "cache": row.get("cache"),
+                "stale": bool(row.get("stale")),
+                "event_start": event_start_iso,
+                "event_end": end_time.astimezone(timezone.utc).isoformat(),
+                "peak_time": active_pass["peak_time"].astimezone(timezone.utc).isoformat(),
+                "duration_seconds": duration_seconds,
+                "start_azimuth_deg": float(active_pass["start_azimuth_deg"]),
+                "end_azimuth_deg": end_az,
+                "peak_azimuth_deg": float(active_pass["peak_azimuth_deg"]),
+                "peak_elevation_deg": float(active_pass["peak_elevation_deg"]),
+                "estimated_start": bool(active_pass["estimated_start"]),
+                "estimated_end": True,
+                "horizon_threshold_deg": float(horizon_deg),
+            }
+        )
+
+    return events
+
+
+def _extract_row_observer_samples(
+    row: Dict[str, Any],
+    *,
+    epoch: datetime,
+    past_hours: int,
+    future_hours: int,
+    step_minutes: int,
+    observer_location: Optional[Dict[str, Any]],
+    earth_position_xyz_au: Optional[List[float]],
+    logger: Any,
+) -> List[Dict[str, Any]]:
+    if not observer_location:
+        return []
+
+    try:
+        observer_lat_deg = float(observer_location["lat"])
+        observer_lon_deg = float(observer_location["lon"])
+    except (TypeError, ValueError, KeyError):
+        return []
+
+    target_type = str(row.get("target_type") or "mission").strip().lower()
+    samples: List[Dict[str, Any]] = []
+
+    if target_type == "body":
+        body_id = str(row.get("body_id") or row.get("command") or "").strip().lower()
+        if not body_id:
+            return []
+        for sample_time in _build_window_timestamps(
+            epoch=epoch,
+            past_hours=past_hours,
+            future_hours=future_hours,
+            step_minutes=step_minutes,
+        ):
+            try:
+                target_position = compute_body_position_heliocentric_au(body_id, sample_time)
+                earth_position_for_body = compute_body_position_heliocentric_au(
+                    "earth", sample_time
+                )
+                observer_view = compute_observer_sky_position(
+                    target_heliocentric_xyz_au=target_position,
+                    earth_heliocentric_xyz_au=earth_position_for_body,
+                    epoch=sample_time,
+                    observer_lat_deg=observer_lat_deg,
+                    observer_lon_deg=observer_lon_deg,
+                )
+                sky_position = observer_view.get("sky_position")
+                if not isinstance(sky_position, dict):
+                    continue
+                az_obj = sky_position.get("az_deg")
+                el_obj = sky_position.get("el_deg")
+                if not isinstance(az_obj, (int, float, str)) or not isinstance(
+                    el_obj, (int, float, str)
+                ):
+                    continue
+                az_deg = float(az_obj)
+                el_deg = float(el_obj)
+                if not math.isfinite(az_deg) or not math.isfinite(el_deg):
+                    continue
+                samples.append({"time": sample_time, "az_deg": az_deg, "el_deg": el_deg})
+            except Exception:
+                continue
+        return samples
+
+    positions_obj = row.get("orbit_samples_xyz_au")
+    positions: List[List[float]] = []
+    if isinstance(positions_obj, list):
+        for sample in positions_obj:
+            if not isinstance(sample, list) or len(sample) < 3:
+                continue
+            try:
+                position = [float(sample[0]), float(sample[1]), float(sample[2])]
+            except (TypeError, ValueError):
+                continue
+            positions.append(position)
+
+    if len(positions) < 2:
+        return []
+
+    raw_times_obj = row.get("orbit_sample_times_utc")
+    sample_times: List[datetime] = []
+    if isinstance(raw_times_obj, list) and len(raw_times_obj) == len(positions):
+        parsed_times = [_parse_iso_utc(item) for item in raw_times_obj]
+        if all(item is not None for item in parsed_times):
+            sample_times = [item for item in parsed_times if item is not None]
+
+    if len(sample_times) != len(positions):
+        start = epoch - timedelta(hours=int(past_hours))
+        span_seconds = max(1.0, float((int(past_hours) + int(future_hours)) * 3600))
+        if len(positions) == 1:
+            sample_times = [epoch]
+        else:
+            sample_times = [
+                start + timedelta(seconds=(span_seconds * idx / max(1, len(positions) - 1)))
+                for idx in range(len(positions))
+            ]
+
+    for index, target_position in enumerate(positions):
+        sample_time = sample_times[index]
+        earth_position_for_sample: Optional[List[float]] = None
+        try:
+            earth_position_for_sample = compute_body_position_heliocentric_au("earth", sample_time)
+        except Exception:
+            if earth_position_xyz_au and len(earth_position_xyz_au) >= 3:
+                earth_position_for_sample = [
+                    float(earth_position_xyz_au[0]),
+                    float(earth_position_xyz_au[1]),
+                    float(earth_position_xyz_au[2]),
+                ]
+        if not earth_position_for_sample:
+            continue
+
+        try:
+            observer_view = compute_observer_sky_position(
+                target_heliocentric_xyz_au=target_position,
+                earth_heliocentric_xyz_au=earth_position_for_sample,
+                epoch=sample_time,
+                observer_lat_deg=observer_lat_deg,
+                observer_lon_deg=observer_lon_deg,
+            )
+            sky_position = observer_view.get("sky_position")
+            if not isinstance(sky_position, dict):
+                continue
+            az_obj = sky_position.get("az_deg")
+            el_obj = sky_position.get("el_deg")
+            if not isinstance(az_obj, (int, float, str)) or not isinstance(
+                el_obj, (int, float, str)
+            ):
+                continue
+            az_deg = float(az_obj)
+            el_deg = float(el_obj)
+            if not math.isfinite(az_deg) or not math.isfinite(el_deg):
+                continue
+            samples.append({"time": sample_time, "az_deg": az_deg, "el_deg": el_deg})
+        except Exception as exc:
+            logger.debug(
+                "Observer sample calculation failed for celestial "
+                f"'{row.get('target_key') or row.get('command') or row.get('body_id')}': {exc}"
+            )
+            continue
+
+    return samples
+
+
+def _build_celestial_passes(
+    rows: List[Dict[str, Any]],
+    *,
+    epoch: datetime,
+    past_hours: int,
+    future_hours: int,
+    step_minutes: int,
+    observer_location: Optional[Dict[str, Any]],
+    earth_position_xyz_au: Optional[List[float]],
+    logger: Any,
+) -> List[Dict[str, Any]]:
+    passes: List[Dict[str, Any]] = []
+    for row in rows:
+        samples = _extract_row_observer_samples(
+            row=row,
+            epoch=epoch,
+            past_hours=past_hours,
+            future_hours=future_hours,
+            step_minutes=step_minutes,
+            observer_location=observer_location,
+            earth_position_xyz_au=earth_position_xyz_au,
+            logger=logger,
+        )
+        if len(samples) < 2:
+            continue
+        events = _build_pass_events_from_samples(
+            row=row,
+            samples=samples,
+            horizon_deg=CELESTIAL_PASS_HORIZON_DEG,
+        )
+        for event in events:
+            event["sample_count"] = len(samples)
+        passes.extend(events)
+
+    passes.sort(key=lambda item: str(item.get("event_start") or ""))
+    return passes
 
 
 async def _load_vectors_from_db(
@@ -730,6 +1099,16 @@ async def build_celestial_scene(
         logger,
         per_row_callback,
     )
+    celestial_passes = _build_celestial_passes(
+        rows=celestial,
+        epoch=epoch,
+        past_hours=past_hours,
+        future_hours=future_hours,
+        step_minutes=step_minutes,
+        observer_location=observer_location,
+        earth_position_xyz_au=earth_position_xyz_au,
+        logger=logger,
+    )
 
     return {
         "success": True,
@@ -743,6 +1122,7 @@ async def build_celestial_scene(
             },
             "planets": planets,
             "celestial": celestial,
+            "celestial_passes": celestial_passes,
             "asteroid_zones": asteroid_zones,
             "asteroid_resonance_gaps": asteroid_resonance_gaps,
             "meta": {
@@ -755,6 +1135,10 @@ async def build_celestial_scene(
                     "past_hours": past_hours,
                     "future_hours": future_hours,
                     "step_minutes": step_minutes,
+                },
+                "passes": {
+                    "horizon_threshold_deg": CELESTIAL_PASS_HORIZON_DEG,
+                    "count": len(celestial_passes),
                 },
                 "observer_location": observer_location,
                 "visibility_definition": "visible == elevation_deg > 0",
@@ -828,6 +1212,16 @@ async def build_celestial_tracks(
         logger,
         per_row_callback,
     )
+    celestial_passes = _build_celestial_passes(
+        rows=celestial,
+        epoch=epoch,
+        past_hours=past_hours,
+        future_hours=future_hours,
+        step_minutes=step_minutes,
+        observer_location=observer_location,
+        earth_position_xyz_au=earth_position_xyz_au,
+        logger=logger,
+    )
 
     return {
         "success": True,
@@ -840,6 +1234,7 @@ async def build_celestial_tracks(
                 "velocity": "au/day",
             },
             "celestial": celestial,
+            "celestial_passes": celestial_passes,
             "meta": {
                 "celestial_source": "horizons",
                 "cache_ttl_seconds": CACHE_TTL_SECONDS,
@@ -848,6 +1243,10 @@ async def build_celestial_tracks(
                     "past_hours": past_hours,
                     "future_hours": future_hours,
                     "step_minutes": step_minutes,
+                },
+                "passes": {
+                    "horizon_threshold_deg": CELESTIAL_PASS_HORIZON_DEG,
+                    "count": len(celestial_passes),
                 },
                 "observer_location": observer_location,
                 "visibility_definition": "visible == elevation_deg > 0",

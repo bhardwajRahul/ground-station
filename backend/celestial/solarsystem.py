@@ -526,3 +526,21 @@ def compute_solar_system_snapshot(
     }
 
     return meta, planets
+
+
+def compute_body_position_heliocentric_au(body_id: str, epoch: datetime) -> List[float]:
+    """Compute heliocentric ecliptic position for one supported body at epoch."""
+    normalized_id = str(body_id or "").strip().lower()
+    if not normalized_id:
+        raise ValueError("body_id is required")
+
+    supported_bodies = {
+        "moon",
+        *_PLANET_ELEMENTS.keys(),
+        *_JUPITER_MOONS.keys(),
+        *_SATURN_MOONS.keys(),
+    }
+    if normalized_id not in supported_bodies:
+        raise ValueError(f"Unsupported body_id '{normalized_id}'")
+
+    return _body_position_au(normalized_id, _days_since_j2000(epoch))

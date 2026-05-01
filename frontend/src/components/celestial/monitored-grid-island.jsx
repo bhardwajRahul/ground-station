@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { DataGrid, gridClasses } from '@mui/x-data-grid';
-import { alpha, darken, lighten, styled } from '@mui/material/styles';
+import { alpha, styled } from '@mui/material/styles';
 import {
     Box,
     Button,
     Checkbox,
-    Chip,
     Dialog,
     DialogActions,
     DialogContent,
@@ -19,9 +18,6 @@ import {
     Select,
     Typography,
 } from '@mui/material';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { useDispatch, useSelector } from 'react-redux';
 import {
     setSelectedMonitoredIds,
@@ -69,65 +65,60 @@ const DIALOG_CANCEL_BUTTON_SX = {
     },
 };
 
-const getPassBackgroundColor = (color, theme, coefficient) => ({
-    backgroundColor: darken(color, coefficient),
-    ...theme.applyStyles('light', {
-        backgroundColor: lighten(color, coefficient),
-    }),
-});
-
 const StyledDataGrid = styled(DataGrid)(({ theme }) => ({
     '& .MuiDataGrid-row': {
         borderLeft: '3px solid transparent',
     },
-    '& .passes-row-live': {
-        backgroundColor: alpha(theme.palette.success.main, 0.2),
-        borderLeftColor: alpha(theme.palette.success.main, 0.95),
+    '& .celestial-row-visible': {
+        backgroundColor: alpha(theme.palette.success.main, 0.15),
+        borderLeftColor: alpha(theme.palette.success.main, 0.9),
         ...theme.applyStyles('light', {
-            backgroundColor: alpha(theme.palette.success.main, 0.1),
-            borderLeftColor: alpha(theme.palette.success.main, 0.65),
+            backgroundColor: alpha(theme.palette.success.main, 0.08),
+            borderLeftColor: alpha(theme.palette.success.main, 0.6),
         }),
-    },
-    '& .passes-row-upcoming': {
-        backgroundColor: alpha(theme.palette.warning.main, 0.14),
-        borderLeftColor: alpha(theme.palette.warning.main, 0.9),
-        ...theme.applyStyles('light', {
-            backgroundColor: alpha(theme.palette.warning.main, 0.08),
-            borderLeftColor: alpha(theme.palette.warning.main, 0.6),
-        }),
-    },
-    '& .passes-row-passed': {
-        '& .MuiDataGrid-cell': {
-            color: theme.palette.text.secondary,
+        '&:hover': {
+            backgroundColor: alpha(theme.palette.success.main, 0.2),
+            ...theme.applyStyles('light', {
+                backgroundColor: alpha(theme.palette.success.main, 0.12),
+            }),
         },
     },
-    '& .passes-row-dead': {
-        backgroundColor: alpha(theme.palette.error.main, 0.24),
+    '& .celestial-row-below': {
+        backgroundColor: alpha(theme.palette.info.main, 0.1),
+        borderLeftColor: alpha(theme.palette.info.main, 0.75),
+        ...theme.applyStyles('light', {
+            backgroundColor: alpha(theme.palette.info.main, 0.05),
+            borderLeftColor: alpha(theme.palette.info.main, 0.5),
+        }),
+    },
+    '& .celestial-row-dead': {
+        backgroundColor: alpha(theme.palette.error.main, 0.18),
         borderLeftColor: alpha(theme.palette.error.main, 0.9),
         ...theme.applyStyles('light', {
             backgroundColor: alpha(theme.palette.error.main, 0.1),
             borderLeftColor: alpha(theme.palette.error.main, 0.65),
         }),
-    },
-    '& .celestial-row-visible': {
-        backgroundColor: alpha(theme.palette.success.main, 0.06),
-        ...theme.applyStyles('light', {
-            backgroundColor: alpha(theme.palette.success.main, 0.04),
-        }),
-    },
-    '& .celestial-row-below': {
-        backgroundColor: alpha(theme.palette.info.main, 0.06),
-        ...theme.applyStyles('light', {
-            backgroundColor: alpha(theme.palette.info.main, 0.04),
-        }),
-    },
-    '& .celestial-row-unknown': {
         '& .MuiDataGrid-cell': {
             color: theme.palette.text.secondary,
         },
     },
-    '& .passes-cell-passing': {
-        ...getPassBackgroundColor(theme.palette.success.main, theme, 0.7),
+    '& .celestial-row-unknown': {
+        borderLeftColor: alpha(theme.palette.text.secondary, 0.55),
+    },
+    '& .celestial-row-selected': {
+        backgroundColor: alpha(theme.palette.secondary.main, 0.25),
+        borderLeftColor: alpha(theme.palette.secondary.main, 0.95),
+        fontWeight: 'bold',
+        ...theme.applyStyles('light', {
+            backgroundColor: alpha(theme.palette.secondary.main, 0.12),
+            borderLeftColor: alpha(theme.palette.secondary.main, 0.75),
+        }),
+        '&:hover': {
+            backgroundColor: alpha(theme.palette.secondary.main, 0.3),
+            ...theme.applyStyles('light', {
+                backgroundColor: alpha(theme.palette.secondary.main, 0.16),
+            }),
+        },
     },
 }));
 
@@ -210,7 +201,6 @@ const SettingsDialog = ({ open, onClose }) => {
         { name: 'source', label: 'Source', category: 'identity' },
         { name: 'sourceMode', label: 'Source Mode', category: 'identity' },
         { name: 'enabled', label: 'Enabled', category: 'state' },
-        { name: 'visibility', label: 'Visibility', category: 'state' },
         { name: 'elevationDeg', label: 'Elevation (deg)', category: 'state' },
         { name: 'azimuthDeg', label: 'Azimuth (deg)', category: 'state' },
         { name: 'distanceFromSunAu', label: 'Distance from Sun (AU)', category: 'metrics' },
@@ -385,51 +375,26 @@ const MonitoredCelestialGridIsland = ({
     const columns = useMemo(
         () => [
             {
-                field: 'visibility',
-                minWidth: 150,
-                headerName: 'Status',
-                align: 'center',
-                headerAlign: 'center',
-                sortComparator: (v1, v2) => {
-                    const rank = { visible: 2, unknown: 1, below: 0 };
-                    return (rank[v1] ?? 0) - (rank[v2] ?? 0);
-                },
-                renderCell: (params) => {
-                    const visibility = params.value || 'unknown';
-                    const config = visibility === 'visible'
-                        ? {
-                            label: 'Visible',
-                            color: 'success',
-                            icon: <VisibilityIcon sx={{ fontSize: '0.85rem' }} />,
-                            variant: 'filled',
-                        }
-                        : visibility === 'below'
-                            ? {
-                                label: 'Below Horizon',
-                                color: 'info',
-                                icon: <VisibilityOffIcon sx={{ fontSize: '0.85rem' }} />,
-                                variant: 'filled',
-                            }
-                            : {
-                                label: 'Unknown',
-                                color: 'default',
-                                icon: <HelpOutlineIcon sx={{ fontSize: '0.85rem' }} />,
-                                variant: 'outlined',
-                            };
-
-                    return (
-                        <Chip
-                            icon={config.icon}
-                            size="small"
-                            label={config.label}
-                            color={config.color}
-                            variant={config.variant}
-                            sx={{ fontWeight: 700, minWidth: 116 }}
-                        />
-                    );
-                },
+                field: 'displayName',
+                headerName: 'Name',
+                minWidth: 170,
+                flex: 1,
+                renderCell: (params) => (
+                    <Typography
+                        component="span"
+                        variant="body2"
+                        sx={{
+                            fontWeight: 700,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            lineHeight: 1.2,
+                        }}
+                    >
+                        {params?.value || '-'}
+                    </Typography>
+                ),
             },
-            { field: 'displayName', headerName: 'Name', minWidth: 170, flex: 1 },
             {
                 field: 'targetType',
                 headerName: 'Type',
@@ -577,17 +542,19 @@ const MonitoredCelestialGridIsland = ({
                     sortModel={tableSortModel}
                     onSortModelChange={(model) => dispatch(setMonitoredTableSortModel(model))}
                     getRowClassName={(params) => {
-                        const classes = [];
-                        if (params.row.lastError && params.row.lastError !== '-') classes.push('passes-row-dead');
-                        else if (!params.row.enabled) classes.push('passes-row-passed');
-                        else if (params.row.stale === 'Yes') classes.push('passes-row-upcoming');
-                        else classes.push('passes-row-live');
-
-                        if (params.row.visibility === 'visible') classes.push('celestial-row-visible');
-                        else if (params.row.visibility === 'below') classes.push('celestial-row-below');
-                        else classes.push('celestial-row-unknown');
-
-                        return classes.join(' ');
+                        if ((selectedIds || [])[0] === params.row.id) {
+                            return 'celestial-row-selected pointer-cursor';
+                        }
+                        if (params.row.lastError && params.row.lastError !== '-') {
+                            return 'celestial-row-dead pointer-cursor';
+                        }
+                        if (params.row.visibility === 'visible') {
+                            return 'celestial-row-visible pointer-cursor';
+                        }
+                        if (params.row.visibility === 'below') {
+                            return 'celestial-row-below pointer-cursor';
+                        }
+                        return 'celestial-row-unknown pointer-cursor';
                     }}
                     sx={{
                         border: 0,

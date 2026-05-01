@@ -136,6 +136,26 @@ const celestialSlice = createSlice({
         celestialTracks: null,
         tracksProgress: null,
         mapSettings: null,
+        passesTableColumnVisibility: {
+            status: true,
+            name: true,
+            targetType: true,
+            peakElevationDeg: true,
+            currentElevationDeg: true,
+            progress: true,
+            duration: true,
+            eventStart: true,
+            eventEnd: true,
+            startAzimuthDeg: false,
+            endAzimuthDeg: false,
+            peakAzimuthDeg: false,
+            cacheStatus: true,
+            stale: true,
+            source: false,
+            targetId: false,
+        },
+        passesTablePageSize: 10,
+        passesTableSortModel: [{ field: 'status', sort: 'asc' }, { field: 'eventStart', sort: 'asc' }],
         solarLoading: false,
         tracksLoading: false,
         error: null,
@@ -218,6 +238,16 @@ const celestialSlice = createSlice({
             state.tracksProgress = payload.progress || state.tracksProgress;
             state.error = null;
             state.lastUpdated = new Date().toISOString();
+        },
+        setCelestialPassesTableColumnVisibility: (state, action) => {
+            state.passesTableColumnVisibility = action.payload || {};
+        },
+        setCelestialPassesTablePageSize: (state, action) => {
+            const next = Number(action.payload);
+            state.passesTablePageSize = Number.isFinite(next) && next > 0 ? next : 10;
+        },
+        setCelestialPassesTableSortModel: (state, action) => {
+            state.passesTableSortModel = action.payload || [];
         },
     },
     extraReducers: (builder) => {
@@ -367,5 +397,8 @@ export const {
     setSolarSceneLive,
     setCelestialTracksLive,
     upsertCelestialTrackRowLive,
+    setCelestialPassesTableColumnVisibility,
+    setCelestialPassesTablePageSize,
+    setCelestialPassesTableSortModel,
 } = celestialSlice.actions;
 export default celestialSlice.reducer;

@@ -38,6 +38,7 @@ import CelestialStatusBar from './celestial-statusbar.jsx';
 import SolarSystemCanvas from './solarsystem-canvas.jsx';
 import CelestialTopBar from './celestial-topbar.jsx';
 import MonitoredCelestialGridIsland from './monitored-grid-island.jsx';
+import CelestialPasses from './celestial-passes.jsx';
 import SettingsIcon from '@mui/icons-material/Settings';
 import {
     DEFAULT_SOLAR_SYSTEM_DISPLAY_OPTIONS,
@@ -138,45 +139,86 @@ function ensureRequiredLayoutItems(layouts) {
     }
 
     const fallbackItems = {
-        lg: { i: 'monitored-celestial', x: 0, y: 24, w: 12, h: 10, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        md: { i: 'monitored-celestial', x: 0, y: 24, w: 10, h: 10, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        sm: { i: 'monitored-celestial', x: 0, y: 20, w: 6, h: 10, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        xs: { i: 'monitored-celestial', x: 0, y: 18, w: 2, h: 9, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        xxs: { i: 'monitored-celestial', x: 0, y: 18, w: 2, h: 9, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        lg: [
+            { i: 'monitored-celestial', x: 0, y: 20, w: 12, h: 8 },
+            { i: 'celestial-passes', x: 0, y: 28, w: 12, h: 8 },
+        ],
+        md: [
+            { i: 'monitored-celestial', x: 0, y: 20, w: 10, h: 8 },
+            { i: 'celestial-passes', x: 0, y: 28, w: 10, h: 8 },
+        ],
+        sm: [
+            { i: 'monitored-celestial', x: 0, y: 18, w: 6, h: 8 },
+            { i: 'celestial-passes', x: 0, y: 26, w: 6, h: 8 },
+        ],
+        xs: [
+            { i: 'monitored-celestial', x: 0, y: 16, w: 2, h: 8 },
+            { i: 'celestial-passes', x: 0, y: 24, w: 2, h: 8 },
+        ],
+        xxs: [
+            { i: 'monitored-celestial', x: 0, y: 16, w: 2, h: 8 },
+            { i: 'celestial-passes', x: 0, y: 24, w: 2, h: 8 },
+        ],
     };
 
     return Object.fromEntries(
         Object.entries(layouts).map(([breakpoint, items]) => {
             const typedItems = Array.isArray(items) ? items : [];
-            if (typedItems.some((item) => item?.i === 'monitored-celestial')) {
-                return [breakpoint, typedItems];
-            }
-            const fallback = fallbackItems[breakpoint];
-            return [breakpoint, fallback ? [...typedItems, fallback] : typedItems];
+            const existingItemIds = new Set(
+                typedItems.map((item) => String(item?.i || '').trim()).filter(Boolean),
+            );
+            const requiredItems = fallbackItems[breakpoint] || [];
+            let nextBottomY = typedItems.reduce(
+                (maxY, item) => Math.max(maxY, Number(item?.y || 0) + Number(item?.h || 0)),
+                0,
+            );
+            const nextItems = [...typedItems];
+
+            requiredItems.forEach((fallback) => {
+                if (existingItemIds.has(fallback.i)) {
+                    return;
+                }
+                const itemY = Math.max(Number(fallback.y || 0), nextBottomY);
+                const nextItem = {
+                    ...fallback,
+                    y: itemY,
+                    resizeHandles: [...SHARED_RESIZE_HANDLES],
+                };
+                nextItems.push(nextItem);
+                existingItemIds.add(fallback.i);
+                nextBottomY = itemY + Number(fallback.h || 0);
+            });
+
+            return [breakpoint, nextItems];
         }),
     );
 }
 
 const defaultLayouts = {
     lg: [
-        { i: 'solar-system', x: 0, y: 0, w: 12, h: 24, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'monitored-celestial', x: 0, y: 24, w: 12, h: 10, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'solar-system', x: 0, y: 0, w: 12, h: 20, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'monitored-celestial', x: 0, y: 20, w: 12, h: 8, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-passes', x: 0, y: 28, w: 12, h: 8, resizeHandles: [...SHARED_RESIZE_HANDLES] },
     ],
     md: [
-        { i: 'solar-system', x: 0, y: 0, w: 10, h: 24, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'monitored-celestial', x: 0, y: 24, w: 10, h: 10, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'solar-system', x: 0, y: 0, w: 10, h: 20, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'monitored-celestial', x: 0, y: 20, w: 10, h: 8, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-passes', x: 0, y: 28, w: 10, h: 8, resizeHandles: [...SHARED_RESIZE_HANDLES] },
     ],
     sm: [
-        { i: 'solar-system', x: 0, y: 0, w: 6, h: 20, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'monitored-celestial', x: 0, y: 20, w: 6, h: 10, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'solar-system', x: 0, y: 0, w: 6, h: 18, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'monitored-celestial', x: 0, y: 18, w: 6, h: 8, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-passes', x: 0, y: 26, w: 6, h: 8, resizeHandles: [...SHARED_RESIZE_HANDLES] },
     ],
     xs: [
-        { i: 'solar-system', x: 0, y: 0, w: 2, h: 18, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'monitored-celestial', x: 0, y: 18, w: 2, h: 9, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'solar-system', x: 0, y: 0, w: 2, h: 16, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'monitored-celestial', x: 0, y: 16, w: 2, h: 8, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-passes', x: 0, y: 24, w: 2, h: 8, resizeHandles: [...SHARED_RESIZE_HANDLES] },
     ],
     xxs: [
-        { i: 'solar-system', x: 0, y: 0, w: 2, h: 18, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'monitored-celestial', x: 0, y: 18, w: 2, h: 9, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'solar-system', x: 0, y: 0, w: 2, h: 16, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'monitored-celestial', x: 0, y: 16, w: 2, h: 8, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-passes', x: 0, y: 24, w: 2, h: 8, resizeHandles: [...SHARED_RESIZE_HANDLES] },
     ],
 };
 
@@ -239,7 +281,13 @@ const CelestialMainLayout = () => {
         if (!socket) return;
         dispatch(fetchSolarSystemScene({ socket, payload: sceneRequestPayload }));
         dispatch(fetchCelestialTracks({ socket, payload: sceneRequestPayload }));
-    }, [socket, dispatch]);
+    }, [socket, dispatch, sceneRequestPayload]);
+
+    const handleRefreshCelestial = React.useCallback(async () => {
+        if (!socket) return;
+        await dispatch(refreshMonitoredCelestialNow({ socket, payload: sceneRequestPayload }));
+        await dispatch(fetchMonitoredCelestial({ socket }));
+    }, [socket, dispatch, sceneRequestPayload]);
 
     const handleViewportCommit = React.useCallback((nextViewport) => {
         if (!socket) return;
@@ -272,6 +320,7 @@ const CelestialMainLayout = () => {
             ...tracks,
             planets: solar.planets || [],
             celestial: tracks.celestial || [],
+            celestial_passes: tracks.celestial_passes || [],
             meta: {
                 ...(solar.meta || {}),
                 ...(tracks.meta || {}),
@@ -301,6 +350,11 @@ const CelestialMainLayout = () => {
     const trackedCount = combinedScene?.celestial?.length || 0;
     const hasSolarScene = (planetsCount + moonsCount) > 0;
     const selectedTargetKeys = React.useMemo(() => {
+        const focusedKey = String(focusTargetKey || '').trim();
+        if (focusedKey) {
+            return [focusedKey];
+        }
+
         const rows = monitoredState?.monitored || [];
         const selectedId = (monitoredState?.selectedIds || [])[0];
         const selectedRow = rows.find((row) => row.id === selectedId);
@@ -315,7 +369,7 @@ const CelestialMainLayout = () => {
         }
         const command = String(selectedRow?.command || '').trim();
         return command ? [`mission:${command}`] : [];
-    }, [monitoredState?.monitored, monitoredState?.selectedIds]);
+    }, [focusTargetKey, monitoredState?.monitored, monitoredState?.selectedIds]);
     const tracksProgress = celestialState?.tracksProgress || null;
     const tracksProgressText = React.useMemo(() => {
         if (!celestialState?.tracksLoading) return '';
@@ -367,11 +421,7 @@ const CelestialMainLayout = () => {
                     onZoomIn={() => setZoomInSignal((value) => value + 1)}
                     onZoomOut={() => setZoomOutSignal((value) => value + 1)}
                     onZoomReset={() => setResetZoomSignal((value) => value + 1)}
-                    onRefresh={async () => {
-                        if (!socket) return;
-                        await dispatch(refreshMonitoredCelestialNow({ socket, payload: sceneRequestPayload }));
-                        await dispatch(fetchMonitoredCelestial({ socket }));
-                    }}
+                    onRefresh={handleRefreshCelestial}
                     loading={celestialState.tracksLoading}
                     loadingText={tracksProgressText}
                     disabled={!socket}
@@ -441,6 +491,23 @@ const CelestialMainLayout = () => {
                         }}
                     />
                 </Box>
+            </Box>
+        </StyledIslandParentNoScrollbar>,
+        <StyledIslandParentNoScrollbar key="celestial-passes">
+            <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <CelestialPasses
+                    passes={combinedScene?.celestial_passes || []}
+                    tracks={combinedScene?.celestial || []}
+                    loading={Boolean(celestialState.tracksLoading)}
+                    gridEditable={isEditing}
+                    onTargetSelected={(targetKey) => {
+                        if (!targetKey) return;
+                        setFocusTargetKey(targetKey);
+                        setFocusTargetSignal((value) => value + 1);
+                    }}
+                    onRefresh={handleRefreshCelestial}
+                    refreshDisabled={!socket || Boolean(celestialState.tracksLoading)}
+                />
             </Box>
         </StyledIslandParentNoScrollbar>,
     ];

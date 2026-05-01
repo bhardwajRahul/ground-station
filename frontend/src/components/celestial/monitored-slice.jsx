@@ -165,7 +165,6 @@ const monitoredSlice = createSlice({
             source: true,
             sourceMode: true,
             enabled: true,
-            visibility: true,
             elevationDeg: true,
             azimuthDeg: true,
             distanceFromSunAu: true,
@@ -180,7 +179,7 @@ const monitoredSlice = createSlice({
             lastError: true,
         },
         tablePageSize: 10,
-        tableSortModel: [{ field: 'visibility', sort: 'desc' }, { field: 'displayName', sort: 'asc' }],
+        tableSortModel: [{ field: 'elevationDeg', sort: 'desc' }, { field: 'displayName', sort: 'asc' }],
     },
     reducers: {
         openAddDialog: (state) => {

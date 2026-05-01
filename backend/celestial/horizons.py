@@ -185,10 +185,16 @@ def fetch_celestial_vectors(
             chosen_delta = row_delta
 
     trajectory_points: List[List[float]] = []
+    trajectory_times_utc: List[str] = []
     for row in parsed_rows:
         position = row.get("position_xyz_au")
         if isinstance(position, list) and len(position) >= 3:
             trajectory_points.append([float(position[0]), float(position[1]), float(position[2])])
+            row_epoch = row.get("epoch_utc")
+            if isinstance(row_epoch, datetime):
+                trajectory_times_utc.append(row_epoch.astimezone(timezone.utc).isoformat())
+            else:
+                trajectory_times_utc.append("")
 
     signature = payload.get("signature", {})
 
@@ -197,6 +203,7 @@ def fetch_celestial_vectors(
         "position_xyz_au": chosen_row["position_xyz_au"],
         "velocity_xyz_au_per_day": chosen_row["velocity_xyz_au_per_day"],
         "orbit_samples_xyz_au": trajectory_points,
+        "orbit_sample_times_utc": trajectory_times_utc,
         "orbit_sampling": {
             "past_hours": bounded_past_hours,
             "future_hours": bounded_future_hours,

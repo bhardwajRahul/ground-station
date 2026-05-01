@@ -265,7 +265,7 @@ const tasksPersistConfig = {
 const celestialPersistConfig = {
     key: 'celestial',
     storage,
-    whitelist: ['mapSettings']
+    whitelist: ['mapSettings', 'passesTableColumnVisibility', 'passesTablePageSize', 'passesTableSortModel']
 };
 
 const celestialMonitoredPersistConfig = {
