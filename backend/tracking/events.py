@@ -14,6 +14,7 @@ from skyfield.api import EarthSatellite, Loader, Topos
 import crud
 from common.common import ModelEncoder
 from db import AsyncSessionLocal
+from orbits import CentralBody, get_propagation_input
 
 from .passes import calculate_next_events
 
@@ -83,9 +84,10 @@ def _calculate_elevation_curve(
         ts = skyfieldloader.timescale()
 
         # Create satellite and observer objects
+        propagation_input = get_propagation_input(satellite_data, central_body=CentralBody.EARTH)
         satellite = EarthSatellite(
-            satellite_data["tle1"],
-            satellite_data["tle2"],
+            propagation_input.tle1,
+            propagation_input.tle2,
             name=f"satellite_{satellite_data['norad_id']}",
         )
         observer = Topos(
@@ -310,9 +312,12 @@ async def fetch_next_events_for_group(
             satellites = json.loads(json.dumps(satellites["data"], cls=ModelEncoder))
 
             # Generate cache key for this request
-            tle_groups_for_cache = [
-                [sat["norad_id"], sat["tle1"], sat["tle2"]] for sat in satellites
-            ]
+            tle_groups_for_cache = []
+            for sat in satellites:
+                propagation_input = get_propagation_input(sat, central_body=CentralBody.EARTH)
+                tle_groups_for_cache.append(
+                    [sat["norad_id"], propagation_input.tle1, propagation_input.tle2]
+                )
             cache_key = _generate_cache_key(
                 tle_groups_for_cache, homelat, homelon, hours, above_el, step_minutes
             )
@@ -509,7 +514,10 @@ async def fetch_next_events_for_satellite(
             satellite = json.loads(json.dumps(satellite_reply["data"][0], cls=ModelEncoder))
 
             # Generate cache key for this request
-            tle_groups_for_cache = [[satellite["norad_id"], satellite["tle1"], satellite["tle2"]]]
+            propagation_input = get_propagation_input(satellite, central_body=CentralBody.EARTH)
+            tle_groups_for_cache = [
+                [satellite["norad_id"], propagation_input.tle1, propagation_input.tle2]
+            ]
             cache_key = _generate_cache_key(
                 tle_groups_for_cache, homelat, homelon, hours, above_el, step_minutes
             )

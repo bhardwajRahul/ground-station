@@ -31,6 +31,7 @@ from typing import Any, Dict, Optional, cast
 import crud
 from common.constants import RigStates, RotatorStates, TrackerCommandScopes, TrackerCommandStatus
 from db import AsyncSessionLocal
+from orbits import CentralBody, OrbitServiceError, build_satellite_ephemeris_payload
 from tracker.contracts import get_tracking_state_name, require_tracker_id
 from tracker.ipc import (
     TRACKER_MSG_COMMAND,
@@ -365,15 +366,12 @@ class TrackerManager:
         sat = satellites["data"][0]
         logger.info("notify_tle_updated: sending TLE update for norad_id=%s", norad_id)
         logger.debug("notify_tle_updated: sending TLE update for norad_id=%s", norad_id)
-        self._send_to_tracker(
-            TRACKER_MSG_SET_SATELLITE_EPHEMERIS,
-            {
-                "norad_id": sat.get("norad_id"),
-                "name": sat.get("name"),
-                "tle1": sat.get("tle1"),
-                "tle2": sat.get("tle2"),
-            },
-        )
+        try:
+            payload = build_satellite_ephemeris_payload(sat, central_body=CentralBody.EARTH)
+        except OrbitServiceError as e:
+            logger.error("notify_tle_updated: invalid orbit data for norad_id=%s (%s)", norad_id, e)
+            return
+        self._send_to_tracker(TRACKER_MSG_SET_SATELLITE_EPHEMERIS, payload)
 
     async def notify_tracking_inputs_from_db(self, norad_id: int) -> None:
         if not norad_id:
@@ -404,15 +402,16 @@ class TrackerManager:
                 return
         if satellites.get("success") and satellites.get("data"):
             sat = satellites["data"][0]
-            self._send_to_tracker(
-                TRACKER_MSG_SET_SATELLITE_EPHEMERIS,
-                {
-                    "norad_id": sat.get("norad_id"),
-                    "name": sat.get("name"),
-                    "tle1": sat.get("tle1"),
-                    "tle2": sat.get("tle2"),
-                },
-            )
+            try:
+                payload = build_satellite_ephemeris_payload(sat, central_body=CentralBody.EARTH)
+            except OrbitServiceError as e:
+                logger.error(
+                    "notify_tracking_inputs_from_db: invalid orbit data for norad_id=%s (%s)",
+                    norad_id,
+                    e,
+                )
+            else:
+                self._send_to_tracker(TRACKER_MSG_SET_SATELLITE_EPHEMERIS, payload)
         if transmitters.get("success"):
             self._send_to_tracker(
                 TRACKER_MSG_SET_TRANSMITTERS,
@@ -494,15 +493,18 @@ class TrackerManager:
                 satellites = await crud.satellites.fetch_satellites(dbsession, norad_id=norad_id)
                 if satellites.get("success") and satellites.get("data"):
                     sat = satellites["data"][0]
-                    self._send_to_tracker(
-                        TRACKER_MSG_SET_SATELLITE_EPHEMERIS,
-                        {
-                            "norad_id": sat.get("norad_id"),
-                            "name": sat.get("name"),
-                            "tle1": sat.get("tle1"),
-                            "tle2": sat.get("tle2"),
-                        },
-                    )
+                    try:
+                        payload = build_satellite_ephemeris_payload(
+                            sat, central_body=CentralBody.EARTH
+                        )
+                    except OrbitServiceError as e:
+                        logger.error(
+                            "_sync_tracker_context: invalid orbit data for norad_id=%s (%s)",
+                            norad_id,
+                            e,
+                        )
+                    else:
+                        self._send_to_tracker(TRACKER_MSG_SET_SATELLITE_EPHEMERIS, payload)
 
                 transmitters = await crud.transmitters.fetch_transmitters_for_satellite(
                     dbsession, norad_id=norad_id

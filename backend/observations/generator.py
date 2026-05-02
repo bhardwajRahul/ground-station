@@ -47,6 +47,7 @@ from observations.constants import (
     STATUS_MISSED,
     STATUS_SCHEDULED,
 )
+from orbits import CentralBody, OrbitServiceError, get_propagation_input
 from tracking.elcalculator import calculate_elevation_crossing_time
 from tracking.passes import calculate_next_events
 
@@ -346,6 +347,13 @@ async def _generate_observations_for_satellite(
         return stats
 
     satellite_data = sat_result["data"][0]  # fetch_satellites returns a list
+    try:
+        satellite_propagation_input = get_propagation_input(
+            satellite_data, central_body=CentralBody.EARTH
+        )
+    except OrbitServiceError as e:
+        logger.error("Failed to resolve orbit data for NORAD ID %s: %s", norad_id, e)
+        return stats
 
     # Extract generation config (flattened in the dict by CRUD transform)
     min_elevation = monitored_sat.get("min_elevation", 20)
@@ -393,8 +401,8 @@ async def _generate_observations_for_satellite(
     for pass_data in valid_passes:
         try:
             # Add TLE to pass_data for elevation calculations
-            pass_data["tle1"] = satellite_data.get("tle1")
-            pass_data["tle2"] = satellite_data.get("tle2")
+            pass_data["tle1"] = satellite_propagation_input.tle1
+            pass_data["tle2"] = satellite_propagation_input.tle2
 
             event_start = datetime.fromisoformat(pass_data["event_start"].replace("Z", "+00:00"))
             event_end = datetime.fromisoformat(pass_data["event_end"].replace("Z", "+00:00"))
@@ -417,7 +425,13 @@ async def _generate_observations_for_satellite(
                 task_end_time = None
 
                 if task_start_elevation > 0:
-                    satellite_tle = {"tle1": pass_data.get("tle1"), "tle2": pass_data.get("tle2")}
+                    pass_propagation_input = get_propagation_input(
+                        pass_data, central_body=CentralBody.EARTH
+                    )
+                    satellite_tle = {
+                        "tle1": pass_propagation_input.tle1,
+                        "tle2": pass_propagation_input.tle2,
+                    }
                     location_result = await crud_locations.fetch_all_locations(session)
                     if (
                         location_result
@@ -615,26 +629,39 @@ async def _create_observation(session: AsyncSession, monitored_sat: dict, pass_d
 
     if task_start_elevation > 0:
         # Get satellite TLE
-        satellite_tle = {"tle1": pass_data.get("tle1"), "tle2": pass_data.get("tle2")}
+        try:
+            pass_propagation_input = get_propagation_input(
+                pass_data, central_body=CentralBody.EARTH
+            )
+            satellite_tle = {
+                "tle1": pass_propagation_input.tle1,
+                "tle2": pass_propagation_input.tle2,
+            }
+        except OrbitServiceError as e:
+            logger.warning(
+                "Skipping elevation crossing calculation for %s: %s", satellite["name"], e
+            )
+            satellite_tle = None
 
         # Get ground station location
-        location_result = await crud_locations.fetch_all_locations(session)
-        if (
-            location_result
-            and location_result.get("success")
-            and len(location_result.get("data", [])) > 0
-        ):
-            location = location_result["data"][0]
-            home_location = {"lat": location.get("lat"), "lon": location.get("lon")}
+        if satellite_tle is not None:
+            location_result = await crud_locations.fetch_all_locations(session)
+            if (
+                location_result
+                and location_result.get("success")
+                and len(location_result.get("data", [])) > 0
+            ):
+                location = location_result["data"][0]
+                home_location = {"lat": location.get("lat"), "lon": location.get("lon")}
 
-            # Calculate when satellite crosses task_start_elevation (both ascending and descending)
-            task_start, task_end = calculate_elevation_crossing_time(
-                satellite_tle=satellite_tle,
-                home_location=home_location,
-                aos_time=event_start,
-                los_time=event_end,
-                target_elevation=task_start_elevation,
-            )
+                # Calculate when satellite crosses task_start_elevation (both ascending and descending)
+                task_start, task_end = calculate_elevation_crossing_time(
+                    satellite_tle=satellite_tle,
+                    home_location=home_location,
+                    aos_time=event_start,
+                    los_time=event_end,
+                    target_elevation=task_start_elevation,
+                )
 
     # Fall back to event_start/event_end if calculation failed or elevation never reached
     if not task_start:
@@ -705,26 +732,39 @@ async def _update_observation(
 
     if task_start_elevation > 0:
         # Get satellite TLE
-        satellite_tle = {"tle1": pass_data.get("tle1"), "tle2": pass_data.get("tle2")}
+        try:
+            pass_propagation_input = get_propagation_input(
+                pass_data, central_body=CentralBody.EARTH
+            )
+            satellite_tle = {
+                "tle1": pass_propagation_input.tle1,
+                "tle2": pass_propagation_input.tle2,
+            }
+        except OrbitServiceError as e:
+            logger.warning(
+                "Skipping elevation crossing calculation for %s: %s", satellite["name"], e
+            )
+            satellite_tle = None
 
         # Get ground station location
-        location_result = await crud_locations.fetch_all_locations(session)
-        if (
-            location_result
-            and location_result.get("success")
-            and len(location_result.get("data", [])) > 0
-        ):
-            location = location_result["data"][0]
-            home_location = {"lat": location.get("lat"), "lon": location.get("lon")}
+        if satellite_tle is not None:
+            location_result = await crud_locations.fetch_all_locations(session)
+            if (
+                location_result
+                and location_result.get("success")
+                and len(location_result.get("data", [])) > 0
+            ):
+                location = location_result["data"][0]
+                home_location = {"lat": location.get("lat"), "lon": location.get("lon")}
 
-            # Calculate when satellite crosses task_start_elevation (both ascending and descending)
-            task_start, task_end = calculate_elevation_crossing_time(
-                satellite_tle=satellite_tle,
-                home_location=home_location,
-                aos_time=event_start,
-                los_time=event_end,
-                target_elevation=task_start_elevation,
-            )
+                # Calculate when satellite crosses task_start_elevation (both ascending and descending)
+                task_start, task_end = calculate_elevation_crossing_time(
+                    satellite_tle=satellite_tle,
+                    home_location=home_location,
+                    aos_time=event_start,
+                    los_time=event_end,
+                    target_elevation=task_start_elevation,
+                )
 
     # Fall back to event_start/event_end if calculation failed or elevation never reached
     if not task_start:

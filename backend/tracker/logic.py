@@ -25,6 +25,7 @@ import psutil
 
 from common.arguments import arguments as args
 from common.constants import DictKeys, SocketEvents
+from orbits import CentralBody, OrbitServiceError, get_propagation_input
 from tracker.contracts import require_tracker_id
 from tracker.data import compiled_satellite_data_from_inputs
 from tracker.ipc import (
@@ -328,10 +329,14 @@ class SatelliteTracker:
                     f"{tracking_state.get('norad_id')}"
                 )
 
-                satellite_tles = [
-                    self.input_satellite["tle1"],
-                    self.input_satellite["tle2"],
-                ]
+                try:
+                    propagation_input = get_propagation_input(
+                        self.input_satellite, central_body=CentralBody.EARTH
+                    )
+                except OrbitServiceError as e:
+                    logger.warning("Invalid satellite ephemeris payload for tracker loop: %s", e)
+                    continue
+                satellite_tles = [propagation_input.tle1, propagation_input.tle2]
                 satellite_name = self.input_satellite["name"]
 
                 # Update current state variables

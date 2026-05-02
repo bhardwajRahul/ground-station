@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional, TypedDict, Union
 import crud
 from common.common import is_geostationary, serialize_object
 from db import AsyncSessionLocal
+from orbits import CentralBody, get_propagation_input
 from tracker.contracts import get_tracking_state_name
 from tracking.footprint import get_satellite_coverage_circle
 from tracking.satellite import (
@@ -231,9 +232,12 @@ async def compiled_satellite_data(dbsession, norad_id: int) -> Dict[str, Any]:
             )
 
         satellite_details: Dict[str, Any] = satellite["data"][0]
-        satellite_data["details"] = satellite_details
+        propagation_input = get_propagation_input(satellite_details, central_body=CentralBody.EARTH)
+        satellite_data["details"] = dict(satellite_details)
+        satellite_data["details"]["tle1"] = propagation_input.tle1
+        satellite_data["details"]["tle2"] = propagation_input.tle2
         satellite_data["details"]["is_geostationary"] = is_geostationary(
-            [satellite_details["tle1"], satellite_details["tle2"]]
+            [propagation_input.tle1, propagation_input.tle2]
         )
 
         # get target map settings
@@ -263,8 +267,8 @@ async def compiled_satellite_data(dbsession, norad_id: int) -> Dict[str, Any]:
         position = get_satellite_position_from_tle(
             [
                 satellite_details["name"],
-                satellite_details["tle1"],
-                satellite_details["tle2"],
+                propagation_input.tle1,
+                propagation_input.tle2,
             ]
         )
 
@@ -274,14 +278,14 @@ async def compiled_satellite_data(dbsession, norad_id: int) -> Dict[str, Any]:
         sky_point = get_satellite_az_el(
             home_lat,
             home_lon,
-            satellite_details["tle1"],
-            satellite_details["tle2"],
+            propagation_input.tle1,
+            propagation_input.tle2,
             datetime.now(timezone.utc),
         )
 
         # calculate paths with caching
-        tle1 = satellite_details["tle1"]
-        tle2 = satellite_details["tle2"]
+        tle1 = propagation_input.tle1
+        tle2 = propagation_input.tle2
         duration_minutes = int(target_map_settings.get("orbitProjectionDuration", 240))
         step_minutes = 0.5
 
@@ -343,16 +347,15 @@ def compiled_satellite_data_from_inputs(
         if not satellite or not location:
             raise Exception("Missing satellite or location data")
 
+        propagation_input = get_propagation_input(satellite, central_body=CentralBody.EARTH)
         satellite_details = {
             "name": satellite.get("name"),
-            "tle1": satellite.get("tle1"),
-            "tle2": satellite.get("tle2"),
+            "tle1": propagation_input.tle1,
+            "tle2": propagation_input.tle2,
             "norad_id": satellite.get("norad_id"),
         }
-        if not satellite_details["tle1"] or not satellite_details["tle2"]:
-            raise ValueError("Missing TLE data for satellite")
         satellite_details["is_geostationary"] = is_geostationary(
-            [satellite_details["tle1"], satellite_details["tle2"]]
+            [propagation_input.tle1, propagation_input.tle2]
         )
         satellite_data["details"] = satellite_details
 
@@ -360,8 +363,8 @@ def compiled_satellite_data_from_inputs(
         position = get_satellite_position_from_tle(
             [
                 satellite_details["name"],
-                satellite_details["tle1"],
-                satellite_details["tle2"],
+                propagation_input.tle1,
+                propagation_input.tle2,
             ]
         )
 
@@ -370,8 +373,8 @@ def compiled_satellite_data_from_inputs(
         sky_point = get_satellite_az_el(
             home_lat,
             home_lon,
-            satellite_details["tle1"],
-            satellite_details["tle2"],
+            propagation_input.tle1,
+            propagation_input.tle2,
             datetime.now(timezone.utc),
         )
 
@@ -379,8 +382,8 @@ def compiled_satellite_data_from_inputs(
         duration_minutes = int((map_settings or {}).get("orbitProjectionDuration", 240))
         step_minutes = 0.5
 
-        tle1 = str(satellite_details["tle1"])
-        tle2 = str(satellite_details["tle2"])
+        tle1 = propagation_input.tle1
+        tle2 = propagation_input.tle2
 
         cached_paths = get_cached_satellite_paths(
             tle1,

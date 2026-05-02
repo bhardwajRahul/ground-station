@@ -21,6 +21,8 @@ from typing import Optional
 import numpy as np
 from skyfield.api import EarthSatellite, Loader, Topos
 
+from orbits import CentralBody, OrbitServiceError, get_propagation_input
+
 logger = logging.getLogger("passes-worker")
 
 
@@ -51,8 +53,13 @@ def calculate_elevation_crossing_time(
     """
     try:
         # Validate inputs
-        if not satellite_tle or not satellite_tle.get("tle1") or not satellite_tle.get("tle2"):
+        if not satellite_tle:
             logger.error("Invalid satellite TLE data (missing or None)")
+            return (None, None)
+        try:
+            propagation_input = get_propagation_input(satellite_tle, central_body=CentralBody.EARTH)
+        except OrbitServiceError as e:
+            logger.error("Invalid satellite orbit data: %s", e)
             return (None, None)
 
         if (
@@ -73,7 +80,7 @@ def calculate_elevation_crossing_time(
         observer = Topos(latitude_degrees=homelat, longitude_degrees=homelon)
 
         # Create satellite object
-        satellite = EarthSatellite(satellite_tle["tle1"], satellite_tle["tle2"], ts=ts)
+        satellite = EarthSatellite(propagation_input.tle1, propagation_input.tle2, ts=ts)
 
         # Convert datetime objects to Skyfield time
         t_aos = ts.from_datetime(aos_time)

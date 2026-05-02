@@ -23,6 +23,7 @@ import numpy as np
 from skyfield.api import EarthSatellite, Loader, Topos
 
 from common.common import ModelEncoder
+from orbits import CentralBody, OrbitServiceError, get_propagation_input
 
 logger = logging.getLogger("passes-worker")
 
@@ -65,27 +66,40 @@ def calculate_next_events(
     tle_groups = []
     satellite_info = {}  # Map norad_id to full satellite data
 
-    if isinstance(satellite_data, dict):
-        # Single satellite case
-        tle_groups = [[satellite_data["norad_id"], satellite_data["tle1"], satellite_data["tle2"]]]
-        satellite_info[satellite_data["norad_id"]] = satellite_data
-        satellites_count = 1
-    elif isinstance(satellite_data, list) and len(satellite_data) > 0:
-        # Multiple satellites case
-        if isinstance(satellite_data[0], dict):
-            # List of satellite dictionaries
-            for sat in satellite_data:
-                tle_groups.append([sat["norad_id"], sat["tle1"], sat["tle2"]])
-                satellite_info[sat["norad_id"]] = sat
-            satellites_count = len(satellite_data)
+    try:
+        if isinstance(satellite_data, dict):
+            # Single satellite case
+            propagation_input = get_propagation_input(
+                satellite_data, central_body=CentralBody.EARTH
+            )
+            tle_groups = [
+                [satellite_data["norad_id"], propagation_input.tle1, propagation_input.tle2]
+            ]
+            satellite_info[satellite_data["norad_id"]] = satellite_data
+            satellites_count = 1
+        elif isinstance(satellite_data, list) and len(satellite_data) > 0:
+            # Multiple satellites case
+            if isinstance(satellite_data[0], dict):
+                # List of satellite dictionaries
+                for sat in satellite_data:
+                    propagation_input = get_propagation_input(sat, central_body=CentralBody.EARTH)
+                    tle_groups.append(
+                        [sat["norad_id"], propagation_input.tle1, propagation_input.tle2]
+                    )
+                    satellite_info[sat["norad_id"]] = sat
+                satellites_count = len(satellite_data)
+            else:
+                # Fallback for old format (list of tle_groups directly)
+                tle_groups = satellite_data
+                satellites_count = len(satellite_data)
         else:
-            # Fallback for old format (list of tle_groups directly)
-            tle_groups = satellite_data
-            satellites_count = len(satellite_data)
-    else:
-        # Invalid input
+            # Invalid input
+            reply["success"] = False
+            reply["error"] = "Invalid satellite_data format. Expected dict or list of dicts."
+            return reply
+    except OrbitServiceError as e:
         reply["success"] = False
-        reply["error"] = "Invalid satellite_data format. Expected dict or list of dicts."
+        reply["error"] = f"Invalid orbit data: {e}"
         return reply
 
     logger.info(f"Calculating passes for {satellites_count} satellites for the next {hours} hours.")
