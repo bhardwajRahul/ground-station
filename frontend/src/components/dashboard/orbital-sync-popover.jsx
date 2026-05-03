@@ -42,7 +42,7 @@ import CloudDoneIcon from '@mui/icons-material/CloudDone';
 import CloudOffIcon from '@mui/icons-material/CloudOff';
 import SyncIcon from '@mui/icons-material/Sync';
 
-const SatelliteSyncPopover = () => {
+const OrbitalSyncPopover = () => {
     const { t } = useTranslation('dashboard');
     const buttonRef = useRef(null);
     const [anchorEl, setAnchorEl] = useState(null);
@@ -78,18 +78,18 @@ const SatelliteSyncPopover = () => {
     };
 
     const getTooltip = () => {
-        if (syncState?.status === 'inprogress') return t('tlesync_popover.syncing', { progress: syncState?.progress || 0 });
-        if (syncState?.status === 'complete' && syncState?.success === false) return t('tlesync_popover.sync_failed', { error: syncState.errors?.[0] || 'Unknown error' });
+        if (syncState?.status === 'inprogress') return t('orbital_sync_popover.syncing', { progress: syncState?.progress || 0 });
+        if (syncState?.status === 'complete' && syncState?.success === false) return t('orbital_sync_popover.sync_failed', { error: syncState.errors?.[0] || 'Unknown error' });
         if (syncState?.status === 'complete' && syncState?.success === true) {
             const date = new Date(syncState.last_update);
-            return t('tlesync_popover.last_sync', { date: date.toLocaleString('en-US', { timeZone: timezone }) });
+            return t('orbital_sync_popover.last_sync', { date: date.toLocaleString('en-US', { timeZone: timezone }) });
         }
-        return t('tlesync_popover.satellite_tle_sync');
+        return t('orbital_sync_popover.satellite_orbital_sync');
     };
 
     // Format date nicely with user's timezone
     const formatDate = (dateString) => {
-        if (!dateString) return t('tlesync_popover.na');
+        if (!dateString) return t('orbital_sync_popover.na');
         const date = new Date(dateString);
         return date.toLocaleString('en-US', { timeZone: timezone });
     };
@@ -151,7 +151,7 @@ const SatelliteSyncPopover = () => {
                                 </Typography>
                             ) : (
                                 <Typography variant="caption" sx={{ fontSize: 10, fontWeight: 'bold' }}>
-                                    TLE
+                                    ORB
                                 </Typography>
                             )}
                         </Box>
@@ -189,17 +189,17 @@ const SatelliteSyncPopover = () => {
                 >
                     {/* Header */}
                     <Typography variant="h6" sx={{ mb: 2, color: 'text.primary' }}>
-                        {t('tlesync_popover.tle_sync_status')}
+                        {t('orbital_sync_popover.orbital_sync_status')}
                     </Typography>
 
                     {/* Status */}
                     <Stack spacing={2}>
                         <Box>
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                                {t('tlesync_popover.status')}
+                                {t('orbital_sync_popover.status')}
                             </Typography>
                             <Chip
-                                label={syncState?.status || t('tlesync_popover.idle')}
+                                label={syncState?.status || t('orbital_sync_popover.idle')}
                                 color={
                                     syncState?.status === 'complete' && syncState?.success === true
                                         ? 'success'
@@ -228,7 +228,7 @@ const SatelliteSyncPopover = () => {
                         {syncState?.status === 'inprogress' && (
                             <Box>
                                 <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                                    {t('tlesync_popover.progress', { progress: syncState?.progress || 0 })}
+                                    {t('orbital_sync_popover.progress', { progress: syncState?.progress || 0 })}
                                 </Typography>
                                 <LinearProgress
                                     variant="determinate"
@@ -241,7 +241,7 @@ const SatelliteSyncPopover = () => {
                         {/* Last Update */}
                         <Box>
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
-                                {t('tlesync_popover.last_update')}
+                                {t('orbital_sync_popover.last_update')}
                             </Typography>
                             <Typography variant="body2" sx={{ color: 'text.primary' }}>
                                 {formatDate(syncState?.last_update)}
@@ -254,21 +254,21 @@ const SatelliteSyncPopover = () => {
                         {syncState?.stats && (
                             <Box>
                                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                    {t('tlesync_popover.statistics')}
+                                    {t('orbital_sync_popover.statistics')}
                                 </Typography>
                                 <Stack direction="row" spacing={1} flexWrap="wrap">
                                     <Chip
-                                        label={t('tlesync_popover.satellites', { count: syncState.stats.satellites_processed || 0 })}
+                                        label={t('orbital_sync_popover.satellites', { count: syncState.stats.satellites_processed || 0 })}
                                         size="small"
                                         variant="outlined"
                                     />
                                     <Chip
-                                        label={t('tlesync_popover.transmitters', { count: syncState.stats.transmitters_processed || 0 })}
+                                        label={t('orbital_sync_popover.transmitters', { count: syncState.stats.transmitters_processed || 0 })}
                                         size="small"
                                         variant="outlined"
                                     />
                                     <Chip
-                                        label={t('tlesync_popover.groups', { count: syncState.stats.groups_processed || 0 })}
+                                        label={t('orbital_sync_popover.groups', { count: syncState.stats.groups_processed || 0 })}
                                         size="small"
                                         variant="outlined"
                                     />
@@ -280,7 +280,7 @@ const SatelliteSyncPopover = () => {
                         {syncState?.errors && syncState.errors.length > 0 && (
                             <Box>
                                 <Typography variant="body2" color="error" sx={{ mb: 1 }}>
-                                    {t('tlesync_popover.errors', { count: syncState.errors.length })}
+                                    {t('orbital_sync_popover.errors', { count: syncState.errors.length })}
                                 </Typography>
                                 <List dense sx={{ maxHeight: 120, overflow: 'auto' }}>
                                     {syncState.errors.map((error, index) => (
@@ -304,4 +304,4 @@ const SatelliteSyncPopover = () => {
     );
 };
 
-export default SatelliteSyncPopover;
+export default OrbitalSyncPopover;

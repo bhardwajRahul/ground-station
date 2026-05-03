@@ -13,7 +13,7 @@ import ErrorSection from './synchronize-error.jsx';
 import SyncResultsTable from './synchronize-results.jsx';
 
 
-const SynchronizeTLEsCard = function () {
+const SynchronizeOrbitalDataCard = function () {
     const dispatch = useDispatch();
     const { socket } = useSocket();
     const {
@@ -123,4 +123,4 @@ const SynchronizeTLEsCard = function () {
     );
 };
 
-export default SynchronizeTLEsCard;
+export default SynchronizeOrbitalDataCard;
