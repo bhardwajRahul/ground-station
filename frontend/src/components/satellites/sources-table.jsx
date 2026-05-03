@@ -31,6 +31,7 @@ import {
     DialogActions,
     TextField,
     Stack, Select, MenuItem, FormControl, InputLabel, Typography, FormControlLabel, Switch,
+    IconButton,
     FormHelperText,
     Accordion,
     AccordionSummary,
@@ -39,6 +40,7 @@ import {
 import { alpha } from '@mui/material/styles';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import { useTranslation } from 'react-i18next';
 import {useDispatch, useSelector} from 'react-redux';
 import {
@@ -347,6 +349,29 @@ export default function SourcesTable() {
                 return betterDateTimes(params.value, timezone);
             }
         },
+        {
+            field: 'row_actions',
+            headerName: '',
+            width: 56,
+            sortable: false,
+            filterable: false,
+            disableColumnMenu: true,
+            align: 'center',
+            headerAlign: 'center',
+            renderCell: (params) => (
+                <IconButton
+                    size="small"
+                    aria-label={t('orbital_sources.edit')}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        dispatch(setFormValues(toFormValues(params.row)));
+                        dispatch(setOpenAddDialog(true));
+                    }}
+                >
+                    <EditOutlinedIcon fontSize="small" />
+                </IconButton>
+            ),
+        },
     ];
 
     const handleAddClick = () => {
@@ -471,6 +496,7 @@ export default function SourcesTable() {
                     initialState={{pagination: {paginationModel}}}
                     pageSizeOptions={[5, 10, 25, 50, 100]}
                     checkboxSelection={true}
+                    disableRowSelectionOnClick
                     onRowSelectionModelChange={(selected) => {
                         dispatch(setSelected(toSelectedIds(selected)));
                     }}
