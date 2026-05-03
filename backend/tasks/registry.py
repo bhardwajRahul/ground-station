@@ -10,7 +10,7 @@ from typing import Callable, Dict
 from tasks.exampletask import example_failing_task, example_long_task, example_quick_task
 from tasks.satdumpprocessor import satdump_process_recording
 from tasks.soapysdrdiscovery import soapysdr_discovery_task, soapysdr_quick_refresh_task
-from tasks.tlesync import tle_sync_background_task
+from tasks.tlesync import orbital_sync_background_task, tle_sync_background_task
 from tasks.waterfallgenerator import generate_waterfall_task
 
 # Registry of available background tasks
@@ -25,6 +25,7 @@ TASK_REGISTRY: Dict[str, Callable] = {
     "satdump_process": satdump_process_recording,
     "soapysdr_discovery": soapysdr_discovery_task,
     "soapysdr_quick_refresh": soapysdr_quick_refresh_task,
+    "orbital_sync": orbital_sync_background_task,
     "tle_sync": tle_sync_background_task,
 }
 

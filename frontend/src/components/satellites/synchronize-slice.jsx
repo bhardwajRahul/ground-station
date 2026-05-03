@@ -26,7 +26,7 @@ export const startSatelliteSync = createAsyncThunk(
     'syncSatellite/start',
     async ({ socket }, { rejectWithValue }) => {
         try {
-            toast.info('TLE synchronization started...', {
+            toast.info('Orbital data synchronization started...', {
                 icon: () => <SatelliteAltIcon />,
             });
             return await new Promise((resolve, reject) => {

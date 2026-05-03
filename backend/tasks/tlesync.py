@@ -1,7 +1,7 @@
 """
-TLE Synchronization background task.
+Orbital data synchronization background task.
 
-This task synchronizes satellite TLE data from configured sources (e.g., Celestrak)
+This task synchronizes satellite orbital data from configured sources (e.g., Celestrak)
 and satellite/transmitter metadata from SATNOGS. It's designed to run as a background
 task with comprehensive progress reporting.
 """
@@ -41,12 +41,12 @@ class GracefulKiller:
         self.kill_now = True
 
 
-def tle_sync_background_task(_progress_queue: Optional[Queue] = None):
+def orbital_sync_background_task(_progress_queue: Optional[Queue] = None):
     """
-    Synchronize TLE and satellite data as a background task.
+    Synchronize orbital and satellite data as a background task.
 
     This task:
-    - Fetches TLE data from configured sources (Celestrak, etc.)
+    - Fetches orbital data from configured sources (Celestrak, etc.)
     - Fetches satellite metadata from SATNOGS
     - Fetches transmitter data from SATNOGS
     - Updates the database with all changes
@@ -61,8 +61,8 @@ def tle_sync_background_task(_progress_queue: Optional[Queue] = None):
     """
     # Set process name
     if HAS_SETPROCTITLE:
-        setproctitle.setproctitle("Ground Station - TLE-Sync")
-    multiprocessing.current_process().name = "Ground Station - TLE-Sync"
+        setproctitle.setproctitle("Ground Station - Orbital-Sync")
+    multiprocessing.current_process().name = "Ground Station - Orbital-Sync"
 
     killer = GracefulKiller()
 
@@ -70,7 +70,7 @@ def tle_sync_background_task(_progress_queue: Optional[Queue] = None):
         _progress_queue.put(
             {
                 "type": "output",
-                "output": "Starting TLE synchronization...",
+                "output": "Starting orbital data synchronization...",
                 "stream": "stdout",
                 "progress": 0,
             }
@@ -106,13 +106,13 @@ def tle_sync_background_task(_progress_queue: Optional[Queue] = None):
                         This replaces the direct sio.emit() calls in the original function.
                         """
                         if killer.kill_now:
-                            raise InterruptedError("TLE sync cancelled by user")
+                            raise InterruptedError("Orbital sync cancelled by user")
 
                         if _progress_queue:
                             # Send the complete sync state to the manager
                             _progress_queue.put(
                                 {
-                                    "type": "tle_sync_state",
+                                    "type": "orbital_sync_state",
                                     "state": state,
                                     "progress": state.get("progress", 0),
                                 }
@@ -132,7 +132,7 @@ def tle_sync_background_task(_progress_queue: Optional[Queue] = None):
             _progress_queue.put(
                 {
                     "type": "output",
-                    "output": "TLE synchronization completed successfully",
+                    "output": "Orbital data synchronization completed successfully",
                     "stream": "stdout",
                     "progress": 100,
                 }
@@ -146,14 +146,14 @@ def tle_sync_background_task(_progress_queue: Optional[Queue] = None):
             _progress_queue.put(
                 {
                     "type": "output",
-                    "output": f"TLE synchronization cancelled: {str(e)}",
+                    "output": f"Orbital data synchronization cancelled: {str(e)}",
                     "stream": "stdout",
                 }
             )
         return {"status": "cancelled"}
 
     except Exception as e:
-        error_msg = f"TLE synchronization failed: {str(e)}"
+        error_msg = f"Orbital data synchronization failed: {str(e)}"
         logger.error(error_msg, exc_info=True)
         if _progress_queue:
             _progress_queue.put({"type": "error", "error": error_msg, "stream": "stderr"})
@@ -162,3 +162,7 @@ def tle_sync_background_task(_progress_queue: Optional[Queue] = None):
 
     finally:
         loop.close()
+
+
+# Backward-compatible alias for legacy callers/registry keys.
+tle_sync_background_task = orbital_sync_background_task

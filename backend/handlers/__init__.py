@@ -55,6 +55,7 @@ __all__ = [
     "dispatch_request",
     # Entity modules
     "satellites",
+    "orbitalsources.py",
     "tlesources.py",
     "groups",
     "hardware",

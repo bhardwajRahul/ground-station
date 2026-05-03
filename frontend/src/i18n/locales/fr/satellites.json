@@ -7,7 +7,7 @@
   "tle": "TLE",
   "satellite_database": {
     "title": "Base de données des satellites",
-    "subtitle": "Parcourez et gérez la base de données des satellites organisée par groupes. Sélectionnez un groupe de satellites dans le menu déroulant pour afficher les satellites avec leur statut opérationnel, leurs bandes de fréquences, leurs pays, leurs opérateurs et leurs dates de mission. Cliquez sur n'importe quelle ligne de satellite pour afficher des informations détaillées incluant les spécifications des émetteurs, les paramètres orbitaux et les données de suivi en temps réel. Les données satellitaires sont automatiquement synchronisées à partir des sources TLE et enrichies avec les informations de fréquence provenant de la base de données SatNOGS.",
+    "subtitle": "Parcourez et gérez la base de données des satellites organisée par groupes. Sélectionnez un groupe de satellites dans le menu déroulant pour afficher les satellites avec leur statut opérationnel, leurs bandes de fréquences, leurs pays, leurs opérateurs et leurs dates de mission. Cliquez sur n'importe quelle ligne de satellite pour afficher des informations détaillées incluant les spécifications des émetteurs, les paramètres orbitaux et les données de suivi en temps réel. Les données satellitaires sont automatiquement synchronisées à partir des sources orbitales et enrichies avec les informations de fréquence provenant de la base de données SatNOGS.",
     "select_group": "Sélectionnez l'un des groupes de satellites",
     "add": "Ajouter",
     "edit": "Modifier",
@@ -61,9 +61,9 @@
     "failed_update": "Échec de la mise à jour du satellite",
     "failed_delete": "Échec de la suppression des satellites"
   },
-  "tle_sources": {
-    "title": "Sources de données TLE",
-    "subtitle": "Cette page gère les sources de données TLE (Two-Line Element) pour le suivi des satellites. Vous pouvez ajouter, modifier et supprimer des sources TLE personnalisées au format 3LE provenant de divers fournisseurs, notamment Celestrak.org et d'autres sources de données TLE. Le système récupère automatiquement les données orbitales à partir des URL configurées et les combine avec les informations de fréquence provenant de l'API SatNOGS. Utilisez les commandes de synchronisation pour mettre à jour toutes les sources avec les dernières données satellitaires. Les sources sont stockées localement et les horodatages indiquent quand chaque source a été ajoutée et mise à jour pour la dernière fois.",
+  "orbital_sources": {
+    "title": "Sources de données orbitales",
+    "subtitle": "Cette page gère les sources de données orbitales (Two-Line Element) pour le suivi des satellites. Vous pouvez ajouter, modifier et supprimer des sources orbitales personnalisées au format 3LE provenant de divers fournisseurs, notamment Celestrak.org et d'autres sources de données orbitales. Le système récupère automatiquement les données orbitales à partir des URL configurées et les combine avec les informations de fréquence provenant de l'API SatNOGS. Utilisez les commandes de synchronisation pour mettre à jour toutes les sources avec les dernières données satellitaires. Les sources sont stockées localement et les horodatages indiquent quand chaque source a été ajoutée et mise à jour pour la dernière fois.",
     "add": "AJOUTER",
     "edit": "MODIFIER",
     "delete": "SUPPRIMER",
@@ -72,23 +72,23 @@
     "format": "Format",
     "added": "Ajouté",
     "updated": "Mis à jour",
-    "dialog_title_add": "Ajouter une source TLE",
-    "dialog_title_edit": "Modifier la source TLE",
+    "dialog_title_add": "Ajouter une source orbitale",
+    "dialog_title_edit": "Modifier la source orbitale",
     "cancel": "ANNULER",
     "submit": "SOUMETTRE",
     "confirm_deletion": "Confirmer la suppression",
-    "confirm_delete_intro": "Êtes-vous sûr de vouloir supprimer les sources TLE sélectionnées ? Cette action supprimera définitivement :",
-    "delete_item_1": "La ou les source(s) TLE",
-    "delete_item_2": "Tous les satellites provenant de la ou des source(s) TLE sélectionnée(s)",
+    "confirm_delete_intro": "Êtes-vous sûr de vouloir supprimer les sources orbitales sélectionnées ? Cette action supprimera définitivement :",
+    "delete_item_1": "La ou les source(s) orbitale(s)",
+    "delete_item_2": "Tous les satellites provenant de la ou des source(s) orbitale(s) sélectionnée(s)",
     "delete_item_3": "Le groupe de satellites correspondant",
     "cannot_undo": "Cette action ne peut pas être annulée.",
     "performance_notice": "Avertissement de performance",
-    "performance_warning": "Les sources TLE contenant des centaines de satellites entraîneront des problèmes de performance dans l'interface utilisateur. L'application fonctionnera (même avec des milliers de satellites dans un seul TLE) mais les performances de l'interface en souffriront, en particulier lorsque le nombre est élevé (dans les milliers). Pour des performances optimales, sélectionnez des sources mises à jour contenant un groupe de satellites petit ou spécifique plutôt que des sources TLE génériques contenant de vastes groupes de satellites (comme la liste Active de Celestrak).",
-    "added_success": "Source TLE ajoutée avec succès",
-    "updated_success": "Source TLE mise à jour avec succès",
-    "failed_add": "Échec de l'ajout de la source TLE",
-    "failed_update": "Échec de la mise à jour de la source TLE",
-    "failed_delete": "Échec de la suppression des sources TLE"
+    "performance_warning": "Les sources orbitales contenant des centaines de satellites entraîneront des problèmes de performance dans l'interface utilisateur. L'application fonctionnera (même avec des milliers de satellites dans une seule source) mais les performances de l'interface en souffriront, en particulier lorsque le nombre est élevé (dans les milliers). Pour des performances optimales, sélectionnez des sources mises à jour contenant un groupe de satellites petit ou spécifique plutôt que des sources orbitales génériques contenant de vastes groupes de satellites (comme la liste Active de Celestrak).",
+    "added_success": "Source orbitale ajoutée avec succès",
+    "updated_success": "Source orbitale mise à jour avec succès",
+    "failed_add": "Échec de l'ajout de la source orbitale",
+    "failed_update": "Échec de la mise à jour de la source orbitale",
+    "failed_delete": "Échec de la suppression des sources orbitales"
   },
   "groups": {
     "title": "Groupes de satellites",
@@ -167,7 +167,7 @@
   },
   "synchronize": {
     "header": {
-      "title": "Synchronisation des données TLE",
+      "title": "Synchronisation des données orbitales",
       "subtitle": "Récupérer les données orbitales depuis les sources satellitaires",
       "button": "SYNCHRONISER",
       "last_update": "Dernière mise à jour : {{date}}"

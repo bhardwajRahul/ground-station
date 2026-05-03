@@ -20,6 +20,7 @@ This package exposes each entity module so callers can import them via
 run as expected.
 """
 
+from . import orbitalsources  # noqa: F401
 from . import tlesources  # noqa: F401
 from . import (
     celestial,
@@ -39,6 +40,7 @@ from . import (
 
 __all__ = [
     "satellites",
+    "orbitalsources",
     "tlesources",
     "groups",
     "hardware",

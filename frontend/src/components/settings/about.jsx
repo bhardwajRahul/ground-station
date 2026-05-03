@@ -47,7 +47,7 @@ const AboutPage = () => {
     const versionInfo = useSelector((state) => state.version?.data);
 
     const featureItems = [
-        'Real-time Satellite Tracking: Track hundreds of satellites with high-precision orbital models. TLE data is automatically updated from CelesTrak and SatNOGS.',
+        'Real-time Satellite Tracking: Track hundreds of satellites with high-precision orbital models. Orbital data is automatically updated from CelesTrak and SatNOGS.',
         'Automated Antenna Rotator Control: Interface with popular antenna rotators to automatically track satellites as they pass overhead.',
         'SDR Integration: Stream and record live radio signals from a wide range of SDR devices, including RTL-SDR, SoapySDR, and UHD/USRP radios.',
         'IQ Recording and Playback: Record raw IQ data in SigMF format with complete metadata and replay recordings through a virtual SDR device for analysis.',

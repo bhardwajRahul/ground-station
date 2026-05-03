@@ -96,6 +96,8 @@ if os.environ.get("ALEMBIC_CONTEXT"):
         max_tracker_targets=10,
         enable_soapy_discovery=False,
         runonce_soapy_discovery=True,
+        orbital_sync_satellite_metadata_urls=["http://db.satnogs.org/api/satellites/?format=json"],
+        orbital_sync_transmitter_urls=["http://db.satnogs.org/api/transmitters/?format=json"],
         tle_sync_satellite_metadata_urls=["http://db.satnogs.org/api/satellites/?format=json"],
         tle_sync_transmitter_urls=["http://db.satnogs.org/api/transmitters/?format=json"],
     )
@@ -121,6 +123,12 @@ else:
         file_track_interval_ms = int(float(_file_config["track_interval"]) * 1000)
 
     cli_track_interval_ms = _raw_args.track_interval_ms
+    orbital_sync_satellite_metadata_urls = _file_config.get(
+        "orbital_sync_satellite_metadata_urls"
+    ) or _file_config.get("tle_sync_satellite_metadata_urls")
+    orbital_sync_transmitter_urls = _file_config.get(
+        "orbital_sync_transmitter_urls"
+    ) or _file_config.get("tle_sync_transmitter_urls")
 
     arguments = argparse.Namespace(
         host=_pick(_raw_args.host, "host"),
@@ -136,8 +144,10 @@ else:
         max_tracker_targets=_pick(_raw_args.max_tracker_targets, "max_tracker_targets"),
         enable_soapy_discovery=_pick(_raw_args.enable_soapy_discovery, "enable_soapy_discovery"),
         runonce_soapy_discovery=_pick(_raw_args.runonce_soapy_discovery, "runonce_soapy_discovery"),
-        tle_sync_satellite_metadata_urls=_file_config.get("tle_sync_satellite_metadata_urls"),
-        tle_sync_transmitter_urls=_file_config.get("tle_sync_transmitter_urls"),
+        orbital_sync_satellite_metadata_urls=orbital_sync_satellite_metadata_urls,
+        orbital_sync_transmitter_urls=orbital_sync_transmitter_urls,
+        tle_sync_satellite_metadata_urls=orbital_sync_satellite_metadata_urls,
+        tle_sync_transmitter_urls=orbital_sync_transmitter_urls,
     )
 
 if getattr(arguments, "temp_db", False):

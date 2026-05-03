@@ -17,6 +17,8 @@
 
 import pytest
 
+from crud.satellites import add_satellite
+from db.models import SatelliteOrbits
 from orbits import (
     CentralBody,
     OrbitModelKind,
@@ -24,7 +26,9 @@ from orbits import (
     build_satellite_ephemeris_payload,
     get_orbit_state,
     get_propagation_input,
+    get_propagation_input_for_object,
 )
+from orbits.service import orbit_service
 
 LEGACY_SATELLITE = {
     "norad_id": 25544,
@@ -77,3 +81,39 @@ def test_build_satellite_ephemeris_payload_preserves_tracker_shape():
 def test_get_orbit_state_rejects_non_earth_body_for_now():
     with pytest.raises(OrbitServiceError, match="not implemented yet"):
         get_orbit_state(LEGACY_SATELLITE, central_body=CentralBody.MARS)
+
+
+@pytest.mark.asyncio
+async def test_get_propagation_input_for_object_reads_canonical_orbit_row(db_session):
+    await add_satellite(db_session, LEGACY_SATELLITE)
+    await db_session.merge(
+        SatelliteOrbits(
+            satellite_norad_id=25544,
+            central_body="earth",
+            model_kind="omm",
+            tle1="1 25544U 98067A   25002.50000000  .00020000  00000-0  30000-3 0  9999",
+            tle2="2 25544  51.6416 248.0000 0006703 130.5360 325.0288 15.50010000999999",
+            omm_payload={"NORAD_CAT_ID": "25544", "OBJECT_ID": "1998-067A"},
+        )
+    )
+    await db_session.commit()
+
+    propagation_input = await get_propagation_input_for_object(
+        db_session, 25544, central_body=CentralBody.EARTH
+    )
+
+    assert propagation_input.model_kind == OrbitModelKind.OMM
+    assert propagation_input.tle1.startswith("1 25544U")
+    assert propagation_input.tle2.startswith("2 25544")
+
+
+@pytest.mark.asyncio
+async def test_get_orbit_state_from_db_falls_back_to_legacy_satellite_tle_when_no_orbit_row(
+    db_session,
+):
+    await add_satellite(db_session, LEGACY_SATELLITE)
+    orbit_state = await orbit_service.get_orbit_state(db_session, 25544, CentralBody.EARTH)
+
+    assert orbit_state.model_kind == OrbitModelKind.TLE
+    assert orbit_state.tle1 == LEGACY_SATELLITE["tle1"]
+    assert orbit_state.tle2 == LEGACY_SATELLITE["tle2"]

@@ -23,7 +23,10 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Mapping, Optional
 
+from sqlalchemy import select
+
 import crud
+from db.models import SatelliteOrbits, Satellites
 
 
 class CentralBody(str, Enum):
@@ -154,6 +157,24 @@ class OrbitService:
                 f"Central body '{central_body.value}' is not implemented yet"
             )
 
+        satellite_result = await dbsession.execute(
+            select(Satellites).where(Satellites.norad_id == object_id)
+        )
+        satellite_row = satellite_result.scalar_one_or_none()
+        if satellite_row is None:
+            raise OrbitServiceError(f"No satellite found for object_id={object_id}")
+
+        orbit_result = await dbsession.execute(
+            select(SatelliteOrbits).where(
+                SatelliteOrbits.satellite_norad_id == object_id,
+                SatelliteOrbits.central_body == central_body.value,
+            )
+        )
+        orbit_row = orbit_result.scalar_one_or_none()
+        if orbit_row is not None:
+            return self.get_orbit_state_from_database_rows(satellite_row, orbit_row, central_body)
+
+        # Fallback for legacy rows before canonical orbit backfill/migration.
         result = await crud.satellites.fetch_satellites(dbsession, norad_id=object_id)
         if not result.get("success") or not result.get("data"):
             raise OrbitServiceError(f"No satellite found for object_id={object_id}")
@@ -190,6 +211,32 @@ class OrbitService:
             tle2=_coerce_optional_string(satellite.get("tle2")),
             omm_payload=_coerce_optional_dict(satellite.get("orbit_payload")),
             source=_coerce_optional_string(satellite.get("source")),
+        )
+
+    def get_orbit_state_from_database_rows(
+        self, satellite: Satellites, orbit: SatelliteOrbits, central_body: CentralBody
+    ) -> OrbitState:
+        if central_body != CentralBody.EARTH:
+            raise UnsupportedOrbitConfigurationError(
+                f"Central body '{central_body.value}' is not implemented yet"
+            )
+        if orbit.central_body != central_body.value:
+            raise OrbitServiceError(
+                f"Orbit row body mismatch for object_id={satellite.norad_id}: "
+                f"expected={central_body.value} actual={orbit.central_body}"
+            )
+
+        model_kind = _resolve_model_kind(orbit.model_kind)
+        return OrbitState(
+            object_id=satellite.norad_id,
+            object_name=_coerce_optional_string(satellite.name),
+            central_body=central_body,
+            model_kind=model_kind,
+            epoch=_coerce_datetime(orbit.epoch),
+            tle1=_coerce_optional_string(orbit.tle1),
+            tle2=_coerce_optional_string(orbit.tle2),
+            omm_payload=_coerce_optional_dict(orbit.omm_payload),
+            source=_coerce_optional_string(satellite.source),
         )
 
     async def get_propagation_input(

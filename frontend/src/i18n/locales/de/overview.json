@@ -52,7 +52,7 @@
     "title": "Satellitengruppe auswählen",
     "group_label": "Gruppe",
     "user_groups": "Benutzerdefinierte Satellitengruppen",
-    "tle_groups": "TLE-basierte Satellitengruppen",
+    "tle_groups": "Satellitengruppen aus Orbitquellen",
     "failed_load_groups": "Fehler beim Laden der Satellitengruppen",
     "none_defined": "Keine definiert"
   },

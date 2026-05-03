@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('TLE Sources', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/satellites/tlesources');
+    await page.goto('/satellites/orbital-sources');
     await page.waitForLoadState('domcontentloaded');
   });
 
@@ -14,7 +14,7 @@ test.describe('TLE Sources', () => {
     await page.waitForTimeout(2000);
 
     // Verify we're on the TLE sources page
-    expect(page.url()).toContain('/satellites/tlesources');
+    expect(page.url()).toContain('/satellites/orbital-sources');
   });
 
   test('should have TLE source management controls', async ({ page }) => {
@@ -135,9 +135,9 @@ test.describe('Satellite Groups', () => {
 test.describe('Satellite Navigation Flow', () => {
   test('should navigate between satellite pages', async ({ page }) => {
     // TLE Sources
-    await page.goto('/satellites/tlesources');
+    await page.goto('/satellites/orbital-sources');
     await page.waitForLoadState('networkidle');
-    expect(page.url()).toContain('/satellites/tlesources');
+    expect(page.url()).toContain('/satellites/orbital-sources');
 
     // Satellites
     await page.goto('/satellites/satellites');
@@ -229,7 +229,7 @@ test.describe('Satellite List CRUD', () => {
 
 test.describe('TLE Sources CRUD', () => {
   test('should allow adding, editing, and deleting a TLE source', async ({ page }) => {
-    await page.goto('/satellites/tlesources');
+    await page.goto('/satellites/orbital-sources');
     await page.waitForLoadState('domcontentloaded');
 
     const sourceName = `E2E Source ${Date.now()}`;

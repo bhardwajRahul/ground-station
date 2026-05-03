@@ -21,16 +21,17 @@ import string
 
 from common.logger import logger
 from db import AsyncSessionLocal
-from db.models import TLESources
+from db.models import Groups, OrbitalSources, SatelliteGroupType
+from server.default_satellite_groups import DEFAULT_SYSTEM_SATELLITE_GROUPS
 from tasks.registry import get_task
 
-# TLE sync is now handled by background task manager
+# Orbital sync is now handled by background task manager
 # from tlesync.logic import synchronize_satellite_data
 
 
 async def first_time_initialization():
     """Function called on first server start to populate database with default data."""
-    logger.info("Filling in initial data like TLE sources and default location...")
+    logger.info("Filling in initial data like orbital sources and default location...")
     async with AsyncSessionLocal() as session:
         try:
 
@@ -39,7 +40,7 @@ async def first_time_initialization():
                 return "".join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
             logger.info("FIRSTTIME - Populating database with default data...")
-            # Add default TLE sources
+            # Add default orbital sources
             default_sources = [
                 (
                     "Cubesats",
@@ -68,7 +69,7 @@ async def first_time_initialization():
             ]
 
             for source_name, source_url in default_sources:
-                source = TLESources(
+                source = OrbitalSources(
                     name=source_name,
                     identifier=generate_identifier(),
                     url=source_url,
@@ -76,10 +77,21 @@ async def first_time_initialization():
                 )
                 session.add(source)
 
+            for group in DEFAULT_SYSTEM_SATELLITE_GROUPS:
+                session.add(
+                    Groups(
+                        name=group["name"],
+                        identifier=group["identifier"],
+                        type=SatelliteGroupType.SYSTEM,
+                        satellite_ids=group["satellite_ids"],
+                    )
+                )
+
             await session.commit()
             logger.info(
-                "Initial data populated successfully with default TLE sources: "
-                "Cubesats, Amateur, NOAA, Space stations, Weather, TinyGS."
+                "Initial data populated successfully with default orbital sources: "
+                "Cubesats, Amateur, NOAA, Space stations, Weather, TinyGS, "
+                "and curated system satellite groups."
             )
 
         except Exception as e:
@@ -92,7 +104,7 @@ async def run_initial_sync(background_task_manager):
     """
     Run the initial satellite data synchronization after delay as a background task.
 
-    This runs on first-time setup after database creation to populate TLE data.
+    This runs on first-time setup after database creation to populate orbital data.
     Uses the background task manager for consistency with other sync triggers.
 
     Args:
@@ -103,15 +115,19 @@ async def run_initial_sync(background_task_manager):
         await asyncio.sleep(5)
         logger.info("Starting initial satellite data synchronization as background task...")
 
-        # Get the TLE sync task function
-        tle_sync_task = get_task("tle_sync")
+        # Get the orbital sync task function
+        orbital_sync_task = get_task("orbital_sync")
 
         # Start as background task
         task_id = await background_task_manager.start_task(
-            func=tle_sync_task, args=(), kwargs={}, name="Initial TLE Sync", task_id=None
+            func=orbital_sync_task,
+            args=(),
+            kwargs={},
+            name="Initial Orbital Data Sync",
+            task_id=None,
         )
 
-        logger.info(f"Initial TLE sync started as background task: {task_id}")
+        logger.info(f"Initial orbital sync started as background task: {task_id}")
 
     except Exception as e:
         logger.error(f"Error starting initial satellite synchronization: {e}")

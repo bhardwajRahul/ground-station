@@ -29,7 +29,7 @@ import {
     SettingsTabSatellites,
     SettingsTabMaintenance,
     SettingsTabRig,
-    SettingsTabTLESources,
+    SettingsTabOrbitalSources,
     SettingsTabAbout,
     SettingsTabSatelliteGroups,
     SettingsTabCamera,
@@ -96,8 +96,12 @@ const router = createBrowserRouter([
                         path: "satellites",
                         children: [
                             {
+                                path: "orbital-sources",
+                                Component: SettingsTabOrbitalSources,
+                            },
+                            {
                                 path: "tlesources",
-                                Component: SettingsTabTLESources,
+                                Component: SettingsTabOrbitalSources,
                             },
                             {
                                 path: "satellites",

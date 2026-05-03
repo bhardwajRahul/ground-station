@@ -7,7 +7,7 @@
   "tle": "TLE",
   "satellite_database": {
     "title": "Satellitendatenbank",
-    "subtitle": "Durchsuchen und verwalten Sie die nach Gruppen organisierte Satellitendatenbank. Wählen Sie eine Satellitengruppe aus dem Dropdown-Menü, um Satelliten mit ihrem Betriebsstatus, Frequenzbändern, Ländern, Betreibern und Missionsdaten anzuzeigen. Klicken Sie auf eine beliebige Satellitenzeile, um detaillierte Informationen einschließlich Senderspezifikationen, Bahnparameter und Echtzeit-Tracking-Daten anzuzeigen. Satellitendaten werden automatisch von TLE-Quellen synchronisiert und mit Frequenzinformationen aus der SatNOGS-Datenbank angereichert.",
+    "subtitle": "Durchsuchen und verwalten Sie die nach Gruppen organisierte Satellitendatenbank. Wählen Sie eine Satellitengruppe aus dem Dropdown-Menü, um Satelliten mit ihrem Betriebsstatus, Frequenzbändern, Ländern, Betreibern und Missionsdaten anzuzeigen. Klicken Sie auf eine beliebige Satellitenzeile, um detaillierte Informationen einschließlich Senderspezifikationen, Bahnparameter und Echtzeit-Tracking-Daten anzuzeigen. Satellitendaten werden automatisch von Orbitquellen synchronisiert und mit Frequenzinformationen aus der SatNOGS-Datenbank angereichert.",
     "select_group": "Wählen Sie eine der Satellitengruppen aus",
     "add": "Hinzufügen",
     "edit": "Bearbeiten",
@@ -61,9 +61,9 @@
     "failed_update": "Fehler beim Aktualisieren des Satelliten",
     "failed_delete": "Fehler beim Löschen der Satelliten"
   },
-  "tle_sources": {
-    "title": "TLE-Datenquellen",
-    "subtitle": "Diese Seite verwaltet TLE (Two-Line Element) Datenquellen für die Satellitenverfolgung. Sie können benutzerdefinierte TLE-Quellen im 3LE-Format von verschiedenen Anbietern einschließlich Celestrak.org und anderen TLE-Datenquellen hinzufügen, bearbeiten und löschen. Das System ruft automatisch Bahndaten von konfigurierten URLs ab und kombiniert sie mit Frequenzinformationen aus der SatNOGS API. Verwenden Sie die Synchronisationssteuerungen, um alle Quellen mit den neuesten Satellitendaten zu aktualisieren. Quellen werden lokal gespeichert und Zeitstempel zeigen, wann jede Quelle hinzugefügt und zuletzt aktualisiert wurde.",
+  "orbital_sources": {
+    "title": "Orbitdatenquellen",
+    "subtitle": "Diese Seite verwaltet Orbitdatenquellen für die Satellitenverfolgung. Sie können benutzerdefinierte Orbitquellen im 3LE-Format von verschiedenen Anbietern einschließlich Celestrak.org und anderen Orbitdatenquellen hinzufügen, bearbeiten und löschen. Das System ruft automatisch Bahndaten von konfigurierten URLs ab und kombiniert sie mit Frequenzinformationen aus der SatNOGS API. Verwenden Sie die Synchronisationssteuerungen, um alle Quellen mit den neuesten Satellitendaten zu aktualisieren. Quellen werden lokal gespeichert und Zeitstempel zeigen, wann jede Quelle hinzugefügt und zuletzt aktualisiert wurde.",
     "add": "HINZUFÜGEN",
     "edit": "BEARBEITEN",
     "delete": "LÖSCHEN",
@@ -72,23 +72,23 @@
     "format": "Format",
     "added": "Hinzugefügt",
     "updated": "Aktualisiert",
-    "dialog_title_add": "TLE-Quelle Hinzufügen",
-    "dialog_title_edit": "TLE-Quelle Bearbeiten",
+    "dialog_title_add": "Orbitquelle Hinzufügen",
+    "dialog_title_edit": "Orbitquelle Bearbeiten",
     "cancel": "ABBRECHEN",
     "submit": "SENDEN",
     "confirm_deletion": "Löschung Bestätigen",
-    "confirm_delete_intro": "Sind Sie sicher, dass Sie die ausgewählten TLE-Quellen löschen möchten? Diese Aktion wird dauerhaft löschen:",
-    "delete_item_1": "Die TLE-Quelle(n)",
-    "delete_item_2": "Alle Satelliten, die aus der/den ausgewählten TLE-Quelle(n) stammen",
+    "confirm_delete_intro": "Sind Sie sicher, dass Sie die ausgewählten Orbitquellen löschen möchten? Diese Aktion wird dauerhaft löschen:",
+    "delete_item_1": "Die Orbitquelle(n)",
+    "delete_item_2": "Alle Satelliten, die aus der/den ausgewählten Orbitquelle(n) stammen",
     "delete_item_3": "Die entsprechende Satellitengruppe",
     "cannot_undo": "Diese Aktion kann nicht rückgängig gemacht werden.",
     "performance_notice": "Leistungshinweis",
-    "performance_warning": "TLE-Quellen mit Hunderten von Satelliten verursachen Leistungsprobleme in der Benutzeroberfläche. Die Anwendung funktioniert (auch mit Tausenden von Satelliten in einem einzelnen TLE), aber die Leistung der Benutzeroberfläche leidet, besonders wenn die Anzahl hoch ist (in den Tausenden). Für optimale Leistung wählen Sie aktualisierte Quellen, die eine kleine oder spezifische Gruppe von Satelliten enthalten, anstelle von generischen TLE-Quellen, die große Gruppen von Satelliten enthalten (wie die Active-Liste von Celestrak).",
-    "added_success": "TLE-Quelle erfolgreich hinzugefügt",
-    "updated_success": "TLE-Quelle erfolgreich aktualisiert",
-    "failed_add": "Fehler beim Hinzufügen der TLE-Quelle",
-    "failed_update": "Fehler beim Aktualisieren der TLE-Quelle",
-    "failed_delete": "Fehler beim Löschen der TLE-Quellen"
+    "performance_warning": "Orbitquellen mit Hunderten von Satelliten verursachen Leistungsprobleme in der Benutzeroberfläche. Die Anwendung funktioniert (auch mit Tausenden von Satelliten in einer einzelnen Quelle), aber die Leistung der Benutzeroberfläche leidet, besonders wenn die Anzahl hoch ist (in den Tausenden). Für optimale Leistung wählen Sie aktualisierte Quellen, die eine kleine oder spezifische Gruppe von Satelliten enthalten, anstelle von generischen Orbitquellen, die große Gruppen von Satelliten enthalten (wie die Active-Liste von Celestrak).",
+    "added_success": "Orbitquelle erfolgreich hinzugefügt",
+    "updated_success": "Orbitquelle erfolgreich aktualisiert",
+    "failed_add": "Fehler beim Hinzufügen der Orbitquelle",
+    "failed_update": "Fehler beim Aktualisieren der Orbitquelle",
+    "failed_delete": "Fehler beim Löschen der Orbitquellen"
   },
   "groups": {
     "title": "Satellitengruppen",
@@ -167,7 +167,7 @@
   },
   "synchronize": {
     "header": {
-      "title": "TLE-Datensynchronisation",
+      "title": "Orbitdaten-Synchronisation",
       "subtitle": "Bahndaten von Satellitenquellen abrufen",
       "button": "SYNCHRONISIEREN",
       "last_update": "Letzte Aktualisierung: {{date}}"

@@ -282,3 +282,103 @@ class TestTLESourcesCRUD:
         assert result["success"] is True
         # Should use default from model
         assert "format" in result["data"]
+
+    async def test_add_tle_source_basic_auth_requires_credentials(self, db_session):
+        """Test basic auth sources require username and password."""
+        result = await add_satellite_tle_source(
+            db_session,
+            {
+                "name": "Space-Track Source",
+                "url": "https://www.space-track.org/basicspacedata/query/...",
+                "auth_type": "basic",
+                "username": "user_only",
+                "norad_ids": [25544],
+            },
+        )
+
+        assert result["success"] is False
+        assert "requires username and password" in result["error"]
+
+    async def test_add_tle_source_basic_auth_success(self, db_session):
+        """Test basic auth source persists plain username/password values."""
+        result = await add_satellite_tle_source(
+            db_session,
+            {
+                "name": "Space-Track Source",
+                "url": "https://www.space-track.org/basicspacedata/query/...",
+                "format": "omm",
+                "provider": "space_track",
+                "adapter": "space_track_gp",
+                "auth_type": "basic",
+                "username": "test-user",
+                "password": "test-pass",
+                "norad_ids": [25544],
+            },
+        )
+
+        assert result["success"] is True
+        assert result["data"]["auth_type"] == "basic"
+        assert result["data"]["username"] == "test-user"
+        assert result["data"]["password"] == "test-pass"
+
+    async def test_add_tle_source_maps_legacy_celestrak_provider(self, db_session):
+        """Test legacy celestrak provider aliases to generic_http."""
+        result = await add_satellite_tle_source(
+            db_session,
+            {
+                "name": "Legacy CelesTrak",
+                "url": "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle",
+                "provider": "celestrak",
+                "format": "3le",
+            },
+        )
+
+        assert result["success"] is True
+        assert result["data"]["provider"] == "generic_http"
+        assert result["data"]["adapter"] == "http_3le"
+
+    async def test_add_space_track_tle_source_requires_norad_ids(self, db_session):
+        """Test Space-Track source creation requires NORAD IDs."""
+        result = await add_satellite_tle_source(
+            db_session,
+            {
+                "name": "Space-Track Amateur",
+                "url": "https://www.space-track.org/basicspacedata/query/class/gp",
+                "format": "omm",
+                "provider": "space_track",
+                "adapter": "space_track_gp",
+                "query_mode": "url",
+                "auth_type": "basic",
+                "username": "test-user",
+                "password": "test-pass",
+            },
+        )
+
+        assert result["success"] is False
+        assert "at least one NORAD ID" in result["error"]
+
+    async def test_add_space_track_tle_source_normalizes_norad_ids(self, db_session):
+        """Test Space-Track source persists normalized NORAD IDs and ignores group inputs."""
+        result = await add_satellite_tle_source(
+            db_session,
+            {
+                "name": "Space-Track Amateur",
+                "url": "",
+                "format": "omm",
+                "provider": "space_track",
+                "adapter": "http_omm",
+                "query_mode": "group_norad",
+                "group_id": str(uuid.uuid4()),
+                "norad_ids": "25544,43017 25544\n57172",
+                "auth_type": "basic",
+                "username": "test-user",
+                "password": "test-pass",
+            },
+        )
+
+        assert result["success"] is True
+        assert result["data"]["query_mode"] == "url"
+        assert result["data"]["group_id"] is None
+        assert result["data"]["adapter"] == "space_track_gp"
+        assert result["data"]["url"] == "https://www.space-track.org/basicspacedata/query/class/gp"
+        assert result["data"]["norad_ids"] == [25544, 43017, 57172]

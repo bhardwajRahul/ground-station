@@ -111,7 +111,7 @@ const SatelliteGroupDropdown = ({ onSatelliteSelect, disabled = false }) => {
                             </MenuItem>
                         ))
                 )}
-                <ListSubheader>TLE Groups</ListSubheader>
+                <ListSubheader>Orbital Source Groups</ListSubheader>
                 {satGroups
                     .filter(group => group.type === 'system')
                     .map((group) => (

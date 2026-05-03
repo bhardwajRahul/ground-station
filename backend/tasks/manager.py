@@ -198,8 +198,9 @@ class BackgroundTaskManager:
             kwargs = {}
 
         # Check for singleton tasks (tasks that should not run concurrently with themselves)
-        # TLE sync is a singleton task because it modifies shared database state
-        singleton_task_patterns = ["TLE Sync", "tle_sync"]
+        # Orbital sync is a singleton task because it modifies shared database state.
+        # Keep legacy tle_sync pattern for backward compatibility.
+        singleton_task_patterns = ["Orbital Data Sync", "orbital_sync", "TLE Sync", "tle_sync"]
         is_singleton = any(
             pattern in name or pattern in func.__name__ for pattern in singleton_task_patterns
         )
@@ -214,7 +215,10 @@ class BackgroundTaskManager:
                         for pattern in singleton_task_patterns
                     )
                     if is_same_singleton:
-                        error_msg = f"Cannot start '{name}': A TLE sync task is already running (ID: {existing_task_id})"
+                        error_msg = (
+                            f"Cannot start '{name}': An orbital sync task is already running "
+                            f"(ID: {existing_task_id})"
+                        )
                         logger.warning(error_msg)
                         raise ValueError(error_msg)
 
@@ -538,8 +542,8 @@ class BackgroundTaskManager:
             except Exception as e:
                 logger.error(f"Failed to update discovered servers: {e}")
 
-        elif msg_type == "tle_sync_state":
-            # TLE synchronization state update from background task
+        elif msg_type in ("orbital_sync_state", "tle_sync_state"):
+            # Orbital synchronization state update from background task
             state = message.get("state", {})
             progress = message.get("progress", 0)
 
@@ -613,7 +617,7 @@ class BackgroundTaskManager:
                             await manager.notify_tracking_inputs_from_db(norad_id)
 
                 except Exception as e:
-                    logger.debug(f"Failed to notify tracker manager after TLE sync: {e}")
+                    logger.debug(f"Failed to notify tracker manager after orbital sync: {e}")
 
     async def stop_task(self, task_id: str, timeout: float = 5.0) -> bool:
         """

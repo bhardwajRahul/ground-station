@@ -92,7 +92,7 @@
   "group_dropdown": {
     "label": "Groep",
     "user_groups": "Gebruikergedefinieerde satellietgroepen",
-    "tle_groups": "TLE brongroepen",
+    "tle_groups": "Baanbrongroepen",
     "none_created": "Geen gemaakt"
   },
   "rig_control_labels": {

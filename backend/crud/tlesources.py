@@ -15,17 +15,213 @@
 
 import json
 import random
+import re
 import string
 import traceback
 import uuid
-from typing import List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.common import logger, serialize_object
 from common.utils import convert_strings_to_uuids
-from db.models import Groups, Satellites, TLESources, Transmitters
+from db.models import Groups, OrbitalSources, SatelliteOrbits, Satellites, Transmitters
+
+SUPPORTED_CENTRAL_BODIES = {"earth", "moon", "mars"}
+SUPPORTED_AUTH_TYPES = {"none", "basic", "token"}
+SUPPORTED_QUERY_MODES = {"url"}
+LEGACY_PROVIDER_ALIASES = {"celestrak": "generic_http"}
+SPACE_TRACK_GP_BASE_URL = "https://www.space-track.org/basicspacedata/query/class/gp"
+
+
+def _clean_optional_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text if text else None
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    raise ValueError(f"Invalid boolean value: {value}")
+
+
+def _coerce_optional_uuid(value: Any) -> Optional[uuid.UUID]:
+    if value is None:
+        return None
+    if isinstance(value, uuid.UUID):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    return uuid.UUID(text)
+
+
+def _infer_provider(url: Optional[str]) -> str:
+    lowered = (url or "").lower()
+    if "space-track" in lowered:
+        return "space_track"
+    return "generic_http"
+
+
+def _normalize_provider(provider: Optional[str], url: Optional[str]) -> str:
+    normalized = (_clean_optional_text(provider) or _infer_provider(url)).lower()
+    return LEGACY_PROVIDER_ALIASES.get(normalized, normalized)
+
+
+def _infer_adapter(provider: str, source_format: str) -> str:
+    if provider == "space_track":
+        return "space_track_gp"
+    if source_format == "omm":
+        return "http_omm"
+    return "http_3le"
+
+
+def _normalize_norad_ids(value: Any) -> List[int]:
+    candidate = value
+    if isinstance(candidate, str):
+        cleaned = candidate.strip()
+        if not cleaned:
+            return []
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, str):
+                candidate = re.split(r"[\s,]+", parsed.strip())
+            else:
+                candidate = parsed
+        except json.JSONDecodeError:
+            candidate = re.split(r"[\s,]+", cleaned)
+    elif candidate is None:
+        return []
+    elif isinstance(candidate, (int, float)):
+        candidate = [candidate]
+
+    if not isinstance(candidate, (list, tuple, set)):
+        return []
+
+    normalized: List[int] = []
+    seen: set[int] = set()
+    for item in candidate:
+        try:
+            norad_id = int(item)
+        except (TypeError, ValueError):
+            continue
+        if norad_id <= 0 or norad_id in seen:
+            continue
+        normalized.append(norad_id)
+        seen.add(norad_id)
+    return normalized
+
+
+def _normalize_source_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(payload)
+    normalized["name"] = _clean_optional_text(normalized.get("name"))
+    normalized["url"] = _clean_optional_text(normalized.get("url"))
+
+    source_format = _clean_optional_text(normalized.get("format")) or "3le"
+    normalized["format"] = source_format.lower()
+
+    normalized["provider"] = _normalize_provider(normalized.get("provider"), normalized["url"])
+    query_mode = (_clean_optional_text(normalized.get("query_mode")) or "url").lower()
+    if query_mode == "group_norad":
+        query_mode = "url"
+    if query_mode not in SUPPORTED_QUERY_MODES:
+        raise ValueError(
+            f"Invalid query_mode '{query_mode}'. Expected one of: {sorted(SUPPORTED_QUERY_MODES)}"
+        )
+    normalized["query_mode"] = query_mode
+    normalized["group_id"] = _coerce_optional_uuid(normalized.get("group_id"))
+    normalized["norad_ids"] = _normalize_norad_ids(normalized.get("norad_ids"))
+
+    adapter = _clean_optional_text(normalized.get("adapter")) or _infer_adapter(
+        normalized["provider"], normalized["format"]
+    )
+    normalized["adapter"] = adapter.lower()
+
+    if "enabled" in normalized:
+        normalized["enabled"] = _coerce_bool(normalized.get("enabled"))
+    else:
+        normalized["enabled"] = True
+
+    if "priority" in normalized and normalized.get("priority") is not None:
+        normalized["priority"] = int(normalized["priority"])
+    else:
+        normalized["priority"] = 100
+
+    central_body = (_clean_optional_text(normalized.get("central_body")) or "earth").lower()
+    if central_body not in SUPPORTED_CENTRAL_BODIES:
+        raise ValueError(
+            f"Invalid central_body '{central_body}'. Expected one of: {sorted(SUPPORTED_CENTRAL_BODIES)}"
+        )
+    normalized["central_body"] = central_body
+
+    auth_type = (_clean_optional_text(normalized.get("auth_type")) or "none").lower()
+    if auth_type not in SUPPORTED_AUTH_TYPES:
+        raise ValueError(
+            f"Invalid auth_type '{auth_type}'. Expected one of: {sorted(SUPPORTED_AUTH_TYPES)}"
+        )
+    normalized["auth_type"] = auth_type
+
+    normalized["username"] = _clean_optional_text(normalized.get("username"))
+    normalized["password"] = _clean_optional_text(normalized.get("password"))
+
+    raw_config = normalized.get("config")
+    if raw_config is None:
+        normalized["config"] = None
+    elif isinstance(raw_config, (dict, list)):
+        normalized["config"] = raw_config
+    elif isinstance(raw_config, str):
+        raw_config = raw_config.strip()
+        if not raw_config:
+            normalized["config"] = None
+        else:
+            parsed = json.loads(raw_config)
+            if not isinstance(parsed, (dict, list)):
+                raise ValueError("config must be a JSON object or JSON array")
+            normalized["config"] = parsed
+    else:
+        raise ValueError("config must be a dict, list, JSON string, or null")
+
+    if not normalized["name"]:
+        raise ValueError("Missing required field: name")
+    if normalized["provider"] == "space_track":
+        normalized["url"] = normalized["url"] or SPACE_TRACK_GP_BASE_URL
+    if not normalized["url"]:
+        raise ValueError("Missing required field: url")
+
+    if normalized["provider"] == "space_track":
+        normalized["query_mode"] = "url"
+        normalized["group_id"] = None
+        normalized["adapter"] = "space_track_gp"
+        if not normalized["norad_ids"]:
+            raise ValueError("space_track sources require at least one NORAD ID in norad_ids")
+        if auth_type != "basic":
+            raise ValueError("space_track_gp adapter requires auth_type='basic'")
+    else:
+        normalized["norad_ids"] = None
+
+    if auth_type == "none":
+        normalized["username"] = None
+        normalized["password"] = None
+    elif auth_type == "basic":
+        if not normalized["username"] or not normalized["password"]:
+            raise ValueError("auth_type='basic' requires username and password")
+    elif auth_type == "token":
+        if not normalized["password"]:
+            raise ValueError("auth_type='token' requires password field to hold the token value")
+
+    allowed_fields = {column.name for column in OrbitalSources.__table__.columns}
+    return {key: value for key, value in normalized.items() if key in allowed_fields}
 
 
 async def fetch_satellite_tle_source(
@@ -37,7 +233,7 @@ async def fetch_satellite_tle_source(
     """
     try:
         if satellite_tle_source_id is None:
-            result = await session.execute(select(TLESources))
+            result = await session.execute(select(OrbitalSources))
             sources = result.scalars().all()
             sources = json.loads(json.dumps(sources, default=serialize_object))
             sources = serialize_object(sources)
@@ -49,7 +245,7 @@ async def fetch_satellite_tle_source(
                 satellite_tle_source_id = uuid.UUID(satellite_tle_source_id)
 
             result = await session.execute(
-                select(TLESources).filter(TLESources.id == satellite_tle_source_id)
+                select(OrbitalSources).filter(OrbitalSources.id == satellite_tle_source_id)
             )
             source = result.scalars().first()
             if source:
@@ -69,19 +265,18 @@ async def add_satellite_tle_source(session: AsyncSession, payload: dict) -> dict
     Create a new satellite TLE source record with the provided payload.
     """
     try:
-        assert payload["name"]
-        assert payload["url"]
+        payload = dict(payload or {})
 
         # Generate random identifier string
         payload["identifier"] = "".join(random.choices(string.ascii_letters, k=16))
 
-        if payload.get("added", None) is not None:
-            del payload["added"]
+        payload.pop("added", None)
+        payload.pop("updated", None)
+        payload.pop("id", None)
 
-        if payload.get("updated", None) is not None:
-            del payload["updated"]
+        payload = _normalize_source_payload(payload)
 
-        new_source = TLESources(**payload)
+        new_source = OrbitalSources(**payload)
         session.add(new_source)
         await session.commit()
         await session.refresh(new_source)
@@ -103,17 +298,29 @@ async def edit_satellite_tle_source(
     Returns a result object containing the updated record or an error message.
     """
     try:
+        payload = dict(payload or {})
         payload.pop("added", None)
         payload.pop("updated", None)
         payload.pop("id", None)
+        payload.pop("identifier", None)
         source_id = uuid.UUID(satellite_tle_source_id)
 
-        result = await session.execute(select(TLESources).filter(TLESources.id == source_id))
+        result = await session.execute(
+            select(OrbitalSources).filter(OrbitalSources.id == source_id)
+        )
         source = result.scalars().first()
         if not source:
             return {"success": False, "error": "Satellite TLE source not found"}
 
-        for key, value in payload.items():
+        merged_payload = {
+            column.name: getattr(source, column.name) for column in OrbitalSources.__table__.columns
+        }
+        merged_payload.update(payload)
+        normalized_payload = _normalize_source_payload(merged_payload)
+
+        for key, value in normalized_payload.items():
+            if key in {"id", "identifier", "added", "updated"}:
+                continue
             if hasattr(source, key):
                 setattr(source, key, value)
 
@@ -144,7 +351,7 @@ async def delete_satellite_tle_sources(
 
         # Fetch sources that match the provided IDs
         result = await session.execute(
-            select(TLESources).filter(TLESources.id.in_(satellite_tle_source_ids))
+            select(OrbitalSources).filter(OrbitalSources.id.in_(satellite_tle_source_ids))
         )
         sources = result.scalars().all()
 
@@ -204,6 +411,11 @@ async def delete_satellite_tle_sources(
                 group_deleted = True
 
             # Finally, delete the TLE source record
+            await session.execute(
+                update(SatelliteOrbits)
+                .where(SatelliteOrbits.source_id == source.id)
+                .values(source_id=None)
+            )
             await session.delete(source)
 
             deletion_summary.append(
@@ -242,3 +454,27 @@ async def delete_satellite_tle_sources(
         logger.error(f"Error deleting satellite TLE sources: {e}")
         logger.error(traceback.format_exc())
         return {"success": False, "error": str(e)}
+
+
+async def fetch_orbital_source(
+    session: AsyncSession, orbital_source_id: Optional[Union[uuid.UUID, str]] = None
+) -> dict:
+    """Domain-accurate alias for fetching orbital sources."""
+    return await fetch_satellite_tle_source(session, orbital_source_id)
+
+
+async def add_orbital_source(session: AsyncSession, payload: dict) -> dict:
+    """Domain-accurate alias for creating orbital sources."""
+    return await add_satellite_tle_source(session, payload)
+
+
+async def edit_orbital_source(session: AsyncSession, orbital_source_id: str, payload: dict) -> dict:
+    """Domain-accurate alias for updating orbital sources."""
+    return await edit_satellite_tle_source(session, orbital_source_id, payload)
+
+
+async def delete_orbital_sources(
+    session: AsyncSession, orbital_source_ids: Union[List[str], dict]
+) -> dict:
+    """Domain-accurate alias for deleting orbital sources."""
+    return await delete_satellite_tle_sources(session, orbital_source_ids)

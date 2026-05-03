@@ -9,7 +9,7 @@
   "cameras": "Caméras",
   "sdrs": "SDRs",
   "satellites": "Satellites",
-  "tle_sources": "Sources TLE",
+  "orbital_sources": "Sources orbitales",
   "groups": "Groupes",
   "settings": "Paramètres",
   "preferences": "Préférences",

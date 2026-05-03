@@ -19,23 +19,35 @@
 import { SvgIcon } from '@mui/material';
 
 /**
- * Custom icon displaying "TLE" text
- * Works like a Material-UI icon - inherits color, fontSize, and other props
+ * Orbit-style icon for orbital data sources.
+ * Works like a Material-UI icon - inherits color, fontSize, and other props.
  */
 export const TleIcon = (props) => {
     return (
-        <SvgIcon {...props}>
-            <text
-                x="50%"
-                y="50%"
-                dominantBaseline="middle"
-                textAnchor="middle"
-                fontSize="14"
-                fontWeight="bold"
-                fontFamily="Roboto, Arial, sans-serif"
-            >
-                TLE
-            </text>
+        <SvgIcon {...props} viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="2.3" fill="currentColor" />
+            <ellipse
+                cx="12"
+                cy="12"
+                rx="10.7"
+                ry="6.4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                transform="rotate(-20 12 12)"
+            />
+            <ellipse
+                cx="12"
+                cy="12"
+                rx="8.0"
+                ry="4.4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                opacity="0.78"
+                transform="rotate(26 12 12)"
+            />
+            <circle cx="20.8" cy="6.6" r="1.35" fill="currentColor" />
         </SvgIcon>
     );
 };

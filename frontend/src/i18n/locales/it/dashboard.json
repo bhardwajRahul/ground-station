@@ -86,12 +86,12 @@
     "rotator_stopped": "Rotatore: Fermato (Az: {{az}}°, El: {{el}}°)",
     "rotator_connected": "Rotatore: Connesso (Az: {{az}}°, El: {{el}}°)"
   },
-  "tlesync_popover": {
+  "orbital_sync_popover": {
     "syncing": "Sincronizzazione: {{progress}}%",
     "sync_failed": "Sincronizzazione Fallita: {{error}}",
     "last_sync": "Ultima sincronizzazione: {{date}}",
-    "satellite_tle_sync": "Sincronizzazione Dati TLE Satelliti",
-    "tle_sync_status": "Stato Sincronizzazione TLE",
+    "satellite_orbital_sync": "Sincronizzazione dati orbitali dei satelliti",
+    "orbital_sync_status": "Stato sincronizzazione orbitale",
     "status": "Stato",
     "idle": "inattivo",
     "progress": "Progresso: {{progress}}%",

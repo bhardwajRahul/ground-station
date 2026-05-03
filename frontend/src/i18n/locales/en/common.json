@@ -31,7 +31,7 @@
       "lost_connection": "Lost connection to backend"
     },
     "sync": {
-      "tle_sync_complete": "TLE sync complete!",
+      "tle_sync_complete": "Orbital data sync complete!",
       "new_items": "New: {{satellites}} satellites, {{transmitters}} transmitters",
       "modified_items": "Modified: {{satellites}} satellites, {{transmitters}} transmitters",
       "removed_items": "Removed: {{satellites}} satellites, {{transmitters}} transmitters",

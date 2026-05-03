@@ -20,11 +20,9 @@
 
 
 import * as React from 'react';
-import {useEffect, useMemo, useState} from 'react';
+import {useMemo} from 'react';
 import {DataGrid, gridClasses} from '@mui/x-data-grid';
 import {
-    Alert,
-    AlertTitle,
     Box,
     Button,
     Dialog,
@@ -32,20 +30,270 @@ import {
     DialogContent,
     DialogActions,
     TextField,
-    Stack, Select, MenuItem, FormControl, InputLabel, Typography,
+    Stack, Select, MenuItem, FormControl, InputLabel, Typography, FormControlLabel, Switch,
+    FormHelperText,
+    Accordion,
+    AccordionSummary,
+    AccordionDetails,
 } from "@mui/material";
 import { alpha } from '@mui/material/styles';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { useTranslation } from 'react-i18next';
 import {useDispatch, useSelector} from 'react-redux';
-import {fetchTLESources,  submitOrEditTLESource, deleteTLESources} from './sources-slice.jsx';
+import {
+    submitOrEditOrbitalSource,
+    deleteOrbitalSources,
+} from './sources-slice.jsx';
 import {betterDateTimes} from "../common/common.jsx";
 import { toast } from '../../utils/toast-with-timestamp.jsx';
 import {useSocket} from "../common/socket.jsx";
 import {setFormValues, setOpenAddDialog, setOpenDeleteConfirm, setSelected} from "./sources-slice.jsx"
-import SynchronizeTLEsCard from "./sychronize-card.jsx";
+import SynchronizeOrbitalDataCard from "./synchronize-orbital-data-card.jsx";
 import {toRowSelectionModel, toSelectedIds} from '../../utils/datagrid-selection.js';
 
 const paginationModel = {page: 0, pageSize: 10};
+
+const PROVIDER_OPTIONS = ['generic_http', 'space_track'];
+const ADAPTER_OPTIONS = ['http_3le', 'http_omm', 'space_track_gp'];
+const FORMAT_OPTIONS = ['3le', 'omm'];
+const CENTRAL_BODY_OPTIONS = ['earth', 'moon', 'mars'];
+const AUTH_TYPE_OPTIONS = ['none', 'basic', 'token'];
+const SPACE_TRACK_GP_BASE_URL = 'https://www.space-track.org/basicspacedata/query/class/gp';
+
+const normalizeProvider = (provider) => {
+    const normalized = String(provider || 'generic_http').toLowerCase();
+    return normalized === 'celestrak' ? 'generic_http' : normalized;
+};
+
+const getProviderLabel = (provider, t) => {
+    const normalizedProvider = normalizeProvider(provider);
+    return t(`orbital_sources.providers.${normalizedProvider}`, {defaultValue: normalizedProvider});
+};
+
+const getProviderOptionLabel = (provider, t) => {
+    const normalizedProvider = normalizeProvider(provider);
+    return t(`orbital_sources.provider_option_${normalizedProvider}`, {
+        defaultValue: getProviderLabel(normalizedProvider, t),
+    });
+};
+
+const buildSuggestedSourceName = (formValues, t) => {
+    const provider = normalizeProvider(formValues.provider);
+    if (provider === 'space_track') {
+        return t('orbital_sources.default_names.space_track_norad', {
+            defaultValue: 'Space-Track - NORAD IDs',
+        });
+    }
+
+    return t(`orbital_sources.default_names.${provider}`, {
+        defaultValue: `${getProviderLabel(provider, t)} Source`,
+    });
+};
+
+const shouldApplySuggestedSourceName = (formValues, t) => {
+    const currentName = String(formValues.name || '').trim();
+    if (!currentName) {
+        return true;
+    }
+    return currentName === buildSuggestedSourceName(formValues, t);
+};
+
+const getAdapterForProviderAndFormat = (provider, format) => {
+    if (normalizeProvider(provider) === 'space_track') {
+        return 'space_track_gp';
+    }
+    return format === 'omm' ? 'http_omm' : 'http_3le';
+};
+
+const getFormatOptionLabel = (format, provider) => {
+    const normalizedProvider = normalizeProvider(provider);
+    if (normalizedProvider !== 'generic_http') {
+        return format.toUpperCase();
+    }
+    if (format === '3le') {
+        return '3LE (TLE/3LE)';
+    }
+    if (format === 'omm') {
+        return 'OMM (OMM-XML, JSON, JSON-PP, CSV)';
+    }
+    return format.toUpperCase();
+};
+
+const normalizeNoradIds = (rawValue) => {
+    if (Array.isArray(rawValue)) {
+        return [...new Set(
+            rawValue
+                .map((item) => Number(item))
+                .filter((item) => Number.isInteger(item) && item > 0)
+        )];
+    }
+    const text = String(rawValue || '').trim();
+    if (!text) {
+        return [];
+    }
+    const tokens = text.split(/[\s,]+/).filter(Boolean);
+    return [...new Set(
+        tokens
+            .map((item) => Number(item))
+            .filter((item) => Number.isInteger(item) && item > 0)
+    )];
+};
+
+const defaultFormValues = {
+    id: null,
+    name: '',
+    url: '',
+    format: '3le',
+    query_mode: 'url',
+    group_id: '',
+    norad_ids: '',
+    provider: 'generic_http',
+    adapter: 'http_3le',
+    enabled: true,
+    priority: '100',
+    central_body: 'earth',
+    auth_type: 'none',
+    username: '',
+    password: '',
+};
+
+export function toFormValues(source) {
+    if (!source) {
+        return {...defaultFormValues};
+    }
+
+    return {
+        id: source.id ?? null,
+        name: source.name ?? '',
+        url: source.url ?? '',
+        format: String(source.format ?? defaultFormValues.format).toLowerCase(),
+        query_mode: String(source.query_mode ?? defaultFormValues.query_mode).toLowerCase(),
+        group_id: source.group_id ?? '',
+        norad_ids: Array.isArray(source.norad_ids)
+            ? source.norad_ids.join(', ')
+            : (typeof source.norad_ids === 'string' ? source.norad_ids : ''),
+        provider: normalizeProvider(source.provider ?? defaultFormValues.provider),
+        adapter: String(source.adapter ?? defaultFormValues.adapter).toLowerCase(),
+        enabled: source.enabled === undefined ? true : Boolean(source.enabled),
+        priority: String(source.priority ?? '100'),
+        central_body: String(source.central_body ?? defaultFormValues.central_body).toLowerCase(),
+        auth_type: String(source.auth_type ?? defaultFormValues.auth_type).toLowerCase(),
+        username: source.username ?? '',
+        password: source.password ?? '',
+    };
+}
+
+export function validateSourceForm(formValues, t) {
+    const errors = {};
+
+    const provider = normalizeProvider(String(formValues.provider || '').trim().toLowerCase());
+    const format = String(formValues.format || '').trim().toLowerCase();
+    const queryMode = 'url';
+    const name = String(formValues.name || '').trim();
+    const rawUrl = String(formValues.url || '').trim();
+    const url = provider === 'space_track' ? SPACE_TRACK_GP_BASE_URL : rawUrl;
+    const requestedAdapter = String(formValues.adapter || '').trim().toLowerCase();
+    const adapter = provider === 'space_track' || requestedAdapter === 'space_track_gp'
+        ? getAdapterForProviderAndFormat(provider, format)
+        : requestedAdapter || getAdapterForProviderAndFormat(provider, format);
+    const centralBody = String(formValues.central_body || '').trim().toLowerCase();
+    const authType = provider === 'space_track'
+        ? 'basic'
+        : String(formValues.auth_type || '').trim().toLowerCase();
+    const username = String(formValues.username || '').trim();
+    const password = String(formValues.password || '').trim();
+    const priorityRaw = String(formValues.priority ?? '').trim();
+    const noradIds = provider === 'space_track' ? normalizeNoradIds(formValues.norad_ids) : [];
+
+    if (!name) {
+        errors.name = t('orbital_sources.validation.required');
+    }
+
+    if (provider !== 'space_track' && !url) {
+        errors.url = t('orbital_sources.validation.required');
+    } else if (provider !== 'space_track') {
+        try {
+            const parsedUrl = new URL(url);
+            if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+                errors.url = t('orbital_sources.validation.url_http_https');
+            }
+        } catch {
+            errors.url = t('orbital_sources.validation.url_invalid');
+        }
+    }
+
+    if (!PROVIDER_OPTIONS.includes(provider)) {
+        errors.provider = t('orbital_sources.validation.invalid_option');
+    }
+    if (!ADAPTER_OPTIONS.includes(adapter)) {
+        errors.adapter = t('orbital_sources.validation.invalid_option');
+    }
+    if (!FORMAT_OPTIONS.includes(format)) {
+        errors.format = t('orbital_sources.validation.invalid_option');
+    }
+    if (!CENTRAL_BODY_OPTIONS.includes(centralBody)) {
+        errors.central_body = t('orbital_sources.validation.invalid_option');
+    }
+    if (!AUTH_TYPE_OPTIONS.includes(authType)) {
+        errors.auth_type = t('orbital_sources.validation.invalid_option');
+    }
+
+    const priority = Number(priorityRaw);
+    if (!Number.isInteger(priority) || priority < 0) {
+        errors.priority = t('orbital_sources.validation.priority');
+    }
+
+    if (authType === 'basic') {
+        if (!username) {
+            errors.username = t('orbital_sources.validation.required');
+        }
+        if (!password) {
+            errors.password = t('orbital_sources.validation.required');
+        }
+    }
+    if (authType === 'token' && !password) {
+        errors.password = t('orbital_sources.validation.required');
+    }
+
+    if (provider === 'space_track' && noradIds.length === 0) {
+        errors.norad_ids = t('orbital_sources.validation.norad_ids_required');
+    }
+
+    if (adapter === 'space_track_gp') {
+        if (provider !== 'space_track') {
+            errors.provider = t('orbital_sources.validation.space_track_provider');
+        }
+        if (authType !== 'basic') {
+            errors.auth_type = t('orbital_sources.validation.space_track_auth');
+        }
+        if (!username || !password) {
+            errors.username = t('orbital_sources.validation.space_track_creds');
+            errors.password = t('orbital_sources.validation.space_track_creds');
+        }
+    }
+
+    return {
+        errors,
+        payload: {
+            id: formValues.id ?? null,
+            name,
+            url,
+            format,
+            query_mode: queryMode,
+            group_id: null,
+            norad_ids: provider === 'space_track' ? noradIds : null,
+            provider,
+            adapter,
+            enabled: Boolean(formValues.enabled),
+            priority,
+            central_body: centralBody,
+            auth_type: authType,
+            username: authType === 'none' || authType === 'token' ? null : username || null,
+            password: authType === 'none' ? null : password || null,
+        },
+    };
+}
 
 export default function SourcesTable() {
     const dispatch = useDispatch();
@@ -61,12 +309,25 @@ export default function SourcesTable() {
     });
 
     const columns = [
-        {field: 'name', headerName: t('tle_sources.name'), width: 150},
-        {field: 'url', headerName: t('tle_sources.url'), flex: 2},
-        {field: 'format', headerName: t('tle_sources.format'), width: 90},
+        {field: 'name', headerName: t('orbital_sources.name'), minWidth: 170, flex: 1},
+        {field: 'url', headerName: t('orbital_sources.url'), minWidth: 260, flex: 2},
+        {
+            field: 'provider',
+            headerName: t('orbital_sources.provider'),
+            width: 150,
+            renderCell: (params) => getProviderLabel(params.value, t),
+        },
+        {field: 'format', headerName: t('orbital_sources.format'), width: 90},
+        {field: 'auth_type', headerName: t('orbital_sources.auth_type'), width: 110},
+        {
+            field: 'enabled',
+            headerName: t('orbital_sources.enabled'),
+            width: 90,
+            renderCell: (params) => (params.value ? t('orbital_sources.enabled_yes') : t('orbital_sources.enabled_no')),
+        },
         {
             field: 'added',
-            headerName: t('tle_sources.added'),
+            headerName: t('orbital_sources.added'),
             flex: 1,
             align: 'right',
             headerAlign: 'right',
@@ -77,7 +338,7 @@ export default function SourcesTable() {
         },
         {
             field: 'updated',
-            headerName: t('tle_sources.updated'),
+            headerName: t('orbital_sources.updated'),
             flex: 1,
             width: 100,
             align: 'right',
@@ -87,12 +348,6 @@ export default function SourcesTable() {
             }
         },
     ];
-    const defaultFormValues = {
-        id: null,
-        name: '',
-        url: '',
-        format: '3le',
-    };
 
     const handleAddClick = () => {
         dispatch(setFormValues(defaultFormValues));
@@ -104,18 +359,56 @@ export default function SourcesTable() {
     };
 
     const handleInputChange = (e) => {
-        const {name, value} = e.target;
-        dispatch(setFormValues({...formValues, [name]: value}));
+        const {name, value, type, checked} = e.target;
+        const nextValue = type === 'checkbox' ? checked : value;
+        const nextValues = {...formValues, [name]: nextValue};
+
+        if (name === 'provider' && value === 'space_track') {
+            nextValues.query_mode = 'url';
+            nextValues.adapter = 'space_track_gp';
+            nextValues.format = 'omm';
+            nextValues.auth_type = 'basic';
+            nextValues.url = SPACE_TRACK_GP_BASE_URL;
+        }
+        if (name === 'provider' && value !== 'space_track') {
+            nextValues.query_mode = 'url';
+            nextValues.auth_type = 'none';
+            nextValues.username = '';
+            nextValues.password = '';
+            nextValues.norad_ids = '';
+            nextValues.adapter = getAdapterForProviderAndFormat(value, nextValues.format);
+            if (nextValues.url === SPACE_TRACK_GP_BASE_URL) {
+                nextValues.url = '';
+            }
+        }
+        if (name === 'format' && nextValues.provider !== 'space_track') {
+            nextValues.adapter = getAdapterForProviderAndFormat(nextValues.provider, value);
+        }
+        // Keep Space-Track defaults coherent when selecting the dedicated adapter.
+        if (name === 'adapter' && value === 'space_track_gp') {
+            nextValues.provider = 'space_track';
+            nextValues.auth_type = 'basic';
+            nextValues.format = nextValues.format || 'omm';
+            nextValues.url = SPACE_TRACK_GP_BASE_URL;
+        }
+        if (
+            ['provider'].includes(name)
+            && shouldApplySuggestedSourceName(formValues, t)
+        ) {
+            nextValues.name = buildSuggestedSourceName(nextValues, t);
+        }
+        dispatch(setFormValues(nextValues));
     };
 
-    const handleEditClick = (e) => {
+    const handleEditClick = () => {
         const singleRowId = selected[0];
-        dispatch(setFormValues({...tleSources.find(r => r.id === singleRowId), id: singleRowId}));
+        const selectedSource = tleSources.find(r => r.id === singleRowId);
+        dispatch(setFormValues(toFormValues(selectedSource)));
         dispatch(setOpenAddDialog(true));
     };
 
     const handleDeleteClick = () => {
-        dispatch(deleteTLESources({socket, selectedIds: selected}))
+        dispatch(deleteOrbitalSources({socket, selectedIds: selected}))
             .unwrap()
             .then((data) => {
                 toast.success(data.message, {
@@ -123,7 +416,7 @@ export default function SourcesTable() {
                 })
             })
             .catch((error) => {
-                toast.error(t('tle_sources.failed_delete') + ": " + error, {
+                toast.error(t('orbital_sources.failed_delete') + ": " + error, {
                     autoClose: 5000,
                 })
             })
@@ -134,67 +427,49 @@ export default function SourcesTable() {
         if (hasValidationErrors) {
             return;
         }
+        const submitPayload = validationResult.payload;
         if (formValues.id === null) {
-            dispatch(submitOrEditTLESource({socket, formValues}))
+            dispatch(submitOrEditOrbitalSource({socket, formValues: submitPayload}))
                 .unwrap()
                 .then(() => {
-                    toast.success(t('tle_sources.added_success'), {
+                    toast.success(t('orbital_sources.added_success'), {
                         autoClose: 4000,
                     })
                 })
                 .catch((error) => {
-                    toast.error(t('tle_sources.failed_add') + ": " + error)
+                    toast.error(t('orbital_sources.failed_add') + ": " + error)
                 });
         } else {
-            dispatch(submitOrEditTLESource({socket, formValues}))
+            dispatch(submitOrEditOrbitalSource({socket, formValues: submitPayload}))
                 .unwrap()
                 .then(() => {
-                    toast.success(t('tle_sources.updated_success'), {
+                    toast.success(t('orbital_sources.updated_success'), {
                         autoClose: 4000,
                     })
                 })
                 .catch((error) => {
-                    toast.error(t('tle_sources.failed_update') + ": " + error)
+                    toast.error(t('orbital_sources.failed_update') + ": " + error)
                 });
         }
         dispatch(setOpenAddDialog(false));
     };
 
-    const validationErrors = {};
-    if (!String(formValues.name || '').trim()) validationErrors.name = 'Required';
-    if (!String(formValues.url || '').trim()) {
-        validationErrors.url = 'Required';
-    } else {
-        try {
-            const parsedUrl = new URL(formValues.url);
-            if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-                validationErrors.url = 'Must be http or https URL';
-            }
-        } catch {
-            validationErrors.url = 'Invalid URL';
-        }
-    }
-    if (!String(formValues.format || '').trim()) validationErrors.format = 'Required';
+    const normalizedFormValues = toFormValues(formValues);
+    const isSpaceTrackSource = normalizedFormValues.provider === 'space_track';
+    const validationResult = validateSourceForm(normalizedFormValues, t);
+    const validationErrors = validationResult.errors;
     const hasValidationErrors = Object.keys(validationErrors).length > 0;
-
-    // useEffect(() => {
-    //     dispatch(fetchTLESources({socket}));
-    // }, [dispatch]);
 
     return (
         <Box sx={{width: '100%', marginTop: 0}}>
-            <SynchronizeTLEsCard/>
-            <Alert severity="info" sx={{ mt: 2 }}>
-                <AlertTitle>{t('tle_sources.title')}</AlertTitle>
-                {t('tle_sources.subtitle')}
-            </Alert>
+            <SynchronizeOrbitalDataCard/>
             <Box>
                 <DataGrid
                     loading={loading}
                     rows={tleSources}
                     columns={columns}
                     initialState={{pagination: {paginationModel}}}
-                    pageSizeOptions={[5, 10]}
+                    pageSizeOptions={[5, 10, 25, 50, 100]}
                     checkboxSelection={true}
                     onRowSelectionModelChange={(selected) => {
                         dispatch(setSelected(toSelectedIds(selected)));
@@ -234,14 +509,14 @@ export default function SourcesTable() {
                 />
                 <Stack direction="row" spacing={2} sx={{marginTop: 2}}>
                     <Button variant="contained" onClick={handleAddClick}>
-                        {t('tle_sources.add')}
+                        {t('orbital_sources.add')}
                     </Button>
                     <Button variant="contained" disabled={selected.length !== 1} onClick={handleEditClick}>
-                        {t('tle_sources.edit')}
+                        {t('orbital_sources.edit')}
                     </Button>
                     <Button variant="contained" color="error" disabled={selected.length < 1}
                             onClick={() => dispatch(setOpenDeleteConfirm(true))}>
-                        {t('tle_sources.delete')}
+                        {t('orbital_sources.delete')}
                     </Button>
                     <Dialog
                         open={openDeleteConfirm}
@@ -284,14 +559,14 @@ export default function SourcesTable() {
                             >
                                 !
                             </Box>
-                            {t('tle_sources.confirm_deletion')}
+                            {t('orbital_sources.confirm_deletion')}
                         </DialogTitle>
                         <DialogContent sx={{ px: 3, pt: 3, pb: 3 }}>
                             <Typography variant="body1" sx={{ mt: 2, mb: 2, color: 'text.primary' }}>
-                                {t('tle_sources.confirm_delete_intro')}
+                                {t('orbital_sources.confirm_delete_intro')}
                             </Typography>
                             <Typography variant="body2" sx={{ mb: 2, fontWeight: 600, color: 'text.secondary' }}>
-                                {selected.length === 1 ? 'TLE source to be deleted:' : `${selected.length} TLE sources to be deleted:`}
+                                {selected.length === 1 ? 'Orbital source to be deleted:' : `${selected.length} orbital sources to be deleted:`}
                             </Typography>
                             <Box sx={{
                                 maxHeight: 300,
@@ -330,6 +605,13 @@ export default function SourcesTable() {
                                                 </Typography>
 
                                                 <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.secondary', fontWeight: 500 }}>
+                                                    Provider:
+                                                </Typography>
+                                                <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.primary' }}>
+                                                    {getProviderLabel(source.provider, t)}
+                                                </Typography>
+
+                                                <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.secondary', fontWeight: 500 }}>
                                                     Added:
                                                 </Typography>
                                                 <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'text.primary' }}>
@@ -342,13 +624,13 @@ export default function SourcesTable() {
                             </Box>
                             <Box sx={{ mt: 2, p: 2, bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'grey.50', borderRadius: 1 }}>
                                 <Typography variant="body2" sx={{ fontSize: '0.813rem', color: 'warning.main', fontWeight: 500, mb: 1 }}>
-                                    {t('tle_sources.cannot_undo')}
+                                    {t('orbital_sources.cannot_undo')}
                                 </Typography>
                                 <Typography component="div" variant="body2" sx={{ fontSize: '0.813rem', color: 'text.secondary' }}>
                                     <ul style={{ margin: 0, paddingLeft: '1.5rem' }}>
-                                        <li>{t('tle_sources.delete_item_1')}</li>
-                                        <li>{t('tle_sources.delete_item_2')}</li>
-                                        <li>{t('tle_sources.delete_item_3')}</li>
+                                        <li>{t('orbital_sources.delete_item_1')}</li>
+                                        <li>{t('orbital_sources.delete_item_2')}</li>
+                                        <li>{t('orbital_sources.delete_item_3')}</li>
                                     </ul>
                                 </Typography>
                             </Box>
@@ -372,7 +654,7 @@ export default function SourcesTable() {
                                     fontWeight: 500,
                                 }}
                             >
-                                {t('tle_sources.cancel')}
+                                {t('orbital_sources.cancel')}
                             </Button>
                             <Button
                                 variant="contained"
@@ -384,7 +666,7 @@ export default function SourcesTable() {
                                     fontWeight: 600,
                                 }}
                             >
-                                {t('tle_sources.delete')}
+                                {t('orbital_sources.delete')}
                             </Button>
                         </DialogActions>
                     </Dialog>
@@ -411,44 +693,268 @@ export default function SourcesTable() {
                             py: 2.5,
                         }}
                     >
-                        {formValues.id ? t('tle_sources.dialog_title_edit') : t('tle_sources.dialog_title_add')}
+                        {formValues.id ? t('orbital_sources.dialog_title_edit') : t('orbital_sources.dialog_title_add')}
                     </DialogTitle>
                     <DialogContent sx={{ bgcolor: 'background.paper', px: 3, py: 3 }}>
                         <Stack spacing={2} sx={{ mt: 3 }}>
-                            <Alert severity="warning" sx={{marginBottom: 2}}>
-                                <AlertTitle>{t('tle_sources.performance_notice')}</AlertTitle>
-                                {t('tle_sources.performance_warning')}
-                            </Alert>
+                            <FormControl fullWidth size="small" error={Boolean(validationErrors.provider)}>
+                                <InputLabel id="provider-label">{t('orbital_sources.provider')}</InputLabel>
+                                <Select
+                                    label={t('orbital_sources.provider')}
+                                    name="provider"
+                                    value={normalizedFormValues.provider}
+                                    onChange={handleInputChange}
+                                    size="small"
+                                >
+                                    {PROVIDER_OPTIONS.map((provider) => (
+                                        <MenuItem key={provider} value={provider}>
+                                            {getProviderOptionLabel(provider, t)}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                                {validationErrors.provider && (
+                                    <FormHelperText>{validationErrors.provider}</FormHelperText>
+                                )}
+                            </FormControl>
                             <TextField
-                                label={t('tle_sources.name')}
+                                label={t('orbital_sources.name')}
                                 name="name"
-                                value={formValues.name}
+                                value={normalizedFormValues.name}
                                 onChange={handleInputChange}
                                 size="small"
                                 fullWidth
                                 error={Boolean(validationErrors.name)}
+                                helperText={validationErrors.name || ' '}
                             />
-                            <TextField
-                                label={t('tle_sources.url')}
-                                name="url"
-                                value={formValues.url}
-                                onChange={handleInputChange}
-                                size="small"
-                                fullWidth
-                                error={Boolean(validationErrors.url)}
-                            />
-                            <FormControl fullWidth size="small" error={Boolean(validationErrors.format)}>
-                                <InputLabel id="format-label">{t('tle_sources.format')}</InputLabel>
-                                <Select
-                                    label={t('tle_sources.format')}
-                                    name="format"
-                                    value={formValues.format || ''}
+                            <Box
+                                sx={(theme) => ({
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: 1,
+                                    px: 1.25,
+                                    py: 1,
+                                    borderRadius: 1,
+                                    border: `1px solid ${theme.palette.divider}`,
+                                    bgcolor: alpha(
+                                        theme.palette.primary.main,
+                                        theme.palette.mode === 'dark' ? 0.14 : 0.06
+                                    ),
+                                })}
+                            >
+                                <InfoOutlinedIcon sx={{ fontSize: 16, color: 'text.secondary', mt: '1px' }} />
+                                <Typography variant="caption" color="text.secondary">
+                                    {t('orbital_sources.system_group_notice')}
+                                </Typography>
+                            </Box>
+
+                            {!isSpaceTrackSource && (
+                                <TextField
+                                    label={t('orbital_sources.url')}
+                                    name="url"
+                                    value={normalizedFormValues.url}
                                     onChange={handleInputChange}
                                     size="small"
-                                >
-                                    <MenuItem value="3le">3LE</MenuItem>
-                                </Select>
-                            </FormControl>
+                                    fullWidth
+                                    error={Boolean(validationErrors.url)}
+                                    helperText={validationErrors.url || ' '}
+                                />
+                            )}
+
+                            {isSpaceTrackSource && (
+                                <TextField
+                                    label={t('orbital_sources.norad_ids')}
+                                    name="norad_ids"
+                                    value={normalizedFormValues.norad_ids}
+                                    onChange={handleInputChange}
+                                    placeholder={t('orbital_sources.norad_ids_placeholder')}
+                                    size="small"
+                                    fullWidth
+                                    multiline
+                                    minRows={2}
+                                    error={Boolean(validationErrors.norad_ids)}
+                                    helperText={validationErrors.norad_ids || t('orbital_sources.norad_ids_hint')}
+                                />
+                            )}
+
+                            {!isSpaceTrackSource && (
+                                <FormControl fullWidth size="small" error={Boolean(validationErrors.format)}>
+                                    <InputLabel id="format-label">{t('orbital_sources.format')}</InputLabel>
+                                    <Select
+                                        label={t('orbital_sources.format')}
+                                        name="format"
+                                        value={normalizedFormValues.format}
+                                        onChange={handleInputChange}
+                                        size="small"
+                                    >
+                                        {FORMAT_OPTIONS.map((format) => (
+                                            <MenuItem key={format} value={format}>
+                                                {getFormatOptionLabel(format, normalizedFormValues.provider)}
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                    {validationErrors.format && (
+                                        <FormHelperText>{validationErrors.format}</FormHelperText>
+                                    )}
+                                    <FormHelperText>{t('orbital_sources.format_hint')}</FormHelperText>
+                                </FormControl>
+                            )}
+
+                            {isSpaceTrackSource && (
+                                <>
+                                    <TextField
+                                        label={t('orbital_sources.username')}
+                                        name="username"
+                                        value={normalizedFormValues.username}
+                                        onChange={handleInputChange}
+                                        size="small"
+                                        fullWidth
+                                        error={Boolean(validationErrors.username)}
+                                        helperText={validationErrors.username || ' '}
+                                    />
+                                    <TextField
+                                        label={t('orbital_sources.password')}
+                                        name="password"
+                                        type="password"
+                                        value={normalizedFormValues.password}
+                                        onChange={handleInputChange}
+                                        size="small"
+                                        fullWidth
+                                        error={Boolean(validationErrors.password)}
+                                        helperText={validationErrors.password || ' '}
+                                    />
+                                </>
+                            )}
+
+                            <Stack
+                                direction={{ xs: 'column', sm: 'row' }}
+                                spacing={2}
+                                alignItems={{ xs: 'stretch', sm: 'flex-start' }}
+                            >
+                                <TextField
+                                    label={t('orbital_sources.priority')}
+                                    name="priority"
+                                    type="number"
+                                    value={normalizedFormValues.priority}
+                                    onChange={handleInputChange}
+                                    size="small"
+                                    fullWidth
+                                    error={Boolean(validationErrors.priority)}
+                                    helperText={
+                                        validationErrors.priority || t('orbital_sources.priority_hint')
+                                    }
+                                    inputProps={{min: 0, step: 1}}
+                                />
+                                <FormControlLabel
+                                    sx={{ minHeight: 40, alignItems: 'center' }}
+                                    control={
+                                        <Switch
+                                            name="enabled"
+                                            checked={Boolean(normalizedFormValues.enabled)}
+                                            onChange={handleInputChange}
+                                        />
+                                    }
+                                    label={t('orbital_sources.enabled')}
+                                />
+                            </Stack>
+
+                            <Accordion disableGutters>
+                                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                                    <Typography variant="subtitle2">
+                                        {t('orbital_sources.advanced_settings')}
+                                    </Typography>
+                                </AccordionSummary>
+                                <AccordionDetails>
+                                    <Stack spacing={2}>
+                                        {isSpaceTrackSource && (
+                                            <FormControl fullWidth size="small" error={Boolean(validationErrors.format)}>
+                                                <InputLabel id="format-label-advanced">{t('orbital_sources.format')}</InputLabel>
+                                                <Select
+                                                    label={t('orbital_sources.format')}
+                                                    name="format"
+                                                    value={normalizedFormValues.format}
+                                                    onChange={handleInputChange}
+                                                    size="small"
+                                                >
+                                                    {FORMAT_OPTIONS.map((format) => (
+                                                        <MenuItem key={format} value={format}>
+                                                            {getFormatOptionLabel(format, normalizedFormValues.provider)}
+                                                        </MenuItem>
+                                                    ))}
+                                                </Select>
+                                                {validationErrors.format && (
+                                                    <FormHelperText>{validationErrors.format}</FormHelperText>
+                                                )}
+                                                <FormHelperText>{t('orbital_sources.format_hint')}</FormHelperText>
+                                            </FormControl>
+                                        )}
+                                        <FormControl fullWidth size="small" error={Boolean(validationErrors.central_body)}>
+                                            <InputLabel id="central-body-label">{t('orbital_sources.central_body')}</InputLabel>
+                                            <Select
+                                                label={t('orbital_sources.central_body')}
+                                                name="central_body"
+                                                value={normalizedFormValues.central_body}
+                                                onChange={handleInputChange}
+                                                size="small"
+                                            >
+                                                {CENTRAL_BODY_OPTIONS.map((body) => (
+                                                    <MenuItem key={body} value={body}>
+                                                        {body}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                            {validationErrors.central_body && (
+                                                <FormHelperText>{validationErrors.central_body}</FormHelperText>
+                                            )}
+                                        </FormControl>
+                                        {!isSpaceTrackSource && (
+                                            <FormControl fullWidth size="small" error={Boolean(validationErrors.auth_type)}>
+                                                <InputLabel id="auth-type-label">{t('orbital_sources.auth_type')}</InputLabel>
+                                                <Select
+                                                    label={t('orbital_sources.auth_type')}
+                                                    name="auth_type"
+                                                    value={normalizedFormValues.auth_type}
+                                                    onChange={handleInputChange}
+                                                    size="small"
+                                                >
+                                                    {AUTH_TYPE_OPTIONS.map((authType) => (
+                                                        <MenuItem key={authType} value={authType}>
+                                                            {authType}
+                                                        </MenuItem>
+                                                    ))}
+                                                </Select>
+                                                {validationErrors.auth_type && (
+                                                    <FormHelperText>{validationErrors.auth_type}</FormHelperText>
+                                                )}
+                                            </FormControl>
+                                        )}
+                                        {!isSpaceTrackSource && normalizedFormValues.auth_type !== 'none' && (
+                                            <>
+                                                <TextField
+                                                    label={t('orbital_sources.username')}
+                                                    name="username"
+                                                    value={normalizedFormValues.username}
+                                                    onChange={handleInputChange}
+                                                    size="small"
+                                                    fullWidth
+                                                    error={Boolean(validationErrors.username)}
+                                                    helperText={validationErrors.username || ' '}
+                                                />
+                                                <TextField
+                                                    label={t('orbital_sources.password')}
+                                                    name="password"
+                                                    type="password"
+                                                    value={normalizedFormValues.password}
+                                                    onChange={handleInputChange}
+                                                    size="small"
+                                                    fullWidth
+                                                    error={Boolean(validationErrors.password)}
+                                                    helperText={validationErrors.password || ' '}
+                                                />
+                                            </>
+                                        )}
+                                    </Stack>
+                                </AccordionDetails>
+                            </Accordion>
                         </Stack>
                     </DialogContent>
                     <DialogActions
@@ -471,13 +977,13 @@ export default function SourcesTable() {
                                 },
                             }}
                         >
-                            {t('tle_sources.cancel')}
+                            {t('orbital_sources.cancel')}
                         </Button>
                         <Button
                             variant="contained"
                             onClick={handleSubmit}
                             disabled={hasValidationErrors}
-                                color="success">{formValues.id ? t('tle_sources.edit') : t('tle_sources.submit')}</Button>
+                                color="success">{formValues.id ? t('orbital_sources.edit') : t('orbital_sources.submit')}</Button>
                     </DialogActions>
                 </Dialog>
             </Box>

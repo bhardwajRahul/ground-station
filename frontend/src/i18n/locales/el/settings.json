@@ -8,7 +8,7 @@
     "rotators": "ΠΕΡΙΣΤΡΟΦΕΙΣ",
     "cameras": "ΚΑΜΕΡΕΣ",
     "sdrs": "SDRS",
-    "tle_sources": "ΠΗΓΕΣ TLE",
+    "orbital_sources": "ΠΗΓΕΣ ΤΡΟΧΙΑΚΩΝ ΔΕΔΟΜΕΝΩΝ",
     "satellite_list": "ΔΟΡΥΦΟΡΟΙ",
     "groups": "ΟΜΑΔΕΣ",
     "preferences": "ΠΡΟΤΙΜΗΣΕΙΣ",

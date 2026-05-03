@@ -9,7 +9,7 @@
   "cameras": "Camera's",
   "sdrs": "SDR's",
   "satellites": "Satellieten",
-  "tle_sources": "TLE-bronnen",
+  "orbital_sources": "Baanbronnen",
   "groups": "Groepen",
   "settings": "Instellingen",
   "preferences": "Voorkeuren",

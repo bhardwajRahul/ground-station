@@ -92,7 +92,7 @@
   "group_dropdown": {
     "label": "Grupo",
     "user_groups": "Grupos de satélites definidos por el usuario",
-    "tle_groups": "Grupos de fuentes TLE",
+    "tle_groups": "Grupos de fuentes orbitales",
     "none_created": "Ninguno creado"
   },
   "rig_control_labels": {

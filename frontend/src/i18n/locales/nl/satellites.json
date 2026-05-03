@@ -7,7 +7,7 @@
   "tle": "TLE",
   "satellite_database": {
     "title": "Satellietendatabase",
-    "subtitle": "Blader en beheer de satellietendatabase georganiseerd per groep. Selecteer een satellietgroep uit het vervolgkeuzemenu om satellieten te bekijken met hun operationele status, frequentiebanden, landen, operators en missiedata. Klik op een satellietrij om gedetailleerde informatie te bekijken inclusief zenderspecificaties, baanparameters en realtime volggegevens. Satellietgegevens worden automatisch gesynchroniseerd vanuit TLE-bronnen en verrijkt met frequentie-informatie uit de SatNOGS-database.",
+    "subtitle": "Blader en beheer de satellietendatabase georganiseerd per groep. Selecteer een satellietgroep uit het vervolgkeuzemenu om satellieten te bekijken met hun operationele status, frequentiebanden, landen, operators en missiedata. Klik op een satellietrij om gedetailleerde informatie te bekijken inclusief zenderspecificaties, baanparameters en realtime volggegevens. Satellietgegevens worden automatisch gesynchroniseerd vanuit Baanbronnen en verrijkt met frequentie-informatie uit de SatNOGS-database.",
     "select_group": "Selecteer een van de satellietgroepen",
     "add": "Toevoegen",
     "edit": "Bewerken",
@@ -61,9 +61,9 @@
     "failed_update": "Bijwerken van satelliet mislukt",
     "failed_delete": "Verwijderen van satelliet(en) mislukt"
   },
-  "tle_sources": {
-    "title": "TLE-Gegevensbronnen",
-    "subtitle": "Deze pagina beheert TLE (Two-Line Element) gegevensbronnen voor satellieten volgen. U kunt aangepaste TLE-bronnen in 3LE-formaat toevoegen, bewerken en verwijderen van verschillende providers, waaronder Celestrak.org en andere TLE-gegevensbronnen. Het systeem haalt automatisch baangegevens op van geconfigureerde URL's en combineert deze met frequentie-informatie uit de SatNOGS API. Gebruik de synchronisatiebesturingen om alle bronnen bij te werken met de nieuwste satellietgegevens. Bronnen worden lokaal opgeslagen en tijdstempels tonen wanneer elke bron is toegevoegd en voor het laatst is bijgewerkt.",
+  "orbital_sources": {
+    "title": "Baangegevensbronnen",
+    "subtitle": "Deze pagina beheert baangegevensbronnen voor het volgen van satellieten. U kunt aangepaste baanbronnen in 3LE-formaat toevoegen, bewerken en verwijderen van verschillende providers, waaronder Celestrak.org en andere baangegevensbronnen. Het systeem haalt automatisch baangegevens op van geconfigureerde URL's en combineert deze met frequentie-informatie uit de SatNOGS API. Gebruik de synchronisatiebesturingen om alle bronnen bij te werken met de nieuwste satellietgegevens. Bronnen worden lokaal opgeslagen en tijdstempels tonen wanneer elke bron is toegevoegd en voor het laatst is bijgewerkt.",
     "add": "TOEVOEGEN",
     "edit": "BEWERKEN",
     "delete": "VERWIJDEREN",
@@ -72,23 +72,23 @@
     "format": "Formaat",
     "added": "Toegevoegd",
     "updated": "Bijgewerkt",
-    "dialog_title_add": "TLE-Bron Toevoegen",
-    "dialog_title_edit": "TLE-Bron Bewerken",
+    "dialog_title_add": "Baanbron Toevoegen",
+    "dialog_title_edit": "Baanbron Bewerken",
     "cancel": "ANNULEREN",
     "submit": "VERZENDEN",
     "confirm_deletion": "Verwijdering Bevestigen",
-    "confirm_delete_intro": "Weet u zeker dat u de geselecteerde TLE-bronnen wilt verwijderen? Deze actie zal permanent verwijderen:",
-    "delete_item_1": "De TLE-bron(nen)",
-    "delete_item_2": "Alle satellieten afkomstig van de geselecteerde TLE-bron(nen)",
+    "confirm_delete_intro": "Weet u zeker dat u de geselecteerde baanbronnen wilt verwijderen? Deze actie zal permanent verwijderen:",
+    "delete_item_1": "De baanbron(nen)",
+    "delete_item_2": "Alle satellieten afkomstig van de geselecteerde baanbron(nen)",
     "delete_item_3": "De bijbehorende satellietgroep",
     "cannot_undo": "Deze actie kan niet ongedaan worden gemaakt.",
     "performance_notice": "Prestatiewaarschuwing",
-    "performance_warning": "TLE-bronnen met honderden satellieten zullen prestatieproblemen veroorzaken in de UI. De applicatie zal werken (zelfs met duizenden satellieten in een enkele TLE) maar de UI-prestaties zullen lijden, vooral wanneer het aantal hoog is (in de duizenden). Voor optimale prestaties, selecteer bijgewerkte bronnen die een kleine of specifieke groep satellieten bevatten in plaats van generieke TLE-bronnen die grote groepen satellieten bevatten (zoals de Active-lijst van Celestrak).",
-    "added_success": "TLE-bron succesvol toegevoegd",
-    "updated_success": "TLE-bron succesvol bijgewerkt",
-    "failed_add": "Toevoegen van TLE-bron mislukt",
-    "failed_update": "Bijwerken van TLE-bron mislukt",
-    "failed_delete": "Verwijderen van TLE-bronnen mislukt"
+    "performance_warning": "Baanbronnen met honderden satellieten zullen prestatieproblemen veroorzaken in de UI. De applicatie zal werken (zelfs met duizenden satellieten in een enkele bron) maar de UI-prestaties zullen lijden, vooral wanneer het aantal hoog is (in de duizenden). Voor optimale prestaties, selecteer bijgewerkte bronnen die een kleine of specifieke groep satellieten bevatten in plaats van generieke baanbronnen die grote groepen satellieten bevatten (zoals de Active-lijst van Celestrak).",
+    "added_success": "Baanbron succesvol toegevoegd",
+    "updated_success": "Baanbron succesvol bijgewerkt",
+    "failed_add": "Toevoegen van baanbron mislukt",
+    "failed_update": "Bijwerken van baanbron mislukt",
+    "failed_delete": "Verwijderen van Baanbronnen mislukt"
   },
   "groups": {
     "title": "Satellietgroepen",
@@ -167,7 +167,7 @@
   },
   "synchronize": {
     "header": {
-      "title": "TLE-Gegevenssynchronisatie",
+      "title": "Synchronisatie van baangegevens",
       "subtitle": "Baangegevens ophalen van satellietbronnen",
       "button": "SYNCHRONISEREN",
       "last_update": "Laatste update: {{date}}"

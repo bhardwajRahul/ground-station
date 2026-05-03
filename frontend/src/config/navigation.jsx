@@ -205,8 +205,8 @@ const WaterfallIconWithStatus = () => {
     );
 };
 
-// Wrapper component for TleIcon that reads Redux state
-const TleIconWithStatus = () => {
+// Wrapper component for orbital sources icon that reads Redux state
+const OrbitalSourcesIconWithStatus = () => {
     const isSynchronizing = useSelector((state) => state.syncSatellite?.synchronizing);
 
     return (
@@ -320,9 +320,9 @@ export const getNavigation = ({ showCelestial = false } = {}) => {
         title: i18n.t('satellites', { ns: 'navigation' }),
     },
     {
-        segment: 'satellites/tlesources',
-        title: i18n.t('tle_sources', { ns: 'navigation' }),
-        icon: <TleIconWithStatus />,
+        segment: 'satellites/orbital-sources',
+        title: i18n.t('orbital_sources', { ns: 'navigation' }),
+        icon: <OrbitalSourcesIconWithStatus />,
     },
     {
         segment: 'satellites/satellites',

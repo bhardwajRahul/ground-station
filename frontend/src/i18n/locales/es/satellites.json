@@ -7,7 +7,7 @@
   "tle": "TLE",
   "satellite_database": {
     "title": "Base de datos de satélites",
-    "subtitle": "Explora y administra la base de datos de satélites organizada por grupos. Selecciona un grupo de satélites del menú desplegable para ver satélites con su estado operativo, bandas de frecuencia, países, operadores y fechas de misión. Haz clic en cualquier fila de satélite para ver información detallada que incluye especificaciones de transmisores, parámetros orbitales y datos de seguimiento en tiempo real. Los datos de satélites se sincronizan automáticamente desde fuentes TLE y se enriquecen con información de frecuencia de la base de datos SatNOGS.",
+    "subtitle": "Explora y administra la base de datos de satélites organizada por grupos. Selecciona un grupo de satélites del menú desplegable para ver satélites con su estado operativo, bandas de frecuencia, países, operadores y fechas de misión. Haz clic en cualquier fila de satélite para ver información detallada que incluye especificaciones de transmisores, parámetros orbitales y datos de seguimiento en tiempo real. Los datos de satélites se sincronizan automáticamente desde fuentes orbitales y se enriquecen con información de frecuencia de la base de datos SatNOGS.",
     "select_group": "Selecciona uno de los grupos de satélites",
     "add": "Agregar",
     "edit": "Editar",
@@ -61,9 +61,9 @@
     "failed_update": "Error al actualizar satélite",
     "failed_delete": "Error al eliminar satélite(s)"
   },
-  "tle_sources": {
-    "title": "Fuentes de datos TLE",
-    "subtitle": "Esta página administra fuentes de datos TLE (Two-Line Element) para el seguimiento de satélites. Puedes agregar, editar y eliminar fuentes TLE personalizadas en formato 3LE de varios proveedores, incluidos Celestrak.org y otras fuentes de datos TLE. El sistema obtiene automáticamente datos orbitales de URLs configuradas y los combina con información de frecuencia de la API de SatNOGS. Usa los controles de sincronización para actualizar todas las fuentes con los últimos datos satelitales. Las fuentes se almacenan localmente y las marcas de tiempo muestran cuándo se agregó y actualizó por última vez cada fuente.",
+  "orbital_sources": {
+    "title": "Fuentes de datos orbitales",
+    "subtitle": "Esta página administra fuentes de datos orbitales (Two-Line Element) para el seguimiento de satélites. Puedes agregar, editar y eliminar fuentes orbitales personalizadas en formato 3LE de varios proveedores, incluidos Celestrak.org y otras fuentes de datos orbitales. El sistema obtiene automáticamente datos orbitales de URLs configuradas y los combina con información de frecuencia de la API de SatNOGS. Usa los controles de sincronización para actualizar todas las fuentes con los últimos datos satelitales. Las fuentes se almacenan localmente y las marcas de tiempo muestran cuándo se agregó y actualizó por última vez cada fuente.",
     "add": "AGREGAR",
     "edit": "EDITAR",
     "delete": "ELIMINAR",
@@ -72,23 +72,23 @@
     "format": "Formato",
     "added": "Agregado",
     "updated": "Actualizado",
-    "dialog_title_add": "Agregar fuente TLE",
-    "dialog_title_edit": "Editar fuente TLE",
+    "dialog_title_add": "Agregar fuente orbital",
+    "dialog_title_edit": "Editar fuente orbital",
     "cancel": "CANCELAR",
     "submit": "ENVIAR",
     "confirm_deletion": "Confirmar eliminación",
-    "confirm_delete_intro": "¿Estás seguro de que deseas eliminar las fuentes TLE seleccionadas? Esta acción eliminará permanentemente:",
-    "delete_item_1": "La(s) fuente(s) TLE",
-    "delete_item_2": "Todos los satélites procedentes de la(s) fuente(s) TLE seleccionada(s)",
+    "confirm_delete_intro": "¿Estás seguro de que deseas eliminar las fuentes orbitales seleccionadas? Esta acción eliminará permanentemente:",
+    "delete_item_1": "La(s) fuente(s) orbital(es)",
+    "delete_item_2": "Todos los satélites procedentes de la(s) fuente(s) orbital(es) seleccionada(s)",
     "delete_item_3": "El grupo de satélites correspondiente",
     "cannot_undo": "Esta acción no se puede deshacer.",
     "performance_notice": "Aviso de rendimiento",
-    "performance_warning": "Las fuentes TLE con cientos de satélites causarán problemas de rendimiento en la interfaz. La aplicación funcionará (incluso con miles de satélites en un solo TLE) pero el rendimiento de la interfaz se verá afectado, especialmente cuando el número es alto (en miles). Para un rendimiento óptimo, selecciona fuentes actualizadas que contengan un grupo pequeño o específico de satélites en lugar de fuentes TLE genéricas que contengan vastos grupos de satélites (como la lista Active de Celestrak).",
-    "added_success": "Fuente TLE agregada exitosamente",
-    "updated_success": "Fuente TLE actualizada exitosamente",
-    "failed_add": "Error al agregar fuente TLE",
-    "failed_update": "Error al actualizar fuente TLE",
-    "failed_delete": "Error al eliminar fuentes TLE"
+    "performance_warning": "Las fuentes orbitales con cientos de satélites causarán problemas de rendimiento en la interfaz. La aplicación funcionará (incluso con miles de satélites en una sola fuente) pero el rendimiento de la interfaz se verá afectado, especialmente cuando el número es alto (en miles). Para un rendimiento óptimo, selecciona fuentes actualizadas que contengan un grupo pequeño o específico de satélites en lugar de fuentes orbitales genéricas que contengan vastos grupos de satélites (como la lista Active de Celestrak).",
+    "added_success": "Fuente orbital agregada exitosamente",
+    "updated_success": "Fuente orbital actualizada exitosamente",
+    "failed_add": "Error al agregar fuente orbital",
+    "failed_update": "Error al actualizar fuente orbital",
+    "failed_delete": "Error al eliminar fuentes orbitales"
   },
   "groups": {
     "title": "Grupos de satélites",
@@ -167,7 +167,7 @@
   },
   "synchronize": {
     "header": {
-      "title": "SINCRONIZACIÓN DE DATOS TLE",
+      "title": "SINCRONIZACIÓN DE DATOS ORBITALES",
       "subtitle": "Obtener datos orbitales de fuentes satelitales",
       "button": "SINCRONIZAR",
       "last_update": "Última actualización: {{date}}"

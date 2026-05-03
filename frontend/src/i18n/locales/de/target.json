@@ -92,7 +92,7 @@
   "group_dropdown": {
     "label": "Gruppe",
     "user_groups": "Benutzerdefinierte Satellitengruppen",
-    "tle_groups": "TLE-Quellengruppen",
+    "tle_groups": "Orbitquellen-Gruppen",
     "none_created": "Keine erstellt"
   },
   "rig_control_labels": {

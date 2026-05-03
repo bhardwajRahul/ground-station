@@ -12,14 +12,16 @@ from handlers.entities import (
     groups,
     hardware,
     locations,
+    orbitalsources,
     preferences,
     satellites,
     scheduler,
     sessions,
     systeminfo,
+    tracking,
+    transmitters,
+    vfo,
 )
-from handlers.entities import tlesources as tle_sources
-from handlers.entities import tracking, transmitters, vfo
 from handlers.entities.databasebackup import (
     backup_table,
     full_backup,
@@ -46,7 +48,7 @@ from tasks.registry import get_task
 def _register_all_handlers():
     """Register all entity handlers with the global registry."""
     satellites.register_handlers(handler_registry)
-    tle_sources.register_handlers(handler_registry)
+    orbitalsources.register_handlers(handler_registry)
     groups.register_handlers(handler_registry)
     hardware.register_handlers(handler_registry)
     locations.register_handlers(handler_registry)

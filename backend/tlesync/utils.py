@@ -15,6 +15,7 @@
 
 import asyncio
 import json
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
@@ -22,7 +23,7 @@ from typing import Any, Dict, List, Optional, Set
 import requests
 from sqlalchemy import delete, select
 
-from db.models import Groups, SatelliteGroupType, Satellites, Transmitters
+from db.models import Groups, SatelliteGroupType, SatelliteOrbits, Satellites, Transmitters
 
 
 def create_initial_sync_state():
@@ -218,7 +219,7 @@ def detect_duplicate_satellites(celestrak_list, logger):
     duplicates_info: Dict[int, Dict[str, Any]] = {}
 
     for sat in celestrak_list:
-        norad_id = get_norad_id_from_tle(sat["line1"])
+        norad_id = _extract_norad_id_from_record(sat)
 
         if norad_id not in satellites_by_norad:
             # First occurrence of this satellite
@@ -369,6 +370,64 @@ def create_satellite_from_tle_data(sat, norad_id):
         citation=None,
         is_frequency_violator=None,
         associated_satellites=None,
+    )
+
+
+def create_satellite_orbit_from_source_data(sat: Dict[str, Any], norad_id: int) -> SatelliteOrbits:
+    """
+    Create or update canonical orbit row from normalized source record.
+
+    The sync pipeline still stores compatibility TLE in satellites table, but this
+    object is now the canonical per-body orbit record.
+    """
+
+    model_kind = str(sat.get("model_kind") or "tle").strip().lower()
+    if model_kind not in {"tle", "omm"}:
+        model_kind = "tle"
+
+    central_body = str(sat.get("central_body") or "earth").strip().lower()
+    if central_body not in {"earth", "moon", "mars"}:
+        central_body = "earth"
+
+    source_id = sat.get("source_id")
+    source_uuid = None
+    if source_id:
+        try:
+            source_uuid = uuid.UUID(str(source_id))
+        except (ValueError, TypeError):
+            source_uuid = None
+
+    orbit_epoch = sat.get("orbit_epoch")
+    if isinstance(orbit_epoch, str):
+        orbit_epoch = parse_date(orbit_epoch)
+    elif not isinstance(orbit_epoch, datetime):
+        orbit_epoch = None
+
+    source_updated_at = sat.get("source_updated_at")
+    if isinstance(source_updated_at, str):
+        source_updated_at = parse_date(source_updated_at)
+    elif not isinstance(source_updated_at, datetime):
+        source_updated_at = orbit_epoch
+
+    omm_payload = sat.get("orbit_payload")
+    if model_kind == "omm" and not isinstance(omm_payload, dict):
+        omm_payload = {}
+    if model_kind != "omm":
+        omm_payload = None
+
+    tle1 = sat.get("line1")
+    tle2 = sat.get("line2")
+    return SatelliteOrbits(
+        satellite_norad_id=norad_id,
+        central_body=central_body,
+        model_kind=model_kind,
+        epoch=orbit_epoch,
+        tle1=tle1,
+        tle2=tle2,
+        omm_payload=omm_payload,
+        source_id=source_uuid,
+        source_object_id=sat.get("source_object_id") or str(norad_id),
+        source_updated_at=source_updated_at,
     )
 
 
@@ -639,7 +698,47 @@ def get_norad_ids(tle_objects: list) -> list:
     :param tle_objects: A list of dictionaries containing {'name', 'line1', 'line2'}.
     :return: A list of integer NORAD IDs.
     """
-    return [parse_norad_id_from_line1(obj["line1"]) for obj in tle_objects]
+    return [_extract_norad_id_from_record(obj) for obj in tle_objects]
+
+
+def normalize_satellite_ids(value: Any) -> List[int]:
+    """
+    Normalize group satellite membership into unique integer NORAD IDs.
+
+    Older SQLite rows may contain a JSON string inside the JSON column, while
+    newer rows use normal arrays. Accept both so source queries can use either.
+    """
+    if value is None:
+        return []
+
+    candidate = value
+    for _ in range(2):
+        if isinstance(candidate, str):
+            cleaned = candidate.strip()
+            if not cleaned:
+                return []
+            try:
+                candidate = json.loads(cleaned)
+            except json.JSONDecodeError:
+                return []
+        else:
+            break
+
+    if not isinstance(candidate, (list, tuple, set)):
+        return []
+
+    normalized: List[int] = []
+    seen: Set[int] = set()
+    for item in candidate:
+        try:
+            norad_id = int(item)
+        except (TypeError, ValueError):
+            continue
+        if norad_id <= 0 or norad_id in seen:
+            continue
+        normalized.append(norad_id)
+        seen.add(norad_id)
+    return normalized
 
 
 def get_satellite_by_norad_id(norad_id: int, satellites: List[dict]) -> Optional[dict]:
@@ -712,6 +811,12 @@ def simple_parse_3le(file_contents: str) -> list:
     return satellites
 
 
+def _extract_norad_id_from_record(record: Dict[str, Any]) -> int:
+    if "norad_id" in record and record.get("norad_id") is not None:
+        return int(record["norad_id"])
+    return parse_norad_id_from_line1(record["line1"])
+
+
 async def detect_and_remove_satellites(
     session, tle_source_identifier, current_satellite_ids, logger
 ):
@@ -738,9 +843,9 @@ async def detect_and_remove_satellites(
         # No existing group or no previous satellite IDs, nothing to remove
         return {"satellites": [], "transmitters": []}
 
-    # Convert current_satellite_ids to set for faster lookup
-    current_ids_set = set(current_satellite_ids)
-    previous_ids_set = set(existing_group.satellite_ids)
+    # Normalize legacy stringified JSON groups before comparing memberships.
+    current_ids_set = set(normalize_satellite_ids(current_satellite_ids))
+    previous_ids_set = set(normalize_satellite_ids(existing_group.satellite_ids))
 
     # Find satellites that were in the previous list but not in the current list
     removed_satellite_ids = list(previous_ids_set - current_ids_set)
@@ -773,7 +878,7 @@ async def detect_and_remove_satellites(
                 # Check if the satellite exists in any other system group
                 satellite_in_other_sources = False
                 for group in other_groups:
-                    if group.satellite_ids and norad_id in group.satellite_ids:
+                    if norad_id in normalize_satellite_ids(group.satellite_ids):
                         satellite_in_other_sources = True
                         break
 
@@ -870,7 +975,7 @@ async def update_satellite_group_with_removal_detection(
 
     if existing_group:
         # Update the existing group
-        existing_group.satellite_ids = satellite_ids
+        existing_group.satellite_ids = normalize_satellite_ids(satellite_ids)
         existing_group.updated = datetime.now(timezone.utc)
         logger.info(f"Updated satellite group '{group_name}' with {len(satellite_ids)} satellites")
     else:
@@ -879,7 +984,7 @@ async def update_satellite_group_with_removal_detection(
             name=group_name,
             identifier=tle_source_identifier,
             type=SatelliteGroupType.SYSTEM,
-            satellite_ids=satellite_ids,
+            satellite_ids=normalize_satellite_ids(satellite_ids),
             added=datetime.now(timezone.utc),
             updated=datetime.now(timezone.utc),
         )

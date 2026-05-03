@@ -22,14 +22,18 @@ from typing import Any, Dict, List
 import requests
 from sqlalchemy import select
 
-import crud
 from common.arguments import arguments
 from common.common import *  # noqa: F401,F403
 from common.exceptions import SynchronizationErrorMainTLESource
+from crud.orbitalsources import fetch_orbital_source
 from db.models import Satellites
 from handlers.entities.transmitterimport import (
     import_gr_satellites_transmitters,
     import_satdump_transmitters,
+)
+from tlesync.source_adapters import (
+    async_fetch_source_orbit_records,
+    build_space_track_norad_source_batches,
 )
 from tlesync.state import SatelliteSyncState
 from tlesync.utils import (
@@ -38,17 +42,15 @@ from tlesync.utils import (
     create_initial_sync_state,
     create_progress_tracker,
     create_satellite_from_tle_data,
+    create_satellite_orbit_from_source_data,
     create_transmitter_from_satnogs_data,
     detect_duplicate_satellites,
     detect_satellite_modifications,
     detect_transmitter_modifications,
-    get_norad_id_from_tle,
-    get_norad_ids,
     get_satellite_by_norad_id,
     get_transmitter_info_by_norad_id,
     query_existing_data,
     resolve_sync_source_urls,
-    simple_parse_3le,
     update_satellite_group_with_removal_detection,
     update_satellite_with_satnogs_data,
 )
@@ -62,13 +64,13 @@ sync_state = create_initial_sync_state()
 
 # Lock to prevent concurrent synchronization within the same process
 # Note: This lock only works within a single process. For cross-process concurrency control,
-# the BackgroundTaskManager enforces singleton task execution (only one TLE sync at a time).
+# the BackgroundTaskManager enforces singleton task execution (only one orbital sync at a time).
 _sync_lock = asyncio.Lock()
 
 
 async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
     """
-    Core TLE synchronization logic with pluggable callback for progress updates.
+    Core orbital synchronization logic with pluggable callback for progress updates.
 
     Args:
         dbsession: Database session
@@ -148,7 +150,7 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
 
         # Define progress weights for each phase
         progress_phases = {
-            "fetch_tle_sources": 15,  # Fetching TLE data from sources
+            "fetch_orbital_sources": 15,  # Fetching orbital data from sources
             "fetch_satnogs_satellites": 10,  # Fetching satellite metadata from configured API(s)
             "fetch_satnogs_transmitters": 10,  # Fetching transmitter metadata from configured API(s)
             "process_satellites": 40,  # Processing satellite data
@@ -161,11 +163,13 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
         )
 
         satellite_metadata_urls = resolve_sync_source_urls(
-            getattr(arguments, "tle_sync_satellite_metadata_urls", None),
+            getattr(arguments, "orbital_sync_satellite_metadata_urls", None)
+            or getattr(arguments, "tle_sync_satellite_metadata_urls", None),
             DEFAULT_SATELLITE_METADATA_URL,
         )
         transmitter_metadata_urls = resolve_sync_source_urls(
-            getattr(arguments, "tle_sync_transmitter_urls", None),
+            getattr(arguments, "orbital_sync_transmitter_urls", None)
+            or getattr(arguments, "tle_sync_transmitter_urls", None),
             DEFAULT_TRANSMITTER_METADATA_URL,
         )
         satnogs_satellite_data: List[Dict[str, Any]] = []
@@ -173,12 +177,34 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
         celestrak_list: List[Dict[str, Any]] = []
         group_assignments: Dict[str, List[int]] = {}
 
-        tle_sources_reply = await crud.tlesources.fetch_satellite_tle_source(dbsession)
-        sources = tle_sources_reply.get("data", [])
+        orbital_sources_reply = await fetch_orbital_source(dbsession)
+        all_sources = orbital_sources_reply.get("data", [])
+        sources = [source for source in all_sources if source.get("enabled", True)]
+        sources.sort(
+            key=lambda source: (int(source.get("priority") or 100), source.get("name", ""))
+        )
+        if not sources:
+            if all_sources:
+                message = (
+                    f"No enabled orbit sources configured "
+                    f"({len(all_sources)} total source(s), 0 enabled)"
+                )
+            else:
+                message = "No orbit sources configured"
+            logger.error("%s, aborting!", message)
+            sync_state["status"] = "complete"
+            sync_state["progress"] = 100
+            sync_state["success"] = False
+            sync_state["message"] = message
+            sync_state["errors"].append(message)
+            sync_state["last_update"] = datetime.now(timezone.utc).isoformat()
+            sync_state_manager.set_state(sync_state)
+            await _emit(sync_state)
+            return
 
         # Use a single ThreadPoolExecutor for all async_fetch calls
         with ThreadPoolExecutor(max_workers=1) as pool:
-            # get TLEs from our user-defined TLE sources (probably from celestrak.org)
+            # Fetch ephemeris from configured orbit sources.
             for i, tle_source in enumerate(sources):
                 tle_source_name = tle_source["name"]
                 tle_source_identifier = tle_source["identifier"]
@@ -187,27 +213,31 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
 
                 # Update active sources in state and progress
                 progress_state = update_progress(
-                    "fetch_tle_sources", i, len(sources), f"Fetching {tle_source_url}"
+                    "fetch_orbital_sources", i, len(sources), f"Fetching {tle_source_url}"
                 )
                 sync_state["active_sources"] = [tle_source_name]
                 await _emit(progress_state)
 
                 try:
                     logger.info(f"Fetching {tle_source_url}")
-                    response = await async_fetch(tle_source_url, pool)
-                    if response.status_code != 200:
-                        logger.error(
-                            f"HTTP Error: Received status code {response.status_code} from {tle_source_url}"
-                        )
-                        raise requests.exceptions.RequestException(
-                            f"Unable to fetch data from {tle_source_url}, error code was {response.status_code}"
-                        )
+                    source_provider = str(tle_source.get("provider") or "").strip().lower()
+                    source_adapter = str(tle_source.get("adapter") or "").strip().lower()
+                    if source_provider == "space_track" and source_adapter == "space_track_gp":
+                        source_batches = build_space_track_norad_source_batches(tle_source)
+                        satellite_data = []
+                        for source_batch in source_batches:
+                            satellite_data.extend(
+                                await async_fetch_source_orbit_records(source_batch, pool)
+                            )
                     else:
-                        satellite_data = simple_parse_3le(response.text)
-                        group_assignments[tle_source_identifier] = get_norad_ids(satellite_data)
+                        satellite_data = await async_fetch_source_orbit_records(tle_source, pool)
+
+                    group_assignments[tle_source_identifier] = [
+                        sat["norad_id"] for sat in satellite_data
+                    ]
 
                     celestrak_list = celestrak_list + satellite_data
-                    logger.info(f"Fetched {len(satellite_data)} TLEs from {tle_source_url}")
+                    logger.info(f"Fetched {len(satellite_data)} orbits from {tle_source_url}")
 
                 except SynchronizationErrorMainTLESource as e:
                     error_msg = f'Failed to fetch data from {tle_source["url"]}: {e.message}'
@@ -236,10 +266,22 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
 
                     await _emit(sync_state)
                     continue
+                except Exception as e:
+                    error_msg = f'Failed to parse orbit data from {tle_source["url"]}: {e}'
+                    logger.error(error_msg)
+
+                    sync_state["errors"].append(error_msg)
+                    sync_state["success"] = False
+                    sync_state["message"] = str(e)
+                    sync_state["last_update"] = datetime.now(timezone.utc).isoformat() + "Z"
+                    sync_state_manager.set_state(sync_state)
+
+                    await _emit(sync_state)
+                    continue
 
                 # Update progress, completed sources, and emit event
                 progress_state = update_progress(
-                    "fetch_tle_sources", i + 1, len(sources), f"Fetched {tle_source_url}"
+                    "fetch_orbital_sources", i + 1, len(sources), f"Fetched {tle_source_url}"
                 )
                 await _emit(progress_state)
 
@@ -265,7 +307,7 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
                         removed_sats_count = len(removed_data["satellites"])
                         removed_trx_count = len(removed_data["transmitters"])
                         logger.info(
-                            f"Removed {removed_sats_count} satellites and {removed_trx_count} transmitters from TLE source '{tle_source_identifier}'"
+                            f"Removed {removed_sats_count} satellites and {removed_trx_count} transmitters from orbital source '{tle_source_identifier}'"
                         )
 
                     # Commit the changes
@@ -273,7 +315,7 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
 
                 except Exception as e:
                     logger.error(
-                        f"Error during satellite removal detection for TLE source '{tle_source_identifier}': {e}"
+                        f"Error during satellite removal detection for orbital source '{tle_source_identifier}': {e}"
                     )
                     await dbsession.rollback()
 
@@ -286,24 +328,24 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
 
                 # Update message for group creation/update
                 progress_state = update_progress(
-                    "fetch_tle_sources",
+                    "fetch_orbital_sources",
                     i + 1,
                     len(sources),
                     f'Group {tle_source.get("name", None)} created/updated',
                 )
                 await _emit(progress_state)
 
-            # Mark TLE sources phase as complete
-            completed_phases.add("fetch_tle_sources")
+            # Mark orbital sources phase as complete
+            completed_phases.add("fetch_orbital_sources")
 
             if not celestrak_list:
-                logger.error("No TLEs were fetched from any TLE source, aborting!")
+                logger.error("No orbit data was fetched from any orbit source, aborting!")
                 # Update state for error
                 sync_state["status"] = "complete"
                 sync_state["progress"] = 100
                 sync_state["success"] = False
-                sync_state["message"] = "No TLEs were fetched from any TLE source"
-                sync_state["errors"].append("No TLEs were fetched from any TLE source")
+                sync_state["message"] = "No orbit data was fetched from any orbit source"
+                sync_state["errors"].append("No orbit data was fetched from any orbit source")
                 sync_state["last_update"] = datetime.now(timezone.utc).isoformat()
                 sync_state_manager.set_state(sync_state)
 
@@ -311,7 +353,7 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
                 return
 
             # Detect and handle duplicate satellites
-            logger.info("Detecting duplicate satellites across TLE sources...")
+            logger.info("Detecting duplicate satellites across orbital sources...")
             duplicate_detection_result = detect_duplicate_satellites(celestrak_list, logger)
 
             # Log duplicate information
@@ -475,7 +517,7 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
         count_transmitters = 0
         try:
             total_satellites = len(celestrak_list)
-            celestrak_norad_ids = {get_norad_id_from_tle(sat["line1"]) for sat in celestrak_list}
+            celestrak_norad_ids = {sat["norad_id"] for sat in celestrak_list}
 
             # Fetch manually-added satellites once; we'll enrich them with metadata transmitters
             # after normal TLE processing (for NORAD IDs not already covered by Celestrak data).
@@ -494,7 +536,7 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
             logger.info("Calculating expected transmitter count for progress tracking...")
             total_transmitters_to_process = 0
             for sat in celestrak_list:
-                norad_id = get_norad_id_from_tle(sat["line1"])
+                norad_id = sat["norad_id"]
                 transmitters = get_transmitter_info_by_norad_id(norad_id, satnogs_transmitter_data)
                 total_transmitters_to_process += len(transmitters)
 
@@ -517,7 +559,7 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
 
             # Now process satellites
             for i, sat in enumerate(celestrak_list):
-                norad_id = get_norad_id_from_tle(sat["line1"])
+                norad_id = sat["norad_id"]
 
                 # Check if this is a new satellite
                 is_new_satellite = norad_id not in existing_data["satellite_norad_ids"]
@@ -560,6 +602,8 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
 
                 # add to dbsession
                 await dbsession.merge(satellite)
+                orbit = create_satellite_orbit_from_source_data(sat, norad_id)
+                await dbsession.merge(orbit)
 
                 # commit session
                 await dbsession.commit()
@@ -719,11 +763,11 @@ async def synchronize_satellite_data_internal(dbsession, logger, emit_callback):
 
             # Import gr-satellites and SatDump transmitters using the existing session
             # to avoid SQLite write-lock contention across multiple sessions.
-            logger.info("Running gr-satellites transmitter import after TLE sync...")
+            logger.info("Running gr-satellites transmitter import after orbital sync...")
             gr_result = await import_gr_satellites_transmitters(session=dbsession)
             logger.info("gr-satellites transmitter import result: %s", gr_result)
 
-            logger.info("Running SatDump transmitter import after TLE sync...")
+            logger.info("Running SatDump transmitter import after orbital sync...")
             satdump_result = await import_satdump_transmitters(session=dbsession)
             logger.info("SatDump transmitter import result: %s", satdump_result)
 

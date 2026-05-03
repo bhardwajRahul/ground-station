@@ -22,9 +22,9 @@ scheduler: Optional[AsyncIOScheduler] = None
 
 async def sync_satellite_data_job(background_task_manager):
     """
-    Job wrapper for TLE synchronization that uses the background task manager.
+    Job wrapper for orbital synchronization that uses the background task manager.
 
-    This runs TLE sync as a background task, making it:
+    This runs orbital sync as a background task, making it:
     - Visible in the task manager UI
     - Cancellable by users
     - Consistent with manual sync triggers
@@ -32,19 +32,23 @@ async def sync_satellite_data_job(background_task_manager):
     try:
         logger.info("Running scheduled satellite data synchronization as background task...")
 
-        # Get the TLE sync task function
-        tle_sync_task = get_task("tle_sync")
+        # Get the orbital sync task function
+        orbital_sync_task = get_task("orbital_sync")
 
         # Start as background task
         task_id = await background_task_manager.start_task(
-            func=tle_sync_task, args=(), kwargs={}, name="Scheduled TLE Sync", task_id=None
+            func=orbital_sync_task,
+            args=(),
+            kwargs={},
+            name="Scheduled Orbital Data Sync",
+            task_id=None,
         )
 
-        logger.info(f"Scheduled TLE sync started as background task: {task_id}")
+        logger.info(f"Scheduled orbital sync started as background task: {task_id}")
 
     except ValueError as e:
         # Singleton task already running (likely a manual sync is in progress)
-        logger.info(f"Skipping scheduled TLE sync: {e}")
+        logger.info(f"Skipping scheduled orbital sync: {e}")
 
     except Exception as e:
         logger.error(f"Error starting scheduled satellite synchronization: {e}")
@@ -139,10 +143,10 @@ def start_scheduler(sio, process_manager, background_task_manager):
 
     scheduler = AsyncIOScheduler()
 
-    # Schedule satellite data synchronization every 6 hours
+    # Schedule satellite data synchronization every 24 hours
     scheduler.add_job(
         sync_satellite_data_job,
-        trigger=IntervalTrigger(hours=6),
+        trigger=IntervalTrigger(hours=24),
         args=[background_task_manager],
         id="sync_satellite_data",
         name="Synchronize satellite data",

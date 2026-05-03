@@ -24,7 +24,7 @@ import { persistStore, persistReducer } from "redux-persist";
 import storageEngine from "redux-persist/lib/storage";
 import rigsReducer from '../hardware/rig-slice.jsx';
 import rotatorsReducer from '../hardware/rotaror-slice.jsx';
-import tleSourcesReducer from '../satellites/sources-slice.jsx';
+import orbitalSourcesReducer from '../satellites/sources-slice.jsx';
 import satellitesReducer from '../satellites/satellite-slice.jsx';
 import satelliteGroupReducer from '../satellites/groups-slice.jsx';
 import locationReducer from '../settings/location-slice.jsx';
@@ -89,8 +89,9 @@ const rotatorsPersistConfig = {
     whitelist: []
 };
 
-// Persist configuration for the 'TLE sources' slice
-const tleSourcesPersistConfig = {
+// Persist configuration for the orbital-sources slice.
+// Keep legacy persistence key for backward compatibility with existing browser storage.
+const orbitalSourcesPersistConfig = {
     key: 'tleSources',
     storage,
     whitelist: []
@@ -286,7 +287,10 @@ const persistedWaterfallReducer = persistReducer(waterfallPersistConfig, waterfa
 const persistedVfoReducer = persistReducer(vfoPersistConfig, vfoReducer);
 const persistedRigsReducer = persistReducer(rigsPersistConfig, rigsReducer);
 const persistedRotatorsReducer = persistReducer(rotatorsPersistConfig, rotatorsReducer);
-const persistedTleSourcesReducer = persistReducer(tleSourcesPersistConfig, tleSourcesReducer);
+const persistedOrbitalSourcesReducer = persistReducer(
+    orbitalSourcesPersistConfig,
+    orbitalSourcesReducer
+);
 const persistedSatellitesReducer = persistReducer(satellitesPersistConfig, satellitesReducer);
 const persistedSatelliteGroupsReducer = persistReducer(satelliteGroupsPersistConfig, satelliteGroupReducer);
 const persistedLocationReducer = persistReducer(locationPersistConfig, locationReducer);
@@ -318,7 +322,7 @@ export const store = configureStore({
         vfo: persistedVfoReducer,
         rigs: persistedRigsReducer,
         rotators: persistedRotatorsReducer,
-        tleSources: persistedTleSourcesReducer,
+        tleSources: persistedOrbitalSourcesReducer,
         satellites: persistedSatellitesReducer,
         satelliteGroups: persistedSatelliteGroupsReducer,
         location: persistedLocationReducer,

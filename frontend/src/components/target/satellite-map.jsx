@@ -116,6 +116,16 @@ const isValidLatLonObjectPoint = (point) =>
     && isValidLatLon(point.lat, point.lon);
 const isValidCoveragePoint = (point) =>
     isValidLatLonPoint(point) || isValidLatLonObjectPoint(point);
+const hasSatelliteIdentity = (details) => {
+    const nameValue = details?.name;
+    if (typeof nameValue === 'string') {
+        return nameValue.trim().length > 0;
+    }
+    if (nameValue && typeof nameValue === 'object') {
+        return Object.keys(nameValue).length > 0;
+    }
+    return false;
+};
 const normalizeCoveragePoint = (point) => {
     if (isValidLatLonPoint(point)) {
         return [Number(point[0]), Number(point[1])];
@@ -371,15 +381,15 @@ const TargetSatelliteMapContainer = ({}) => {
             clearRenderedSatelliteLayers();
             return;
         }
-        if (Object.keys(satelliteDetails['name']).length !== 0) {
+        if (hasSatelliteIdentity(satelliteDetails)) {
 
-            const satelliteName = satelliteDetails['name'];
-            const satelliteId = satelliteDetails['norad_id'];
-            const latitude = satellitePosition['lat'];
-            const longitude = satellitePosition['lon'];
-            const altitude = satellitePosition['alt'];
-            const velocity = satellitePosition['vel'];
-            const paths = satellitePaths;
+            const satelliteName = satelliteDetails?.name || '';
+            const satelliteId = satelliteDetails?.norad_id || noradId;
+            const latitude = satellitePosition?.lat;
+            const longitude = satellitePosition?.lon;
+            const altitude = satellitePosition?.alt;
+            const velocity = satellitePosition?.vel;
+            const paths = satellitePaths || {};
             const coverage = satelliteCoverage;
             const hasValidSatellitePoint = isValidLatLon(latitude, longitude);
             const humanizedAltitude = humanizeAltitude(altitude, 0);
@@ -401,11 +411,11 @@ const TargetSatelliteMapContainer = ({}) => {
             //let mapCoords = MapObject.getCenter();
             //MapObject.setView([latitude, longitude], MapObject.getZoom());
 
-            if (paths) {
+            if (Array.isArray(paths?.past) && Array.isArray(paths?.future)) {
                 // past path
                 currentPastPaths.push(<Polyline
                     key={`past-path-${noradId}`}
-                    positions={paths['past']}
+                    positions={paths.past}
                     pathOptions={{
                         color: pastOrbitLineColor,
                         weight: 2,
@@ -417,7 +427,7 @@ const TargetSatelliteMapContainer = ({}) => {
                 // future path
                 currentFuturePaths.push(<Polyline
                     key={`future-path-${noradId}`}
-                    positions={paths['future']}
+                    positions={paths.future}
                     pathOptions={{
                         color: futureOrbitLineColor,
                         weight: 2,

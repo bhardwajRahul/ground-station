@@ -51,9 +51,11 @@ export function SettingsTabSatellites() {
     return (<SettingsTabs initialMainTab={"satellites"} initialTab={"satellites"}/>);
 }
 
-export function SettingsTabTLESources() {
-    return (<SettingsTabs initialMainTab={"satellites"} initialTab={"tlesources"}/>);
+export function SettingsTabOrbitalSources() {
+    return (<SettingsTabs initialMainTab={"satellites"} initialTab={"orbitalsources"}/>);
 }
+
+export const SettingsTabTLESources = SettingsTabOrbitalSources;
 
 export function SettingsTabSatelliteGroups() {
     return (<SettingsTabs initialMainTab={"satellites"} initialTab={"groups"}/>);
@@ -94,7 +96,7 @@ export function SettingsTabAbout () {
 
 const tabsTree = {
     "hardware": ["rigcontrol", "rotatorcontrol", /* "camera", */ "sdrs"],
-    "satellites": ["satellites", "tlesources", "groups"],
+    "satellites": ["satellites", "orbitalsources", "groups"],
     "settings": ["preferences", "location", "maintenance", "users", "about"],
 };
 
@@ -121,8 +123,10 @@ export const SettingsTabs = React.memo(function SettingsTabs({initialMainTab, in
                 return "camera";
             case "/hardware/sdrs":
                 return "sdrs";
+            case "/satellites/orbital-sources":
+                return "orbitalsources";
             case "/satellites/tlesources":
-                return "tlesources";
+                return "orbitalsources";
             case "/satellites/satellites":
                 return "satellites";
             case "/satellites/groups":
@@ -156,7 +160,7 @@ export const SettingsTabs = React.memo(function SettingsTabs({initialMainTab, in
             break;
         case "satellites":
             tabsList = [
-                <AntTab key="tlesources" value="tlesources" label={t('tabs.tle_sources')} to="/satellites/tlesources" component={Link} />,
+                <AntTab key="orbitalsources" value="orbitalsources" label={t('tabs.orbital_sources')} to="/satellites/orbital-sources" component={Link} />,
                 <AntTab key="satellites" value="satellites" label={t('tabs.satellite_list')} to="/satellites/satellites" component={Link} />,
                 <AntTab key="groups" value="groups" label={t('tabs.groups')} to="/satellites/groups" component={Link} />,
             ];
@@ -210,8 +214,8 @@ export const SettingsTabs = React.memo(function SettingsTabs({initialMainTab, in
         case "sdrs":
             activeTabContent = <SDRsPage/>;
             break;
-        case "tlesources":
-            activeTabContent = <TLESourcesForm/>;
+        case "orbitalsources":
+            activeTabContent = <OrbitalSourcesForm/>;
             break;
         case "satellites":
             activeTabContent = <SatellitesForm/>;
@@ -293,7 +297,7 @@ const SatelliteGroupsForm = () => {
         </Paper>);
 };
 
-const TLESourcesForm = () => {
+const OrbitalSourcesForm = () => {
 
     return (
         <Paper elevation={3} sx={{ padding: 2, marginTop: 0}} variant="elevation">

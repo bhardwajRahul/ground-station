@@ -24,21 +24,59 @@ const defaultTLESource = {
     id: null,
     name: '',
     url: '',
-    format: '',
-    // Add any TLE source-specific fields here
+    format: '3le',
+    query_mode: 'url',
+    group_id: null,
+    norad_ids: [],
+    provider: 'generic_http',
+    adapter: 'http_3le',
+    enabled: true,
+    priority: 100,
+    central_body: 'earth',
+    auth_type: 'none',
+    username: '',
+    password: '',
 };
 
-export const fetchTLESources = createAsyncThunk(
-    'tleSources/fetchAll',
+const normalizeProvider = (provider) => {
+    const normalized = String(provider ?? defaultTLESource.provider).toLowerCase();
+    return normalized === 'celestrak' ? 'generic_http' : normalized;
+};
+
+const normalizeTLESourceRecord = (source) => ({
+    ...defaultTLESource,
+    ...source,
+    format: String(source?.format ?? defaultTLESource.format).toLowerCase(),
+    query_mode: String(source?.query_mode ?? defaultTLESource.query_mode).toLowerCase(),
+    group_id: source?.group_id ?? null,
+    norad_ids: Array.isArray(source?.norad_ids)
+        ? source.norad_ids
+            .map((item) => Number(item))
+            .filter((item) => Number.isInteger(item) && item > 0)
+        : [],
+    provider: normalizeProvider(source?.provider),
+    adapter: String(source?.adapter ?? defaultTLESource.adapter).toLowerCase(),
+    enabled: source?.enabled === undefined ? defaultTLESource.enabled : Boolean(source.enabled),
+    priority: Number.isFinite(Number(source?.priority))
+        ? Number(source.priority)
+        : defaultTLESource.priority,
+    central_body: String(source?.central_body ?? defaultTLESource.central_body).toLowerCase(),
+    auth_type: String(source?.auth_type ?? defaultTLESource.auth_type).toLowerCase(),
+    username: source?.username ?? '',
+    password: source?.password ?? '',
+});
+
+export const fetchOrbitalSources = createAsyncThunk(
+    'orbitalSources/fetchAll',
     async ({ socket }, { rejectWithValue }) => {
         try {
             // Wrap socket in a Promise for async behavior
             return await new Promise((resolve, reject) => {
-                socket.emit('data_request', 'get-tle-sources', null, (res) => {
+                socket.emit('data_request', 'get-orbital-sources', null, (res) => {
                     if (res.success) {
                         resolve(res.data);
                     } else {
-                        reject(new Error('Failed to fetch TLE sources'));
+                        reject(new Error('Failed to fetch orbital sources'));
                     }
                 });
             });
@@ -48,16 +86,16 @@ export const fetchTLESources = createAsyncThunk(
     }
 );
 
-export const deleteTLESources = createAsyncThunk(
-    'tleSources/deleteTleSources',
+export const deleteOrbitalSources = createAsyncThunk(
+    'orbitalSources/deleteOrbitalSources',
     async ({ socket, selectedIds }, { rejectWithValue }) => {
         try {
             return await new Promise((resolve, reject) => {
-                socket.emit('data_submission', 'delete-tle-sources', selectedIds, (response) => {
+                socket.emit('data_submission', 'delete-orbital-sources', selectedIds, (response) => {
                     if (response.success) {
                         resolve({data: response.data, message: response.message, summary: response.summary});
                     } else {
-                        reject(new Error('Failed to delete TLE sources'));
+                        reject(new Error('Failed to delete orbital sources'));
                     }
                 });
             });
@@ -67,17 +105,21 @@ export const deleteTLESources = createAsyncThunk(
     }
 );
 
-export const submitOrEditTLESource = createAsyncThunk(
-    'tleSources/submitOrEdit',
-    async ({ socket, formValues }, { rejectWithValue, dispatch }) => {
-        const action = formValues.id ? 'edit-tle-source' : 'submit-tle-sources';
+export const submitOrEditOrbitalSource = createAsyncThunk(
+    'orbitalSources/submitOrEdit',
+    async ({ socket, formValues }, { rejectWithValue }) => {
+        const action = formValues.id ? 'edit-orbital-source' : 'submit-orbital-sources';
         try {
             return await new Promise((resolve, reject) => {
                 socket.emit('data_submission', action, formValues, (response) => {
                     if (response.success) {
                         resolve(response.data);
                     } else {
-                        reject(new Error(`Failed to ${action === 'edit-tle-source' ? 'edit' : 'add'} TLE source`));
+                        reject(
+                            new Error(
+                                `Failed to ${action === 'edit-orbital-source' ? 'edit' : 'add'} orbital source`
+                            )
+                        );
                     }
                 });
             });
@@ -89,7 +131,7 @@ export const submitOrEditTLESource = createAsyncThunk(
 
 // Create the slice, mirroring rig-slice structure:
 const sourcesSlice = createSlice({
-    name: 'tleSources',
+    name: 'orbitalSources',
     initialState: {
         tleSources: [],
         status: 'idle',    // 'idle' | 'loading' | 'succeeded' | 'failed'
@@ -138,41 +180,41 @@ const sourcesSlice = createSlice({
     },
     extraReducers: (builder) => {
         builder
-            .addCase(fetchTLESources.pending, (state) => {
+            .addCase(fetchOrbitalSources.pending, (state) => {
                 state.status = 'loading';
                 state.loading = true;
                 state.error = null;
             })
-            .addCase(fetchTLESources.fulfilled, (state, action) => {
+            .addCase(fetchOrbitalSources.fulfilled, (state, action) => {
                 state.status = 'succeeded';
                 state.loading = false;
-                state.tleSources = action.payload;
+                state.tleSources = (action.payload || []).map(normalizeTLESourceRecord);
             })
-            .addCase(fetchTLESources.rejected, (state, action) => {
+            .addCase(fetchOrbitalSources.rejected, (state, action) => {
                 state.status = 'failed';
                 state.loading = false;
                 state.error = action.error?.message;
             })
-            .addCase(deleteTLESources.pending, (state) => {
+            .addCase(deleteOrbitalSources.pending, (state) => {
                 state.loading = true;
             })
-            .addCase(deleteTLESources.fulfilled, (state, action) => {
-                state.tleSources = action.payload.data;
+            .addCase(deleteOrbitalSources.fulfilled, (state, action) => {
+                state.tleSources = (action.payload.data || []).map(normalizeTLESourceRecord);
                 state.openDeleteConfirm = false;
                 state.loading = false;
             })
-            .addCase(deleteTLESources.rejected, (state, action) => {
+            .addCase(deleteOrbitalSources.rejected, (state, action) => {
                 state.loading = false;
                 state.error = action.error?.message;
             })
-            .addCase(submitOrEditTLESource.pending, (state) => {
+            .addCase(submitOrEditOrbitalSource.pending, (state) => {
                 state.loading = true;
             })
-            .addCase(submitOrEditTLESource.fulfilled, (state, action) => {
-                state.tleSources = action.payload;
+            .addCase(submitOrEditOrbitalSource.fulfilled, (state, action) => {
+                state.tleSources = (action.payload || []).map(normalizeTLESourceRecord);
                 state.loading = false;
             })
-            .addCase(submitOrEditTLESource.rejected, (state, action) => {
+            .addCase(submitOrEditOrbitalSource.rejected, (state, action) => {
                 state.loading = false;
                 state.error = action.error?.message;
             });
@@ -192,5 +234,10 @@ export const {
     setError,
     setStatus,
 } = sourcesSlice.actions;
+
+// Backward-compatible action/thunk aliases.
+export const fetchTLESources = fetchOrbitalSources;
+export const deleteTLESources = deleteOrbitalSources;
+export const submitOrEditTLESource = submitOrEditOrbitalSource;
 
 export default sourcesSlice.reducer;

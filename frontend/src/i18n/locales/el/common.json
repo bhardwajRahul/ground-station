@@ -31,7 +31,7 @@
       "lost_connection": "Απώλεια σύνδεσης με το backend"
     },
     "sync": {
-      "tle_sync_complete": "Ολοκληρώθηκε ο συγχρονισμός TLE!",
+      "tle_sync_complete": "Ολοκληρώθηκε ο συγχρονισμός τροχιακών δεδομένων!",
       "new_items": "Νέα: {{satellites}} δορυφόροι, {{transmitters}} πομποδέκτες",
       "modified_items": "Τροποποιημένα: {{satellites}} δορυφόροι, {{transmitters}} πομποδέκτες",
       "removed_items": "Αφαιρέθηκαν: {{satellites}} δορυφόροι, {{transmitters}} πομποδέκτες",

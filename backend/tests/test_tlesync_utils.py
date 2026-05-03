@@ -32,6 +32,7 @@ from tlesync.utils import (
     get_norad_ids,
     get_satellite_by_norad_id,
     get_transmitter_info_by_norad_id,
+    normalize_satellite_ids,
     parse_date,
     parse_norad_id_from_line1,
     resolve_sync_source_urls,
@@ -258,6 +259,19 @@ class TestGetNoradIds:
         """Test extracting NORAD IDs from empty list."""
         result = get_norad_ids([])
         assert result == []
+
+
+class TestNormalizeSatelliteIds:
+    """Test cases for normalizing group satellite membership."""
+
+    def test_normalize_satellite_ids_accepts_list(self):
+        assert normalize_satellite_ids([25544, "43017", 25544, 0, "bad"]) == [25544, 43017]
+
+    def test_normalize_satellite_ids_accepts_stringified_json(self):
+        assert normalize_satellite_ids('[25544, "43017", 25544]') == [25544, 43017]
+
+    def test_normalize_satellite_ids_rejects_invalid_value(self):
+        assert normalize_satellite_ids("not-json") == []
 
 
 class TestGetSatelliteByNoradId:

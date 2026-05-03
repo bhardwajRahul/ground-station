@@ -31,7 +31,7 @@
       "lost_connection": "Verbinding met backend verloren"
     },
     "sync": {
-      "tle_sync_complete": "TLE-synchronisatie voltooid!",
+      "tle_sync_complete": "Synchronisatie van baangegevens voltooid!",
       "new_items": "Nieuw: {{satellites}} satellieten, {{transmitters}} zenders",
       "modified_items": "Gewijzigd: {{satellites}} satellieten, {{transmitters}} zenders",
       "removed_items": "Verwijderd: {{satellites}} satellieten, {{transmitters}} zenders",

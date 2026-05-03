@@ -52,7 +52,7 @@
     "title": "Seleziona gruppo di satelliti",
     "group_label": "Gruppo",
     "user_groups": "Gruppi satelliti definiti dall'utente",
-    "tle_groups": "Gruppi satelliti da fonti TLE",
+    "tle_groups": "Gruppi satelliti da fonti orbitali",
     "failed_load_groups": "Impossibile caricare i gruppi satelliti",
     "none_defined": "Nessuno definito"
   },

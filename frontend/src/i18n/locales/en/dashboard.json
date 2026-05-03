@@ -86,12 +86,12 @@
     "rotator_stopped": "Rotator: Stopped (Az: {{az}}°, El: {{el}}°)",
     "rotator_connected": "Rotator: Connected (Az: {{az}}°, El: {{el}}°)"
   },
-  "tlesync_popover": {
+  "orbital_sync_popover": {
     "syncing": "Synchronizing: {{progress}}%",
     "sync_failed": "Sync Failed: {{error}}",
     "last_sync": "Last sync: {{date}}",
-    "satellite_tle_sync": "Satellite TLE Data Sync",
-    "tle_sync_status": "TLE Synchronization Status",
+    "satellite_orbital_sync": "Satellite Orbital Data Sync",
+    "orbital_sync_status": "Orbital Synchronization Status",
     "status": "Status",
     "idle": "idle",
     "progress": "Progress: {{progress}}%",

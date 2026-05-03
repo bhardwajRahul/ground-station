@@ -230,9 +230,9 @@ async def sync_satellite_data(
     sio: Any, data: Optional[Dict], logger: Any, sid: str
 ) -> Dict[str, Union[bool, None, str]]:
     """
-    Synchronize satellite data with known TLE sources as a background task.
+    Synchronize satellite data with known orbital sources as a background task.
 
-    This handler starts TLE synchronization as a background task, making it:
+    This handler starts orbital synchronization as a background task, making it:
     - Visible in the task manager UI
     - Cancellable by users
     - Consistent with scheduled sync behavior
@@ -252,26 +252,30 @@ async def sync_satellite_data(
             logger.error("Background task manager not initialized")
             return {"success": False, "error": "Background task manager not initialized"}
 
-        logger.info("Starting TLE synchronization as background task (manual trigger)")
+        logger.info("Starting orbital synchronization as background task (manual trigger)")
 
-        # Get the TLE sync task function
-        tle_sync_task = get_task("tle_sync")
+        # Get the orbital sync task function
+        orbital_sync_task = get_task("orbital_sync")
 
         # Start as background task
         task_id = await background_task_manager.start_task(
-            func=tle_sync_task, args=(), kwargs={}, name="Manual TLE Sync", task_id=None
+            func=orbital_sync_task,
+            args=(),
+            kwargs={},
+            name="Manual Orbital Data Sync",
+            task_id=None,
         )
 
-        logger.info(f"Manual TLE sync started as background task: {task_id}")
+        logger.info(f"Manual orbital sync started as background task: {task_id}")
         return {"success": True, "task_id": task_id}
 
     except ValueError as e:
-        # Singleton task already running (e.g., TLE sync already in progress)
-        logger.warning(f"TLE sync already running: {e}")
+        # Singleton task already running (e.g., orbital sync already in progress)
+        logger.warning(f"Orbital sync already running: {e}")
         return {"success": False, "error": str(e)}
 
     except Exception as e:
-        logger.error(f"Error starting TLE synchronization: {e}")
+        logger.error(f"Error starting orbital synchronization: {e}")
         return {"success": False, "error": str(e)}
 
 

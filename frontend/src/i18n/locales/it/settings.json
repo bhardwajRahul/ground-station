@@ -8,7 +8,7 @@
     "rotators": "Rotatori",
     "cameras": "Telecamere",
     "sdrs": "SDR",
-    "tle_sources": "Fonti TLE",
+    "orbital_sources": "Fonti orbitali",
     "satellite_list": "Satelliti",
     "groups": "Gruppi",
     "preferences": "Preferenze",

@@ -371,7 +371,7 @@ const ReduxPersistentSettingsCard = () => {
                                 <li>VFO settings (markers, frequencies, modes, active states)</li>
                                 <li>Cached rig configurations</li>
                                 <li>Cached rotator configurations</li>
-                                <li>Cached TLE sources</li>
+                                <li>Cached orbital sources</li>
                                 <li>Cached satellite and group data</li>
                                 <li>Location settings</li>
                                 <li>User preferences (timezone, theme)</li>

@@ -86,12 +86,12 @@
     "rotator_stopped": "Περιστροφέας: Σταματημένος (Αζ: {{az}}°, Υψ: {{el}}°)",
     "rotator_connected": "Περιστροφέας: Συνδεδεμένος (Αζ: {{az}}°, Υψ: {{el}}°)"
   },
-  "tlesync_popover": {
+  "orbital_sync_popover": {
     "syncing": "Συγχρονισμός: {{progress}}%",
     "sync_failed": "Αποτυχία Συγχρονισμού: {{error}}",
     "last_sync": "Τελευταίος συγχρονισμός: {{date}}",
-    "satellite_tle_sync": "Συγχρονισμός Δεδομένων TLE Δορυφόρων",
-    "tle_sync_status": "Κατάσταση Συγχρονισμού TLE",
+    "satellite_orbital_sync": "Συγχρονισμός Τροχιακών Δεδομένων Δορυφόρων",
+    "orbital_sync_status": "Κατάσταση Συγχρονισμού Τροχιακών Δεδομένων",
     "status": "Κατάσταση",
     "idle": "αδρανής",
     "progress": "Πρόοδος: {{progress}}%",

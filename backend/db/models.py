@@ -22,6 +22,7 @@ from enum import Enum as PyEnum
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Enum,
@@ -147,6 +148,56 @@ class Satellites(Base):
         nullable=True,
         default=datetime.now(timezone.utc),
         onupdate=datetime.now(timezone.utc),
+    )
+
+
+class SatelliteOrbits(Base):
+    __tablename__ = "satellite_orbits"
+
+    satellite_norad_id = Column(
+        Integer,
+        ForeignKey("satellites.norad_id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    central_body = Column(
+        String, primary_key=True, nullable=False, default="earth", server_default="earth"
+    )
+    model_kind = Column(String, nullable=False, default="tle", server_default="tle", index=True)
+    epoch = Column(AwareDateTime, nullable=True)
+    tle1 = Column(String, nullable=True)
+    tle2 = Column(String, nullable=True)
+    omm_payload = Column(JSON, nullable=True)
+    source_id = Column(
+        UUID(as_uuid=True), ForeignKey("orbital_sources.id"), nullable=True, index=True
+    )
+    source_object_id = Column(String, nullable=True)
+    source_updated_at = Column(AwareDateTime, nullable=True)
+    added = Column(AwareDateTime, nullable=False, default=datetime.now(timezone.utc))
+    updated = Column(
+        AwareDateTime,
+        nullable=False,
+        default=datetime.now(timezone.utc),
+        onupdate=datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "central_body IN ('earth', 'moon', 'mars')",
+            name="ck_satellite_orbits_central_body",
+        ),
+        CheckConstraint(
+            "model_kind IN ('tle', 'omm')",
+            name="ck_satellite_orbits_model_kind",
+        ),
+        CheckConstraint(
+            "(model_kind != 'tle') OR (tle1 IS NOT NULL AND tle2 IS NOT NULL)",
+            name="ck_satellite_orbits_tle_required_for_tle_model",
+        ),
+        CheckConstraint(
+            "(model_kind != 'omm') OR (omm_payload IS NOT NULL)",
+            name="ck_satellite_orbits_omm_payload_required_for_omm_model",
+        ),
     )
 
 
@@ -283,13 +334,25 @@ class Preferences(Base):
     )
 
 
-class TLESources(Base):
-    __tablename__ = "tle_sources"
+class OrbitalSources(Base):
+    __tablename__ = "orbital_sources"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
     name = Column(String, nullable=False)
     identifier = Column(String, nullable=False)
     url = Column(String, nullable=False)
     format = Column(String, nullable=False, default="3le")
+    group_id = Column(UUID(as_uuid=True), ForeignKey("groups.id"), nullable=True, index=True)
+    norad_ids = Column(JSON, nullable=True)
+    query_mode = Column(String, nullable=False, default="url", server_default="url")
+    provider = Column(String, nullable=False, default="generic_http", server_default="generic_http")
+    adapter = Column(String, nullable=False, default="http_3le", server_default="http_3le")
+    enabled = Column(Boolean, nullable=False, default=True, server_default="1")
+    priority = Column(Integer, nullable=False, default=100, server_default="100")
+    central_body = Column(String, nullable=False, default="earth", server_default="earth")
+    auth_type = Column(String, nullable=False, default="none", server_default="none")
+    username = Column(String, nullable=True)
+    password = Column(String, nullable=True)
+    config = Column(JSON, nullable=True)
     added = Column(AwareDateTime, nullable=False, default=datetime.now(timezone.utc))
     updated = Column(
         AwareDateTime,
@@ -297,6 +360,25 @@ class TLESources(Base):
         default=datetime.now(timezone.utc),
         onupdate=datetime.now(timezone.utc),
     )
+
+    __table_args__ = (
+        CheckConstraint(
+            "central_body IN ('earth', 'moon', 'mars')",
+            name="ck_orbital_sources_central_body",
+        ),
+        CheckConstraint(
+            "auth_type IN ('none', 'basic', 'token')",
+            name="ck_orbital_sources_auth_type",
+        ),
+        CheckConstraint(
+            "query_mode IN ('url', 'group_norad')",
+            name="ck_orbital_sources_query_mode",
+        ),
+    )
+
+
+# Backward compatibility alias for older imports.
+TLESources = OrbitalSources
 
 
 class Groups(Base):

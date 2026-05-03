@@ -9,7 +9,7 @@
   "cameras": "Κάμερες",
   "sdrs": "SDRs",
   "satellites": "Δορυφόροι",
-  "tle_sources": "Πηγές TLE",
+  "orbital_sources": "Πηγές τροχιακών δεδομένων",
   "groups": "Ομάδες",
   "settings": "Ρυθμίσεις",
   "preferences": "Προτιμήσεις",
