@@ -47,6 +47,7 @@ export const WaterfallEngineProvider = ({ children }) => {
         showRotatorDottedLines,
         autoScalePreset,
         bandscopeSmoothing,
+        bandscopeRateLimitEnabled,
         targetFPS,
     } = useSelector((state) => ({
         waterfallRendererMode: state.waterfall.waterfallRendererMode,
@@ -59,6 +60,7 @@ export const WaterfallEngineProvider = ({ children }) => {
         showRotatorDottedLines: state.waterfall.showRotatorDottedLines,
         autoScalePreset: state.waterfall.autoScalePreset,
         bandscopeSmoothing: state.waterfall.bandscopeSmoothing,
+        bandscopeRateLimitEnabled: state.waterfall.bandscopeRateLimitEnabled,
         targetFPS: state.waterfall.targetFPS,
     }));
 
@@ -228,6 +230,7 @@ export const WaterfallEngineProvider = ({ children }) => {
                 dbRange,
                 fftSize,
                 showRotatorDottedLines,
+                bandscopeRateLimitEnabled,
                 timezone,
                 theme: DEFAULT_WORKER_THEME,
             },
@@ -244,6 +247,7 @@ export const WaterfallEngineProvider = ({ children }) => {
         fftSize,
         postWorkerMessage,
         showRotatorDottedLines,
+        bandscopeRateLimitEnabled,
         timezone,
         waterfallRendererMode,
         waterFallCanvasHeight,
@@ -260,10 +264,19 @@ export const WaterfallEngineProvider = ({ children }) => {
             colorMap,
             dbRange,
             fftSize,
+            bandscopeRateLimitEnabled,
             timezone,
             theme: DEFAULT_WORKER_THEME,
         });
-    }, [waterfallRendererMode, colorMap, dbRange, fftSize, timezone, postWorkerMessage]);
+    }, [
+        waterfallRendererMode,
+        colorMap,
+        dbRange,
+        fftSize,
+        bandscopeRateLimitEnabled,
+        timezone,
+        postWorkerMessage,
+    ]);
 
     useEffect(() => {
         if (waterfallRendererMode !== 'worker') {

@@ -56,6 +56,8 @@ let binsUpdateCount = 0;
 let binsPerSecond = 0;
 let lastBandscopeDrawTime = 0;
 let bandscopeDrawInterval = 200;
+// Internal switch: default is per-FFT updates (no rate limiting).
+let bandscopeRateLimitEnabled = false;
 let dottedLineImageData = null;
 let rotatorEventQueue = [];
 let lastTimestamp = new Date();
@@ -363,6 +365,9 @@ self.onmessage = function(eventMessage) {
             if (eventMessage.data.timezone !== undefined) {
                 timezone = eventMessage.data.timezone || 'UTC';
             }
+            if (eventMessage.data.bandscopeRateLimitEnabled !== undefined) {
+                bandscopeRateLimitEnabled = Boolean(eventMessage.data.bandscopeRateLimitEnabled);
+            }
             // Rebuild palette if needed after config updates
             if (paletteDirty) rebuildPalette();
             break;
@@ -498,8 +503,9 @@ function throttledDrawBandscope() {
 
     const now = Date.now();
 
-    // Only draw if enough time has passed since the last draw
-    if (now - lastBandscopeDrawTime >= bandscopeDrawInterval) {
+    // Draw on every FFT frame unless internal rate limiting is enabled.
+    const canDrawNow = !bandscopeRateLimitEnabled || now - lastBandscopeDrawTime >= bandscopeDrawInterval;
+    if (canDrawNow) {
         // Compute smoothing only when the bandscope is actually redrawn.
         // This avoids expensive per-packet smoothing work when FFT ingest
         // cadence is much higher than visual bandscope cadence.
@@ -635,6 +641,9 @@ function setupCanvas(config = {}, options = {}) {
     }
     if (config.showRotatorDottedLines !== undefined) {
         showRotatorDottedLines = config.showRotatorDottedLines;
+    }
+    if (config.bandscopeRateLimitEnabled !== undefined) {
+        bandscopeRateLimitEnabled = Boolean(config.bandscopeRateLimitEnabled);
     }
     if (config.timezone !== undefined) {
         timezone = config.timezone || timezone;
