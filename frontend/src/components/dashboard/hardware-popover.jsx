@@ -126,6 +126,7 @@ const HardwareSettingsPopover = () => {
             rotator: {
                 activeCount: 0,
                 connectedCount: 0,
+                slewingCount: 0,
                 warningCount: 0,
                 disconnectedCount: 0,
                 assignedCount: 0,
@@ -156,6 +157,7 @@ const HardwareSettingsPopover = () => {
         const assignedRotatorIds = new Set();
         const activeRotatorIds = new Set();
         const connectedRotatorIds = new Set();
+        const slewingRotatorIds = new Set();
         const warningRotatorIds = new Set();
         const disconnectedRotatorIds = new Set();
         const assignedRigIds = new Set();
@@ -183,12 +185,14 @@ const HardwareSettingsPopover = () => {
                 const rotatorStatus = resolveRotatorLedStatus({ rotatorId, rotatorData, trackingState });
                 const rotatorDisconnected = rotatorStatus === 'disconnected';
                 const rotatorWarning = isRotatorWarningStatus(rotatorStatus);
+                const rotatorSlewing = rotatorStatus === 'slewing';
                 const rotatorActive = rotatorStatus === 'tracking' || rotatorStatus === 'slewing';
                 const rotatorConnected = Boolean(rotatorData?.connected) || (
                     !['disconnected', 'none', 'unknown'].includes(rotatorStatus)
                 );
                 if (rotatorActive) activeRotatorIds.add(normalizedRotatorId);
                 if (rotatorConnected) connectedRotatorIds.add(normalizedRotatorId);
+                if (rotatorSlewing) slewingRotatorIds.add(normalizedRotatorId);
                 if (rotatorDisconnected) disconnectedRotatorIds.add(normalizedRotatorId);
                 else if (rotatorWarning) warningRotatorIds.add(normalizedRotatorId);
             }
@@ -219,6 +223,7 @@ const HardwareSettingsPopover = () => {
         summary.rotator.assignedCount = assignedRotatorIds.size;
         summary.rotator.activeCount = activeRotatorIds.size;
         summary.rotator.connectedCount = connectedRotatorIds.size;
+        summary.rotator.slewingCount = slewingRotatorIds.size;
         summary.rotator.warningCount = warningRotatorIds.size;
         const disconnectedAssignedRotatorCount = [...disconnectedRotatorIds]
             .filter((id) => !connectedRotatorIds.has(id))
@@ -261,6 +266,7 @@ const HardwareSettingsPopover = () => {
     const getRotatorColor = () => {
         if (!hasConfiguredTargets) return 'text.disabled';
         if (!connected) return 'text.disabled';
+        if (fleetHardwareSummary.rotator.slewingCount > 0) return 'warning.main';
         if (fleetHardwareSummary.rotator.connectedCount > 0) return 'success.main';
         return 'text.secondary';
     };
