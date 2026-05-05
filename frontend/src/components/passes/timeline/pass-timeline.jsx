@@ -15,6 +15,20 @@ import { TimelineContainer, TimelineContent, TimelineCanvas, TimelineAxis, Eleva
 import { PassCurve, CurrentTimeMarker } from './timeline-components.jsx';
 import { useTimelineEvents } from './timeline-events.jsx';
 
+const buildPassTargetKey = (pass) => {
+  // Celestial pass payloads can omit `target_key`; derive the same canonical key used elsewhere.
+  const explicitKey = String(pass?.target_key || '').trim();
+  if (explicitKey) return explicitKey;
+
+  const targetType = String(pass?.target_type || 'mission').trim().toLowerCase();
+  if (targetType === 'body') {
+    const bodyId = String(pass?.body_id || pass?.command || '').trim().toLowerCase();
+    return bodyId ? `body:${bodyId}` : '';
+  }
+  const command = String(pass?.command || '').trim();
+  return command ? `mission:${command}` : '';
+};
+
 const PassTimelineComponent = ({
   timeWindowHours: initialTimeWindowHours = 8,
   pastOffsetHours = 0.1, // Hours to offset into the past on initial render (30 minutes)
@@ -39,6 +53,7 @@ const PassTimelineComponent = ({
   showGeostationarySatellites = true, // New prop: if true, show geostationary satellites
   onToggleGeostationary = null, // New prop: callback for geostationary toggle
   highlightActivePasses = false, // New prop: if true, make active passes solid and inactive passes dashed/less opaque
+  highlightTargetKey = '', // New prop: highlight pass curves for one mission/body target key
   forceTimeWindowStart = null, // New prop: force timeline window start (ISO datetime string)
   forceTimeWindowEnd = null, // New prop: force timeline window end (ISO datetime string)
   groundStationLocation = null,
@@ -47,6 +62,8 @@ const PassTimelineComponent = ({
 }) => {
   const theme = useTheme();
   const { t } = useTranslation('target');
+  const normalizedHighlightTargetKey = String(highlightTargetKey || '').trim();
+  const hasHighlightedTarget = normalizedHighlightTargetKey.length > 0;
 
   // Zoom state: time window configuration
   // If forced time window is provided, use it; otherwise use initialTimeWindowHours
@@ -507,12 +524,15 @@ const PassTimelineComponent = ({
         const nowTime = now.getTime();
         const isCurrent = (activePass && pass.id === activePass.id) ||
                          (nowTime >= passStart.getTime() && nowTime <= passEnd.getTime());
+        const passTargetKey = buildPassTargetKey(pass);
+        const isSelectedTarget = hasHighlightedTarget && passTargetKey === normalizedHighlightTargetKey;
 
         return {
           ...pass,
           left,
           width,
           isCurrent,
+          isSelectedTarget,
         };
       })
       .filter(Boolean);
@@ -544,7 +564,22 @@ const PassTimelineComponent = ({
       activePassObj,
       geoIndices,
     };
-  }, [satellitePasses, activePass, timeWindowHours, timeWindowStart, timezone, groundStationLocation, showSunShading, showSunMarkers, singlePassMode, passId, minLabelInterval, currentTime]);
+  }, [
+    satellitePasses,
+    activePass,
+    timeWindowHours,
+    timeWindowStart,
+    timezone,
+    groundStationLocation,
+    showSunShading,
+    showSunMarkers,
+    singlePassMode,
+    passId,
+    minLabelInterval,
+    currentTime,
+    hasHighlightedTarget,
+    normalizedHighlightTargetKey,
+  ]);
 
   // Event handlers
   const {
@@ -939,6 +974,7 @@ const PassTimelineComponent = ({
                     width: '100%',
                     height: '100%',
                     pointerEvents: 'none',
+                    zIndex: pass.isSelectedTarget ? 5 : (pass.isCurrent ? 4 : 3),
                   }}
                 >
                   <PassCurve
@@ -950,6 +986,7 @@ const PassTimelineComponent = ({
                     geoIndex={geoIndex}
                     totalGeoSats={totalGeoSats}
                     highlightActivePasses={highlightActivePasses}
+                    isTargetSelectionActive={hasHighlightedTarget}
                   />
                 </Box>
               );

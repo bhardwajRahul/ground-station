@@ -1,7 +1,8 @@
 import React from 'react';
 import { Box } from '@mui/material';
 
-const BASE_URL = '/body-icons';
+const BODY_BASE_URL = '/body-icons';
+const MISSION_BASE_URL = '/mission-icons';
 
 const BODY_ICON_FILE_BY_ID = Object.freeze({
     sun: 'sun-sphere-icon.png',
@@ -36,6 +37,37 @@ const BODY_ALIASES = Object.freeze({
     luna: 'moon',
 });
 
+const MISSION_ICON_FILE_BY_KEY = Object.freeze({
+    'voyager-1': 'voyager1-spacecraft-icon.png',
+    'voyager-2': 'voyager2-spacecraft-icon.png',
+    'new-horizons': 'newhorizons-spacecraft-icon.png',
+    '-98': 'newhorizons-spacecraft-icon.png',
+    'parker-solar-probe': 'parkersolarprobe-spacecraft-icon.png',
+    'solar-orbiter': 'solarorbiter-spacecraft-icon.png',
+    'stereo-a': 'stereoa-spacecraft-icon.png',
+    'stereo-b': 'stereob-spacecraft-icon.png',
+    'juno': 'juno-spacecraft-icon.png',
+    '-61': 'juno-spacecraft-icon.png',
+    galileo: 'galileo-spacecraft-icon.png',
+    maven: 'maven-spacecraft-icon.png',
+    exomars: 'exomars-spacecraft-icon.png',
+    dawn: 'dawn-spacecraft-icon.png',
+    'osiris-rex': 'osirisrex-spacecraft-icon.png',
+    '-64': 'osirisrex-spacecraft-icon.png',
+    euclid: 'euclid-spacecraft-icon.png',
+    lro: 'lunarreconnaissanceorbiter-spacecraft-icon.png',
+    'lunar-reconnaissance-orbiter': 'lunarreconnaissanceorbiter-spacecraft-icon.png',
+    insight: 'insight-spacecraft-icon.png',
+    lucy: 'lucy-spacecraft-icon.png',
+    '-49': 'lucy-spacecraft-icon.png',
+    psyche: 'psyche-spacecraft-icon.png',
+    '-255': 'psyche-spacecraft-icon.png',
+    curiosity: 'curiosity-spacecraft-icon.png',
+    '-76': 'curiosity-spacecraft-icon.png',
+    'msl-curiosity': 'curiosity-spacecraft-icon.png',
+    'mars-science-laboratory': 'curiosity-spacecraft-icon.png',
+});
+
 const resolvePreset = (size) => {
     if (size === 'full') return '256';
     const numericSize = Number(size);
@@ -54,10 +86,23 @@ const normalizeBodyId = (value) => {
     return BODY_ALIASES[key] || key;
 };
 
-const resolveIconPath = (bodyId, size) => {
+const normalizeMissionKey = (value) => String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^mission:/, '')
+    .replace(/[_\s]+/g, '-');
+
+const resolveBodyIconPath = (bodyId, size) => {
     const normalized = normalizeBodyId(bodyId);
     const filename = BODY_ICON_FILE_BY_ID[normalized] || BODY_ICON_FILE_BY_ID.moon;
-    return `${BASE_URL}/${resolvePreset(size)}/${filename}`;
+    return `${BODY_BASE_URL}/${resolvePreset(size)}/${filename}`;
+};
+
+const resolveMissionIconPath = (missionKey, size) => {
+    const normalized = normalizeMissionKey(missionKey);
+    const filename = MISSION_ICON_FILE_BY_KEY[normalized];
+    if (!filename) return '';
+    return `${MISSION_BASE_URL}/${resolvePreset(size)}/${filename}`;
 };
 
 const BodyIcon = ({
@@ -67,10 +112,19 @@ const BodyIcon = ({
     alt = 'body icon',
     sx = {},
 }) => {
-    if (String(targetType || '').toLowerCase() !== 'body') return null;
-
-    const path = resolveIconPath(bodyId, size);
+    const normalizedTargetType = String(targetType || '').toLowerCase();
+    const path = normalizedTargetType === 'body'
+        ? resolveBodyIconPath(bodyId, size)
+        : (normalizedTargetType === 'mission' ? resolveMissionIconPath(bodyId, size) : '');
     const iconSize = Number.isFinite(Number(size)) ? Number(size) : 24;
+    const [failed, setFailed] = React.useState(false);
+
+    // Reset broken-image state when switching target.
+    React.useEffect(() => {
+        setFailed(false);
+    }, [path]);
+
+    if (!path || failed) return null;
 
     return (
         <Box
@@ -78,11 +132,12 @@ const BodyIcon = ({
             src={path}
             alt={alt}
             loading="lazy"
+            onError={() => setFailed(true)}
             sx={{
                 width: iconSize,
                 height: iconSize,
                 borderRadius: '50%',
-                objectFit: 'cover',
+                objectFit: normalizedTargetType === 'mission' ? 'contain' : 'cover',
                 flexShrink: 0,
                 ...sx,
             }}

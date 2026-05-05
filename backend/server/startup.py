@@ -223,6 +223,7 @@ process_manager.set_sio(sio)
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 satellites_dir = os.path.join(backend_dir, "..", "images", "satellites")
 bodies_dir = os.path.join(backend_dir, "..", "images", "bodies")
+missions_dir = os.path.join(backend_dir, "..", "images", "missions")
 recordings_dir = os.path.join(backend_dir, "..", "data", "recordings")
 snapshots_dir = os.path.join(backend_dir, "..", "data", "snapshots")
 decoded_dir = os.path.join(backend_dir, "..", "data", "decoded")
@@ -232,6 +233,7 @@ transcriptions_dir = os.path.join(backend_dir, "..", "data", "transcriptions")
 # Create directories if they don't exist
 os.makedirs(satellites_dir, exist_ok=True)
 os.makedirs(bodies_dir, exist_ok=True)
+os.makedirs(missions_dir, exist_ok=True)
 os.makedirs(recordings_dir, exist_ok=True)
 os.makedirs(snapshots_dir, exist_ok=True)
 os.makedirs(decoded_dir, exist_ok=True)
@@ -249,6 +251,7 @@ app.mount(
     "/transcriptions", StaticFiles(directory=transcriptions_dir, html=False), name="transcriptions"
 )
 app.mount("/body-icons", StaticFiles(directory=bodies_dir, html=True), name="body-icons")
+app.mount("/mission-icons", StaticFiles(directory=missions_dir, html=True), name="mission-icons")
 
 
 # Add the version API endpoint BEFORE the catch-all route

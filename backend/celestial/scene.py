@@ -40,6 +40,8 @@ MAX_SAMPLES_PER_TARGET = 1500
 DEFAULT_CELESTIAL_TARGETS: List[Dict[str, str]] = []
 NO_EPHEMERIS_ERROR_FRAGMENT = "No ephemeris data returned by Horizons"
 CELESTIAL_PASS_HORIZON_DEG = 0.0
+CURVE_DENSIFY_TARGET_STEP_SECONDS = 5 * 60
+CURVE_DENSIFY_MAX_INSERTS_PER_SEGMENT = 8
 
 
 @dataclass
@@ -685,6 +687,66 @@ def _deduplicate_curve_points(points: List[Dict[str, Any]]) -> List[Dict[str, An
     return deduplicated
 
 
+def _interpolate_serialized_curve_point(
+    previous: Dict[str, Any],
+    current: Dict[str, Any],
+    ratio: float,
+) -> Optional[Dict[str, Any]]:
+    prev_time = _parse_iso_utc(previous.get("time"))
+    curr_time = _parse_iso_utc(current.get("time"))
+    if not prev_time or not curr_time:
+        return None
+
+    ratio = max(0.0, min(1.0, float(ratio)))
+    point_time = prev_time + timedelta(seconds=(curr_time - prev_time).total_seconds() * ratio)
+
+    prev_az = float(previous.get("azimuth", 0.0))
+    curr_az = float(current.get("azimuth", prev_az))
+    # Interpolate azimuth using the shortest angular delta to avoid wrap jumps near 0°/360°.
+    delta_az = ((curr_az - prev_az + 540.0) % 360.0) - 180.0
+    azimuth = (prev_az + (delta_az * ratio)) % 360.0
+
+    prev_el = float(previous.get("elevation", 0.0))
+    curr_el = float(current.get("elevation", prev_el))
+    elevation = prev_el + ((curr_el - prev_el) * ratio)
+
+    return {
+        "time": point_time.astimezone(timezone.utc).isoformat(),
+        "azimuth": azimuth,
+        "elevation": elevation,
+    }
+
+
+def _densify_curve_points(points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if len(points) < 2:
+        return points
+
+    densified: List[Dict[str, Any]] = [points[0]]
+    for index in range(1, len(points)):
+        previous = points[index - 1]
+        current = points[index]
+        prev_time = _parse_iso_utc(previous.get("time"))
+        curr_time = _parse_iso_utc(current.get("time"))
+        if prev_time and curr_time:
+            delta_seconds = max(0.0, (curr_time - prev_time).total_seconds())
+            if delta_seconds > float(CURVE_DENSIFY_TARGET_STEP_SECONDS):
+                desired_segments = int(
+                    math.ceil(delta_seconds / float(CURVE_DENSIFY_TARGET_STEP_SECONDS))
+                )
+                # Keep growth bounded on very large windows while still smoothing sparse segments.
+                insert_count = max(
+                    0,
+                    min(CURVE_DENSIFY_MAX_INSERTS_PER_SEGMENT, desired_segments - 1),
+                )
+                for insert_index in range(1, insert_count + 1):
+                    ratio = insert_index / float(insert_count + 1)
+                    interpolated = _interpolate_serialized_curve_point(previous, current, ratio)
+                    if interpolated:
+                        densified.append(interpolated)
+        densified.append(current)
+    return _deduplicate_curve_points(densified)
+
+
 def _build_pass_elevation_curve(
     *,
     ordered_samples: List[Dict[str, Any]],
@@ -719,7 +781,7 @@ def _build_pass_elevation_curve(
     deduplicated = _deduplicate_curve_points(curve_points)
     if len(deduplicated) < 2:
         return []
-    return deduplicated
+    return _densify_curve_points(deduplicated)
 
 
 def _build_pass_events_from_samples(

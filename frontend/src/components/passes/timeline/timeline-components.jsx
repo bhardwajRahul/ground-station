@@ -6,7 +6,17 @@ import { Y_AXIS_WIDTH, X_AXIS_HEIGHT, Y_AXIS_TOP_MARGIN, elevationToYPercent } f
 /**
  * PassCurve component - Renders a single satellite pass as an SVG path
  */
-export const PassCurve = ({ pass, startTime, endTime, labelType = false, labelVerticalOffset = 150, geoIndex = null, totalGeoSats = null, highlightActivePasses = false }) => {
+export const PassCurve = ({
+  pass,
+  startTime,
+  endTime,
+  labelType = false,
+  labelVerticalOffset = 150,
+  geoIndex = null,
+  totalGeoSats = null,
+  highlightActivePasses = false,
+  isTargetSelectionActive = false,
+}) => {
   const theme = useTheme();
   const stateTokens = theme.palette.timelinePass || {
     estimatedStroke: theme.palette.mode === 'dark' ? '#9aa3b2' : '#7b8794',
@@ -21,6 +31,11 @@ export const PassCurve = ({ pass, startTime, endTime, labelType = false, labelVe
   const totalDuration = endTime.getTime() - startTime.getTime();
   const chartStartMs = startTime.getTime();
   const chartEndMs = endTime.getTime();
+  const isSelectedTarget = Boolean(pass?.isSelectedTarget);
+  const shouldFadeForSelection = isTargetSelectionActive && !isSelectedTarget;
+  const shouldEmphasizeForSelection = isTargetSelectionActive && isSelectedTarget;
+  const shouldForceSelectedLabel = shouldEmphasizeForSelection;
+  const shouldRenderLabel = Boolean(labelType) || shouldForceSelectedLabel;
 
   const passColor = (() => {
     if (pass.isCurrent) return stateTokens.activeStroke;
@@ -161,7 +176,7 @@ export const PassCurve = ({ pass, startTime, endTime, labelType = false, labelVe
         {estimatedPathData && (
           <g
             style={{
-              opacity: hasElevationCurve ? 0 : 1,
+              opacity: hasElevationCurve ? 0 : (shouldFadeForSelection ? 0.35 : 1),
               transition: 'opacity 260ms ease-out',
             }}
           >
@@ -177,7 +192,11 @@ export const PassCurve = ({ pass, startTime, endTime, labelType = false, labelVe
               strokeWidth="0.7"
               strokeDasharray="2.2,2.2"
               fill="none"
-              opacity={highlightActivePasses ? (pass.isCurrent ? 0.95 : 0.75) : 0.85}
+              opacity={
+                isTargetSelectionActive
+                  ? (isSelectedTarget ? 0.95 : 0.35)
+                  : (highlightActivePasses ? (pass.isCurrent ? 0.95 : 0.75) : 0.85)
+              }
               vectorEffect="non-scaling-stroke"
               style={{ pointerEvents: 'none' }}
             />
@@ -211,7 +230,15 @@ export const PassCurve = ({ pass, startTime, endTime, labelType = false, labelVe
               <path
                 d={fillPath}
                 fill={passColor}
-                fillOpacity={hasElevationCurve ? (highlightActivePasses ? (pass.isCurrent ? 0.16 : 0.09) : 0.14) : 0}
+                fillOpacity={
+                  hasElevationCurve
+                    ? (
+                      isTargetSelectionActive
+                        ? (isSelectedTarget ? 0.2 : 0.035)
+                        : (highlightActivePasses ? (pass.isCurrent ? 0.16 : 0.09) : 0.14)
+                    )
+                    : 0
+                }
                 stroke="none"
                 style={{ pointerEvents: 'none' }}
               />
@@ -219,10 +246,22 @@ export const PassCurve = ({ pass, startTime, endTime, labelType = false, labelVe
               <path
                 d={pathString}
                 stroke={passColor}
-                strokeWidth={pass.isCurrent ? "0.7" : "0.55"}
-                strokeDasharray={highlightActivePasses ? (pass.isCurrent ? "0" : "2,2") : "0"}
+                strokeWidth={
+                  shouldEmphasizeForSelection
+                    ? (pass.isCurrent ? '0.95' : '0.8')
+                    : (pass.isCurrent ? '0.7' : '0.55')
+                }
+                strokeDasharray={
+                  isTargetSelectionActive
+                    ? (isSelectedTarget ? '0' : '2.5,2.5')
+                    : (highlightActivePasses ? (pass.isCurrent ? '0' : '2,2') : '0')
+                }
                 fill="none"
-                opacity={highlightActivePasses ? (pass.isCurrent ? 1 : 0.8) : (pass.isCurrent ? 1 : 0.8)}
+                opacity={
+                  isTargetSelectionActive
+                    ? (isSelectedTarget ? 1 : 0.3)
+                    : (highlightActivePasses ? (pass.isCurrent ? 1 : 0.8) : (pass.isCurrent ? 1 : 0.8))
+                }
                 vectorEffect="non-scaling-stroke"
                 style={{ pointerEvents: 'none' }}
               />
@@ -231,14 +270,16 @@ export const PassCurve = ({ pass, startTime, endTime, labelType = false, labelVe
         })}
       </svg>
 
-      {/* Label at peak - type and size based on labelType and elevation */}
-      {labelType && peakX !== null && peakY !== null && peakElevation >= 0 && (() => {
+      {/* Label at peak - force a label for selected target even when labelType is disabled */}
+      {shouldRenderLabel && peakX !== null && peakY !== null && (peakElevation >= 0 || shouldForceSelectedLabel) && (() => {
         // Defer dense labels until computed curve is available.
-        if (!hasElevationCurve && labelType === 'name') return null;
+        if (!hasElevationCurve && labelType === 'name' && !shouldForceSelectedLabel) return null;
 
         // Determine if we should show the label based on elevation threshold
-        if (labelType === 'name' && peakElevation < 25) return null; // Don't show name labels below 25°
-        if (labelType === 'peak' && peakElevation < 10) return null; // Don't show peak labels below 10°
+        if (!shouldForceSelectedLabel) {
+          if (labelType === 'name' && peakElevation < 25) return null; // Don't show name labels below 25°
+          if (labelType === 'peak' && peakElevation < 10) return null; // Don't show peak labels below 10°
+        }
 
         // Determine label content
         let labelContent = '';
@@ -246,6 +287,13 @@ export const PassCurve = ({ pass, startTime, endTime, labelType = false, labelVe
           labelContent = pass.name;
         } else if (labelType === 'peak') {
           labelContent = `${hasElevationCurve ? '' : '~'}${peakElevation.toFixed(0)}°`;
+        } else if (shouldForceSelectedLabel) {
+          labelContent =
+            String(pass?.name || '').trim()
+            || String(pass?.target_key || '').trim()
+            || String(pass?.command || '').trim()
+            || String(pass?.body_id || '').trim()
+            || 'Selected target';
         }
 
         if (!labelContent) return null;
@@ -255,6 +303,9 @@ export const PassCurve = ({ pass, startTime, endTime, labelType = false, labelVe
         if (labelType === 'name' && peakElevation < 45) {
           fontSize = '0.6rem'; // Smaller font for low elevation passes (30-45°)
         }
+        const effectiveLabelVerticalOffset = shouldForceSelectedLabel
+          ? Math.min(labelVerticalOffset, 112)
+          : labelVerticalOffset;
 
         return (
           <Box
@@ -262,18 +313,24 @@ export const PassCurve = ({ pass, startTime, endTime, labelType = false, labelVe
               position: 'absolute',
               left: `calc(${Y_AXIS_WIDTH}px + (100% - ${Y_AXIS_WIDTH}px) * ${peakX / 100})`,
               top: `calc(${Y_AXIS_TOP_MARGIN}px + (100% - ${Y_AXIS_TOP_MARGIN}px - ${X_AXIS_HEIGHT}px) * ${peakY / 100})`,
-              transform: `translate(-50%, -${labelVerticalOffset}%)`,
+              transform: `translate(-50%, -${effectiveLabelVerticalOffset}%)`,
               fontSize: fontSize,
               fontWeight: 'bold',
               color: hasElevationCurve ? passColor : stateTokens.estimatedStroke,
               backgroundColor: theme.palette.background.paper,
               padding: '2px 6px',
               borderRadius: '3px',
-              border: pass.isCurrent ? `1px solid ${hasElevationCurve ? passColor : stateTokens.estimatedStroke}` : 'none',
+              border: (pass.isCurrent || shouldEmphasizeForSelection)
+                ? `1px solid ${hasElevationCurve ? passColor : stateTokens.estimatedStroke}`
+                : 'none',
               whiteSpace: 'nowrap',
               pointerEvents: 'none',
               zIndex: 25,
-              opacity: hasElevationCurve ? (highlightActivePasses ? (pass.isCurrent ? 0.9 : 0.5) : 0.9) : 0.7,
+              opacity: (
+                isTargetSelectionActive
+                  ? (isSelectedTarget ? 0.95 : 0.32)
+                  : (hasElevationCurve ? (highlightActivePasses ? (pass.isCurrent ? 0.9 : 0.5) : 0.9) : 0.7)
+              ),
               boxShadow: theme.shadows[1],
               transition: 'opacity 260ms ease-out, color 260ms ease-out, border-color 260ms ease-out',
             }}

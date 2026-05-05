@@ -42,6 +42,7 @@
 
 ## Code Comments
 - Add code comments more proactively when touching logic that is not immediately obvious.
+- Prefer more comments over fewer comments when in doubt, especially around control flow, state transitions, and worker/lifecycle behavior.
 - Keep comments brief and clear (avoid verbose explanations).
 - Focus comments on intent and non-obvious behavior, not line-by-line narration.
 

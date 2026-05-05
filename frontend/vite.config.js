@@ -64,6 +64,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
+        '/mission-icons': {
+          target: `http://${backendHost}:${backendPort}`,
+          changeOrigin: true,
+          secure: false,
+        },
         '/api': {  // For regular HTTP API requests
           target: `http://${backendHost}:${backendPort}`,
           changeOrigin: true,

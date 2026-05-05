@@ -543,6 +543,7 @@ const CelestialMainLayout = () => {
                 loading={Boolean(celestialState.tracksLoading)}
                 gridEditable={isEditing}
                 projectionFutureHours={projectionSettings.future_hours}
+                selectedTargetKey={selectedInfoTargetKey}
                 onRefresh={handleRefreshCelestial}
             />
         </StyledIslandParentNoScrollbar>,

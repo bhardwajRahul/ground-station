@@ -7,6 +7,7 @@ const CelestialPassTimeline = ({
     loading = false,
     gridEditable = false,
     projectionFutureHours = 24,
+    selectedTargetKey = '',
     onRefresh = null,
 }) => {
     const groundStationLocation = useSelector((state) => state.location.location);
@@ -49,6 +50,10 @@ const CelestialPassTimeline = ({
             .filter(Boolean)
             .sort((left, right) => new Date(left.event_start).getTime() - new Date(right.event_start).getTime());
     }, [passes]);
+    const normalizedSelectedTargetKey = useMemo(
+        () => String(selectedTargetKey || '').trim(),
+        [selectedTargetKey],
+    );
 
     return (
         <PassTimeline
@@ -63,6 +68,7 @@ const CelestialPassTimeline = ({
             onRefresh={onRefresh}
             showHoverElevation={false}
             highlightActivePasses={true}
+            highlightTargetKey={normalizedSelectedTargetKey}
             groundStationLocation={groundStationLocation}
             timezone={timezone}
         />

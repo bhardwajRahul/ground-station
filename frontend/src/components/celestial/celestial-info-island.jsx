@@ -1,6 +1,10 @@
 import React, { useMemo } from 'react';
-import { Box, Chip, CircularProgress, Divider, Typography } from '@mui/material';
+import { Box, CircularProgress, Divider, Tooltip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import { getClassNamesBasedOnGridEditing, TitleBar } from '../common/common.jsx';
 import { useUserTimeSettings } from '../../hooks/useUserTimeSettings.jsx';
 import BodyIcon from './body-icon.jsx';
@@ -162,11 +166,37 @@ const CelestialInfoIsland = ({
     const lightTimeMinutes = Number.isFinite(distanceFromSunAu) ? distanceFromSunAu * LIGHT_TIME_MIN_PER_AU : NaN;
     const distanceKm = Number.isFinite(distanceFromSunAu) ? distanceFromSunAu * AU_IN_KM : NaN;
 
-    const statusChip = (() => {
-        if (selectedTrack?.error) return <Chip size="small" color="error" label="Error" />;
-        if (visible === true) return <Chip size="small" color="success" label="Visible" />;
-        if (visible === false) return <Chip size="small" color="info" label="Below Horizon" />;
-        return <Chip size="small" label="Unknown" />;
+    const statusIndicator = (() => {
+        if (selectedTrack?.error) {
+            return {
+                icon: ErrorOutlineIcon,
+                label: 'Error',
+                color: 'error.main',
+                paletteKey: 'error',
+            };
+        }
+        if (visible === true) {
+            return {
+                icon: VisibilityIcon,
+                label: 'Visible',
+                color: 'success.main',
+                paletteKey: 'success',
+            };
+        }
+        if (visible === false) {
+            return {
+                icon: VisibilityOffIcon,
+                label: 'Below Horizon',
+                color: 'info.main',
+                paletteKey: 'info',
+            };
+        }
+        return {
+            icon: HelpOutlineIcon,
+            label: 'Unknown',
+            color: 'text.secondary',
+            paletteKey: 'text',
+        };
     })();
 
     return (
@@ -247,7 +277,34 @@ const CelestialInfoIsland = ({
                                         </Typography>
                                     </Box>
                                 </Box>
-                                {statusChip}
+                                <Tooltip title={statusIndicator.label}>
+                                    <Box
+                                        aria-label={statusIndicator.label}
+                                        sx={{
+                                            width: 30,
+                                            height: 30,
+                                            borderRadius: '50%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: statusIndicator.color,
+                                            bgcolor: (theme) => alpha(
+                                                statusIndicator.paletteKey === 'text'
+                                                    ? theme.palette.text.primary
+                                                    : theme.palette[statusIndicator.paletteKey].main,
+                                                0.1,
+                                            ),
+                                            border: '1px solid',
+                                            borderColor: 'divider',
+                                            flexShrink: 0,
+                                        }}
+                                    >
+                                        <Box
+                                            component={statusIndicator.icon}
+                                            sx={{ fontSize: '1.05rem' }}
+                                        />
+                                    </Box>
+                                </Tooltip>
                             </Box>
                         </Box>
 
