@@ -26,48 +26,63 @@ export const tileLayers = [
     {
         id: 'osm',
         name: 'OpenStreetMap',
+        description: 'Street map with roads, labels, and place details.',
+        projection: 'EPSG3857',
         url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     },
     {
         id: 'satellite',
         name: 'Esri WorldImagery',
+        description: 'Global satellite and aerial imagery basemap.',
+        projection: 'EPSG3857',
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
     },
     {
         id: 'topo',
         name: 'Opentopomap topographic',
+        description: 'Topographic style with terrain and contour emphasis.',
+        projection: 'EPSG3857',
         url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
         attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
     },
     {
         id: 'stadiadark',
         name: 'Stadia dark',
+        description: 'Dark themed map for high-contrast overlays.',
+        projection: 'EPSG3857',
         url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png?api_key={APIKEY}',
         attribution: '&copy; <a href="https://www.stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     },
     {
         id: 'cartodark',
         name: 'CARTO dark',
+        description: 'Dark map tiles from CARTO basemaps.',
+        projection: 'EPSG3857',
         url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
     },
     {
         id: 'esrigreycanvas',
         name: 'Esri grey',
+        description: 'Muted light-gray reference basemap.',
+        projection: 'EPSG3857',
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
         attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
     },
     {
         id: 'cartodbvoyager',
         name: 'CartoDB Voyager',
+        description: 'Balanced light basemap with roads and labels.',
+        projection: 'EPSG3857',
         url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png}',
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
     },
     {
         id: 'nasa_blue_marble_4326',
         name: 'NASA Blue Marble (EPSG:4326)',
+        description: 'Global shaded relief and bathymetry.',
         type: 'wms',
         projection: 'EPSG4326',
         url: 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi',
@@ -82,6 +97,7 @@ export const tileLayers = [
     {
         id: 'nasa_osm_land_mask_4326',
         name: 'NASA OSM Land Mask (EPSG:4326)',
+        description: 'Land mask layer derived from OSM features.',
         type: 'wms',
         projection: 'EPSG4326',
         url: 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi',
@@ -96,6 +112,7 @@ export const tileLayers = [
     {
         id: 'nasa_osm_land_water_map_4326',
         name: 'NASA OSM Land/Water Map (EPSG:4326)',
+        description: 'Land and water reference map in geographic CRS.',
         type: 'wms',
         projection: 'EPSG4326',
         url: 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi',

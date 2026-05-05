@@ -17,24 +17,185 @@
  *
  */
 
-
-import React, {useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {
     Box,
-    Paper,
+    Button,
+    Chip,
     FormControl,
-    InputLabel,
-    Select,
-    MenuItem,
-    Switch,
     FormControlLabel,
-    Stack
+    InputLabel,
+    MenuItem,
+    Paper,
+    Select,
+    Stack,
+    Switch,
+    TextField,
+    Typography,
 } from '@mui/material';
-import {styled} from '@mui/material/styles';
-import {tileLayers, getTileLayerById} from './tile-layers.jsx';
-import {TitleBar, ThemedStackIsland, SettingItem, ThemedSettingsDiv} from './common.jsx';
+import {getTileLayerById, tileLayers} from './tile-layers.jsx';
 import { useTranslation } from 'react-i18next';
 
+const SETTINGS_KEYS = [
+    'showPastOrbitPath',
+    'showFutureOrbitPath',
+    'showSatelliteCoverage',
+    'showSunIcon',
+    'showMoonIcon',
+    'showTerminatorLine',
+    'showTooltip',
+    'showGrid',
+    'pastOrbitLineColor',
+    'futureOrbitLineColor',
+    'satelliteCoverageColor',
+    'orbitProjectionDuration',
+    'tileLayerID',
+];
+
+const isHexColor = (value) => /^#[0-9A-Fa-f]{6}$/.test(String(value || ''));
+
+const normalizeHexColor = (value, fallback) => {
+    if (isHexColor(value)) {
+        return String(value).toUpperCase();
+    }
+    return String(fallback || '#FFFFFF').toUpperCase();
+};
+
+const normalizeProjectionLabel = (projection) => {
+    if (projection === 'EPSG4326') {
+        return 'EPSG:4326';
+    }
+    return 'EPSG:3857';
+};
+
+const buildSettings = ({
+    initialShowPastOrbitPath,
+    initialShowFutureOrbitPath,
+    initialShowSatelliteCoverage,
+    initialShowSunIcon,
+    initialShowMoonIcon,
+    initialShowTerminatorLine,
+    initialSatelliteCoverageColor,
+    initialPastOrbitLineColor,
+    initialFutureOrbitLineColor,
+    initialOrbitProjectionDuration,
+    initialTileLayerID,
+    initialShowTooltip,
+    initialShowGrid,
+}) => ({
+    showPastOrbitPath: Boolean(initialShowPastOrbitPath),
+    showFutureOrbitPath: Boolean(initialShowFutureOrbitPath),
+    showSatelliteCoverage: Boolean(initialShowSatelliteCoverage),
+    showSunIcon: Boolean(initialShowSunIcon),
+    showMoonIcon: Boolean(initialShowMoonIcon),
+    showTerminatorLine: Boolean(initialShowTerminatorLine),
+    showTooltip: Boolean(initialShowTooltip),
+    showGrid: Boolean(initialShowGrid),
+    pastOrbitLineColor: normalizeHexColor(initialPastOrbitLineColor, '#33C833'),
+    futureOrbitLineColor: normalizeHexColor(initialFutureOrbitLineColor, '#E4971E'),
+    satelliteCoverageColor: normalizeHexColor(initialSatelliteCoverageColor, '#FFFFFF'),
+    orbitProjectionDuration: Number(initialOrbitProjectionDuration) || 240,
+    tileLayerID: initialTileLayerID || 'satellite',
+});
+
+const settingsEqual = (left, right) => SETTINGS_KEYS.every((key) => left[key] === right[key]);
+
+const SectionBlock = ({ title, subtitle, children }) => (
+    <Paper
+        variant="outlined"
+        sx={{
+            borderColor: 'divider',
+            borderRadius: 1.5,
+            p: 1.5,
+            bgcolor: 'background.paper',
+        }}
+    >
+        <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            {title}
+        </Typography>
+        {subtitle ? (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.4, mb: 1.25 }}>
+                {subtitle}
+            </Typography>
+        ) : null}
+        <Stack spacing={1.1}>{children}</Stack>
+    </Paper>
+);
+
+const ToggleRow = ({ label, checked, onChange }) => (
+    <FormControlLabel
+        control={<Switch size="small" checked={checked} onChange={(e) => onChange(e.target.checked)} />}
+        label={label}
+        sx={{ ml: 0.2 }}
+    />
+);
+
+const ColorSetting = ({ label, value, disabled = false, onChange }) => {
+    const colorInputRef = useRef(null);
+    const safeSwatchColor = isHexColor(value) ? value : '#FFFFFF';
+
+    return (
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}>
+            <Typography variant="body2" color={disabled ? 'text.disabled' : 'text.primary'}>
+                {label}
+            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center">
+                <Box
+                    role="button"
+                    tabIndex={disabled ? -1 : 0}
+                    aria-label={label}
+                    onClick={() => {
+                        if (!disabled && colorInputRef.current) {
+                            colorInputRef.current.click();
+                        }
+                    }}
+                    onKeyDown={(event) => {
+                        if (!disabled && (event.key === 'Enter' || event.key === ' ')) {
+                            event.preventDefault();
+                            colorInputRef.current?.click();
+                        }
+                    }}
+                    sx={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: 1,
+                        border: '1px solid',
+                        borderColor: disabled ? 'divider' : 'border.main',
+                        bgcolor: safeSwatchColor,
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        opacity: disabled ? 0.45 : 1,
+                    }}
+                />
+                <input
+                    ref={colorInputRef}
+                    type="color"
+                    value={safeSwatchColor}
+                    onChange={(e) => onChange(String(e.target.value || '').toUpperCase())}
+                    disabled={disabled}
+                    style={{ display: 'none' }}
+                />
+                <TextField
+                    size="small"
+                    value={String(value || '')}
+                    disabled={disabled}
+                    onChange={(e) => {
+                        const nextValue = String(e.target.value || '').toUpperCase();
+                        if (/^#?[0-9A-F]{0,6}$/.test(nextValue)) {
+                            onChange(nextValue.startsWith('#') ? nextValue : `#${nextValue}`);
+                        }
+                    }}
+                    onBlur={() => {
+                        if (!isHexColor(value)) {
+                            onChange(safeSwatchColor);
+                        }
+                    }}
+                    sx={{ width: 108 }}
+                    inputProps={{ maxLength: 7 }}
+                />
+            </Stack>
+        </Stack>
+    );
+};
 
 const MapSettingsIsland = ({ initialShowPastOrbitPath, initialShowFutureOrbitPath, initialShowSatelliteCoverage,
                             initialShowSunIcon, initialShowMoonIcon, initialShowTerminatorLine,
@@ -44,50 +205,254 @@ const MapSettingsIsland = ({ initialShowPastOrbitPath, initialShowFutureOrbitPat
                             handleShowSatelliteCoverage, handleSetShowSunIcon, handleSetShowMoonIcon,
                             handleShowTerminatorLine, handleFutureOrbitLineColor, handlePastOrbitLineColor,
                             handleSatelliteCoverageColor, handleOrbitProjectionDuration, handleShowTooltip,
-                               handleTileLayerID, handleShowGrid, updateBackend}) => {
+                               handleTileLayerID, handleShowGrid, updateBackend, onCancel, defaultSettings, open}) => {
 
     const { t } = useTranslation('common');
 
-    // Example options for orbit projection time range
     const timeOptions = [
-        {value: '60',  label: t('map_settings.time_options.1_hour')},
-        {value: '120', label: t('map_settings.time_options.2_hours')},
-        {value: '240', label: t('map_settings.time_options.4_hours')},
-        {value: '480', label: t('map_settings.time_options.8_hours')},
-        {value: '720', label: t('map_settings.time_options.12_hours')},
-        {value: '1440', label: t('map_settings.time_options.24_hours')},
+        {value: 60,  label: t('map_settings.time_options.1_hour')},
+        {value: 120, label: t('map_settings.time_options.2_hours')},
+        {value: 240, label: t('map_settings.time_options.4_hours')},
+        {value: 480, label: t('map_settings.time_options.8_hours')},
+        {value: 720, label: t('map_settings.time_options.12_hours')},
+        {value: 1440, label: t('map_settings.time_options.24_hours')},
     ];
 
-    // State for all settings
-    const [satelliteCoverage, setSatelliteCoverage] = useState(initialShowSatelliteCoverage);
-    const [showPastOrbitPlot, setShowPastOrbitPlot] = useState(initialShowPastOrbitPath);
-    const [showFutureOrbitPlot, setShowFutureOrbitPlot] = useState(initialShowFutureOrbitPath);
-    const [showSun, setShowSun] = useState(initialShowSunIcon);
-    const [showMoon, setShowMoon] = useState(initialShowMoonIcon);
-    const [showTerminator, setShowTerminator] = useState(initialShowTerminatorLine);
-    const [showTooltip, setShowTooltip] = useState(initialShowTooltip);
-    const [pastOrbitLineColor, setPastOrbitLineColor] = useState(initialPastOrbitLineColor);
-    const [futureOrbitLineColor, setFutureOrbitLineColor] = useState(initialFutureOrbitLineColor);
-    const [coverageColor, setCoverageColor] = useState(initialSatelliteCoverageColor);
-    const [orbitProjectionDuration, setOrbitProjectionDuration] = useState(initialOrbitProjectionDuration);
-    const [tileLayerID, setTileLayerID] = useState(initialTileLayerID);
-    const [showGrid, setShowGrid] = useState(initialShowGrid);
+    const initialSettings = useMemo(
+        () => buildSettings({
+            initialShowPastOrbitPath,
+            initialShowFutureOrbitPath,
+            initialShowSatelliteCoverage,
+            initialShowSunIcon,
+            initialShowMoonIcon,
+            initialShowTerminatorLine,
+            initialSatelliteCoverageColor,
+            initialPastOrbitLineColor,
+            initialFutureOrbitLineColor,
+            initialOrbitProjectionDuration,
+            initialTileLayerID,
+            initialShowTooltip,
+            initialShowGrid,
+        }),
+        [
+            initialShowPastOrbitPath,
+            initialShowFutureOrbitPath,
+            initialShowSatelliteCoverage,
+            initialShowSunIcon,
+            initialShowMoonIcon,
+            initialShowTerminatorLine,
+            initialSatelliteCoverageColor,
+            initialPastOrbitLineColor,
+            initialFutureOrbitLineColor,
+            initialOrbitProjectionDuration,
+            initialTileLayerID,
+            initialShowTooltip,
+            initialShowGrid,
+        ]
+    );
+
+    const defaults = useMemo(
+        () => buildSettings({
+            initialShowPastOrbitPath: defaultSettings?.showPastOrbitPath,
+            initialShowFutureOrbitPath: defaultSettings?.showFutureOrbitPath,
+            initialShowSatelliteCoverage: defaultSettings?.showSatelliteCoverage,
+            initialShowSunIcon: defaultSettings?.showSunIcon,
+            initialShowMoonIcon: defaultSettings?.showMoonIcon,
+            initialShowTerminatorLine: defaultSettings?.showTerminatorLine,
+            initialSatelliteCoverageColor: defaultSettings?.satelliteCoverageColor,
+            initialPastOrbitLineColor: defaultSettings?.pastOrbitLineColor,
+            initialFutureOrbitLineColor: defaultSettings?.futureOrbitLineColor,
+            initialOrbitProjectionDuration: defaultSettings?.orbitProjectionDuration,
+            initialTileLayerID: defaultSettings?.tileLayerID,
+            initialShowTooltip: defaultSettings?.showTooltip,
+            initialShowGrid: defaultSettings?.showGrid,
+        }),
+        [defaultSettings]
+    );
+
+    const [draftSettings, setDraftSettings] = useState(initialSettings);
+    const [saveState, setSaveState] = useState('idle');
+
+    useEffect(() => {
+        if (open) {
+            setDraftSettings(initialSettings);
+            setSaveState('idle');
+        }
+    }, [open, initialSettings]);
+
+    useEffect(() => {
+        setSaveState((current) => ((current === 'saved' || current === 'error') ? 'idle' : current));
+    }, [draftSettings]);
+
+    const selectedLayer = useMemo(
+        () => getTileLayerById(draftSettings.tileLayerID),
+        [draftSettings.tileLayerID]
+    );
+
+    const initialLayer = useMemo(
+        () => getTileLayerById(initialSettings.tileLayerID),
+        [initialSettings.tileLayerID]
+    );
+
+    const projectionChanged = (selectedLayer.projection || 'EPSG3857') !== (initialLayer.projection || 'EPSG3857');
+    const isDirty = !settingsEqual(draftSettings, initialSettings);
+
+    const applySettings = async () => {
+        const sanitizedSettings = {
+            ...draftSettings,
+            pastOrbitLineColor: normalizeHexColor(draftSettings.pastOrbitLineColor, initialSettings.pastOrbitLineColor),
+            futureOrbitLineColor: normalizeHexColor(draftSettings.futureOrbitLineColor, initialSettings.futureOrbitLineColor),
+            satelliteCoverageColor: normalizeHexColor(draftSettings.satelliteCoverageColor, initialSettings.satelliteCoverageColor),
+        };
+
+        handleShowPastOrbitPath(sanitizedSettings.showPastOrbitPath);
+        handleShowFutureOrbitPath(sanitizedSettings.showFutureOrbitPath);
+        handleShowSatelliteCoverage(sanitizedSettings.showSatelliteCoverage);
+        handleSetShowSunIcon(sanitizedSettings.showSunIcon);
+        handleSetShowMoonIcon(sanitizedSettings.showMoonIcon);
+        handleShowTerminatorLine(sanitizedSettings.showTerminatorLine);
+        handleShowTooltip(sanitizedSettings.showTooltip);
+        handleShowGrid(sanitizedSettings.showGrid);
+        handlePastOrbitLineColor(sanitizedSettings.pastOrbitLineColor);
+        handleFutureOrbitLineColor(sanitizedSettings.futureOrbitLineColor);
+        handleSatelliteCoverageColor(sanitizedSettings.satelliteCoverageColor);
+        handleOrbitProjectionDuration(sanitizedSettings.orbitProjectionDuration);
+        handleTileLayerID(sanitizedSettings.tileLayerID);
+        setDraftSettings(sanitizedSettings);
+
+        setSaveState('saving');
+        try {
+            await Promise.resolve(updateBackend?.(sanitizedSettings));
+            setSaveState('saved');
+        } catch {
+            setSaveState('error');
+        }
+    };
+
+    const cancelChanges = () => {
+        setDraftSettings(initialSettings);
+        setSaveState('idle');
+        onCancel?.();
+    };
+
+    const saveFeedbackLabel = {
+        saving: t('map_settings.saving', { defaultValue: 'Saving…' }),
+        saved: t('map_settings.saved', { defaultValue: 'Saved' }),
+        error: t('map_settings.save_failed', { defaultValue: 'Save failed' }),
+    }[saveState];
 
     return (
-            <Stack>
-                <SettingItem style={{padding: '0.5rem 0.5rem'}}>
-                    <FormControl fullWidth size={"small"} variant={"outlined"}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+            <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 2, pt: 2, pb: 1.5 }}>
+                <Stack spacing={1.5}>
+                <SectionBlock
+                    title={t('map_settings.section_base_map', { defaultValue: 'Base Map' })}
+                    subtitle={t('map_settings.section_base_map_desc', { defaultValue: 'Choose a basemap and projection.' })}
+                >
+                    <FormControl fullWidth size="small" variant="outlined">
+                        <InputLabel id="tile-layer-label">{t('map_settings.tile_layer')}</InputLabel>
+                        <Select
+                            labelId="tile-layer-label"
+                            value={draftSettings.tileLayerID}
+                            label={t('map_settings.tile_layer')}
+                            onChange={(e) => setDraftSettings((prev) => ({ ...prev, tileLayerID: e.target.value }))}
+                            renderValue={(value) => {
+                                const layer = getTileLayerById(value);
+                                return (
+                                    <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+                                        <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {layer.name}
+                                        </Typography>
+                                        <Chip size="small" label={normalizeProjectionLabel(layer.projection)} />
+                                    </Stack>
+                                );
+                            }}
+                        >
+                            {tileLayers.map((layer) => (
+                                <MenuItem key={layer.id} value={layer.id}>
+                                    <Stack direction="row" alignItems="center" spacing={1} sx={{ width: '100%', minWidth: 0 }}>
+                                        <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+                                            <Typography variant="body2">{layer.name}</Typography>
+                                            {layer.description ? (
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {layer.description}
+                                                </Typography>
+                                            ) : null}
+                                        </Box>
+                                        <Chip size="small" label={normalizeProjectionLabel(layer.projection)} />
+                                    </Stack>
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+
+                    <Typography
+                        variant="caption"
+                        color={projectionChanged ? 'warning.main' : 'text.secondary'}
+                        sx={{ display: 'block' }}
+                    >
+                        {t('map_settings.projection_note', {
+                            defaultValue: 'Switching map projection rebuilds the map canvas and may recenter the view.',
+                        })}
+                    </Typography>
+                </SectionBlock>
+
+                <SectionBlock
+                    title={t('map_settings.section_satellite_overlays', { defaultValue: 'Satellite Overlays' })}
+                >
+                    <ToggleRow
+                        label={t('map_settings.satellite_coverage')}
+                        checked={draftSettings.showSatelliteCoverage}
+                        onChange={(value) => setDraftSettings((prev) => ({ ...prev, showSatelliteCoverage: value }))}
+                    />
+                    <ToggleRow
+                        label={t('map_settings.show_sun')}
+                        checked={draftSettings.showSunIcon}
+                        onChange={(value) => setDraftSettings((prev) => ({ ...prev, showSunIcon: value }))}
+                    />
+                    <ToggleRow
+                        label={t('map_settings.show_moon')}
+                        checked={draftSettings.showMoonIcon}
+                        onChange={(value) => setDraftSettings((prev) => ({ ...prev, showMoonIcon: value }))}
+                    />
+                    <ToggleRow
+                        label={t('map_settings.day_night_separator')}
+                        checked={draftSettings.showTerminatorLine}
+                        onChange={(value) => setDraftSettings((prev) => ({ ...prev, showTerminatorLine: value }))}
+                    />
+                    <ToggleRow
+                        label={t('map_settings.satellite_tooltip')}
+                        checked={draftSettings.showTooltip}
+                        onChange={(value) => setDraftSettings((prev) => ({ ...prev, showTooltip: value }))}
+                    />
+                    <ToggleRow
+                        label={t('map_settings.coordinate_grid')}
+                        checked={draftSettings.showGrid}
+                        onChange={(value) => setDraftSettings((prev) => ({ ...prev, showGrid: value }))}
+                    />
+                </SectionBlock>
+
+                <SectionBlock
+                    title={t('map_settings.section_orbital_paths', { defaultValue: 'Orbital Paths' })}
+                >
+                    <ToggleRow
+                        label={t('map_settings.past_orbit_path')}
+                        checked={draftSettings.showPastOrbitPath}
+                        onChange={(value) => setDraftSettings((prev) => ({ ...prev, showPastOrbitPath: value }))}
+                    />
+                    <ToggleRow
+                        label={t('map_settings.future_orbit_path')}
+                        checked={draftSettings.showFutureOrbitPath}
+                        onChange={(value) => setDraftSettings((prev) => ({ ...prev, showFutureOrbitPath: value }))}
+                    />
+
+                    <FormControl fullWidth size="small" variant="outlined">
                         <InputLabel id="orbit-time-label">{t('map_settings.orbit_projection_time')}</InputLabel>
                         <Select
                             labelId="orbit-time-label"
-                            value={orbitProjectionDuration}
+                            value={draftSettings.orbitProjectionDuration}
                             label={t('map_settings.orbit_projection_time')}
-                            onChange={(e) => {
-                                handleOrbitProjectionDuration(e.target.value);
-                                setOrbitProjectionDuration(e.target.value);
-                                updateBackend(e.target.value);
-                            }}
-                            variant={"outlined"}
+                            onChange={(e) => setDraftSettings((prev) => ({ ...prev, orbitProjectionDuration: Number(e.target.value) }))}
                         >
                             {timeOptions.map((option) => (
                                 <MenuItem key={option.value} value={option.value}>
@@ -96,229 +461,84 @@ const MapSettingsIsland = ({ initialShowPastOrbitPath, initialShowFutureOrbitPat
                             ))}
                         </Select>
                     </FormControl>
-                </SettingItem>
-                <SettingItem style={{padding: '0rem 0.5rem 0.5rem 0.5rem'}}>
-                    <FormControl fullWidth size={"small"} variant={"outlined"}>
-                        <InputLabel id="tile-layer-label">{t('map_settings.tile_layer')}</InputLabel>
-                        <Select
-                            labelId="tile-layer-label"
-                            value={tileLayerID}
-                            label={t('map_settings.tile_layer')}
-                            onChange={(e) => {
-                                setTileLayerID(e.target.value);
-                                handleTileLayerID(e.target.value);
-                                updateBackend(e.target.value);
-                            }}
-                         variant={"outlined"}>
-                            {tileLayers.map((layer) => (
-                                <MenuItem key={layer.id} value={layer.id}>
-                                    {layer.name}
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                </SettingItem>
-                <SettingItem>
-                    <FormControlLabel
-                        style={{padding: '0rem 0rem 0rem 1rem'}}
-                        control={
-                            <Switch
-                                size={"small"}
-                                checked={satelliteCoverage}
-                                onChange={(e) => {
-                                    handleShowSatelliteCoverage(e.target.checked);
-                                    setSatelliteCoverage(e.target.checked);
-                                    updateBackend(e.target.value);
-                                }}
-                            />
-                        }
-                        label={t('map_settings.satellite_coverage')}
-                    />
-                </SettingItem>
-                <SettingItem>
-                    <FormControlLabel
-                        style={{padding: '0rem 0rem 0rem 1rem'}}
-                        control={
-                            <Switch
-                                size={"small"}
-                                checked={showPastOrbitPlot}
-                                onChange={(e) => {
-                                    handleShowPastOrbitPath(e.target.checked);
-                                    setShowPastOrbitPlot(e.target.checked);
-                                    updateBackend(e.target.value);
-                                }}
-                            />
-                        }
-                        label={t('map_settings.past_orbit_path')}
-                    />
-                </SettingItem>
-                <SettingItem>
-                    <FormControlLabel
-                        style={{padding: '0rem 0rem 0rem 1rem'}}
-                        control={
-                            <Switch
-                                size={"small"}
-                                checked={showFutureOrbitPlot}
-                                onChange={(e) => {
-                                    handleShowFutureOrbitPath(e.target.checked);
-                                    setShowFutureOrbitPlot(e.target.checked);
-                                    updateBackend(e.target.value);
-                                }}
-                            />
-                        }
-                        label={t('map_settings.future_orbit_path')}
-                    />
-                </SettingItem>
-                <SettingItem>
-                    <FormControlLabel style={{padding: '0rem 0rem 0rem 1rem'}}
-                        control={
-                            <Switch
-                                size={"small"}
-                                checked={showSun}
-                                onChange={(e) => {
-                                    handleSetShowSunIcon(e.target.checked);
-                                    setShowSun(e.target.checked);
-                                    updateBackend(e.target.value);
-                                }}
-                            />
-                        }
-                        label={t('map_settings.show_sun')}
-                    />
-                </SettingItem>
-                <SettingItem>
-                    <FormControlLabel style={{padding: '0rem 0rem 0rem 1rem'}}
-                        control={
-                            <Switch
-                                size={"small"}
-                                checked={showMoon}
-                                onChange={(e) => {
-                                    handleSetShowMoonIcon(e.target.checked);
-                                    setShowMoon(e.target.checked);
-                                    updateBackend(e.target.value);
-                                }}
-                            />
-                        }
-                        label={t('map_settings.show_moon')}
-                    />
-                </SettingItem>
-                <SettingItem>
-                    <FormControlLabel style={{padding: '0rem 0rem 0rem 1rem'}}
-                        control={
-                            <Switch
-                                size={"small"}
-                                checked={showTerminator}
-                                onChange={(e) => {
-                                    handleShowTerminatorLine(e.target.checked);
-                                    setShowTerminator(e.target.checked);
-                                    updateBackend(e.target.value);
-                                }}
-                            />
-                        }
-                        label={t('map_settings.day_night_separator')}
-                    />
-                </SettingItem>
-                <SettingItem>
-                    <FormControlLabel style={{padding: '0rem 0rem 0rem 1rem'}}
-                        control={
-                            <Switch
-                                size={"small"}
-                                checked={showTooltip}
-                                onChange={(e) => {
-                                    handleShowTooltip(e.target.checked);
-                                    setShowTooltip(e.target.checked);
-                                    updateBackend(e.target.value);
-                                }}
-                            />
-                        }
-                        label={t('map_settings.satellite_tooltip')}
-                    />
-                </SettingItem>
-                <SettingItem>
-                    <FormControlLabel style={{padding: '0rem 0rem 0rem 1rem'}}
-                          control={
-                              <Switch
-                                  size={"small"}
-                                  checked={showGrid}
-                                  onChange={(e) => {
-                                      handleShowGrid(e.target.checked);
-                                      setShowGrid(e.target.checked);
-                                      updateBackend(e.target.value);
-                                  }}
-                              />
-                          }
-                          label={t('map_settings.coordinate_grid')}
-                    />
-                </SettingItem>
-                <SettingItem>
-                    <FormControlLabel
-                        style={{padding: '0rem 0rem 0rem 1rem'}}
-                        control={
-                            <input
-                                type="color"
-                                value={coverageColor}
-                                onChange={(e) => {
-                                    handleSatelliteCoverageColor(e.target.value);
-                                    setCoverageColor(e.target.value);
-                                    updateBackend(e.target.value);
-                                }}
-                                style={{
-                                    width: '40px',
-                                    height: '24px',
-                                    border: 'none',
-                                    background: 'none',
-                                }}
-                            />
-                        }
+                </SectionBlock>
+
+                <SectionBlock
+                    title={t('map_settings.section_visual_styling', { defaultValue: 'Visual Styling' })}
+                    subtitle={t('map_settings.section_visual_styling_desc', {
+                        defaultValue: 'Only enabled overlays expose their color controls.',
+                    })}
+                >
+                    <ColorSetting
                         label={t('map_settings.footprint_color')}
+                        value={draftSettings.satelliteCoverageColor}
+                        disabled={!draftSettings.showSatelliteCoverage}
+                        onChange={(value) => setDraftSettings((prev) => ({ ...prev, satelliteCoverageColor: value }))}
                     />
-                </SettingItem>
-                <SettingItem>
-                    <FormControlLabel
-                        style={{padding: '0rem 0rem 0rem 1rem'}}
-                        control={
-                            <input
-                                type="color"
-                                value={pastOrbitLineColor}
-                                onChange={(e) => {
-                                    handlePastOrbitLineColor(e.target.value);
-                                    setPastOrbitLineColor(e.target.value);
-                                    updateBackend(e.target.value);
-                                }}
-                                style={{
-                                    width: '40px',
-                                    height: '24px',
-                                    border: 'none',
-                                    background: 'none',
-                                }}
-                            />
-                        }
+                    <ColorSetting
                         label={t('map_settings.past_orbit_color')}
+                        value={draftSettings.pastOrbitLineColor}
+                        disabled={!draftSettings.showPastOrbitPath}
+                        onChange={(value) => setDraftSettings((prev) => ({ ...prev, pastOrbitLineColor: value }))}
                     />
-                </SettingItem>
-                <SettingItem>
-                    <FormControlLabel
-                        style={{padding: '0rem 0rem 0rem 1rem'}}
-                        control={
-                            <input
-                                type="color"
-                                value={futureOrbitLineColor}
-                                onChange={(e) => {
-                                    handleFutureOrbitLineColor(e.target.value);
-                                    setFutureOrbitLineColor(e.target.value);
-                                    updateBackend(e.target.value);
-                                }}
-                                style={{
-                                    width: '40px',
-                                    height: '24px',
-                                    border: 'none',
-                                    background: 'none',
-                                }}
-                            />
-                        }
+                    <ColorSetting
                         label={t('map_settings.future_orbit_color')}
+                        value={draftSettings.futureOrbitLineColor}
+                        disabled={!draftSettings.showFutureOrbitPath}
+                        onChange={(value) => setDraftSettings((prev) => ({ ...prev, futureOrbitLineColor: value }))}
                     />
-                </SettingItem>
-            </Stack>
+                </SectionBlock>
+                </Stack>
+            </Box>
+
+            <Box
+                sx={{
+                    flexShrink: 0,
+                    px: 2,
+                    py: 1.5,
+                    bgcolor: 'background.paper',
+                    borderTop: '1px solid',
+                    borderColor: 'divider',
+                }}
+            >
+                <Stack
+                    direction={{ xs: 'column', sm: 'row' }}
+                    spacing={1}
+                    alignItems={{ xs: 'stretch', sm: 'center' }}
+                    justifyContent="space-between"
+                >
+                    <Button
+                        variant="text"
+                        onClick={() => {
+                            setDraftSettings(defaults);
+                            setSaveState('idle');
+                        }}
+                    >
+                        {t('map_settings.reset_defaults', { defaultValue: 'Reset Defaults' })}
+                    </Button>
+
+                    <Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end">
+                        {saveFeedbackLabel ? (
+                            <Chip
+                                size="small"
+                                color={saveState === 'error' ? 'error' : saveState === 'saved' ? 'success' : 'default'}
+                                label={saveFeedbackLabel}
+                            />
+                        ) : null}
+                        <Button variant="outlined" onClick={cancelChanges}>
+                            {t('map_settings.cancel', { defaultValue: 'Cancel' })}
+                        </Button>
+                        <Button
+                            variant="contained"
+                            onClick={applySettings}
+                            disabled={!isDirty || saveState === 'saving'}
+                        >
+                            {t('map_settings.apply', { defaultValue: 'Apply' })}
+                        </Button>
+                    </Stack>
+                </Stack>
+            </Box>
+        </Box>
     );
 };
 

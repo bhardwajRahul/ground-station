@@ -23,8 +23,6 @@ import Dialog from "@mui/material/Dialog";
 import DialogTitle from "@mui/material/DialogTitle";
 import DialogContent from "@mui/material/DialogContent";
 import MapSettingsIsland from "../common/map-settings.jsx";
-import DialogActions from "@mui/material/DialogActions";
-import {Button} from "@mui/material";
 import React from "react";
 import { useTranslation } from 'react-i18next';
 import {
@@ -88,8 +86,19 @@ function MapSettingsIslandDialog({updateBackend}) {
                 >
                     {t('map_settings.title')}
                 </DialogTitle>
-                <DialogContent sx={{ bgcolor: 'background.paper', px: 2, pt: 2, pb: 1 }}>
+                <DialogContent
+                    sx={{
+                        bgcolor: 'background.paper',
+                        p: 0,
+                        height: '72vh',
+                        maxHeight: '72vh',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column',
+                    }}
+                >
                     <MapSettingsIsland
+                        open={openMapSettingsDialog}
                         initialShowPastOrbitPath={showPastOrbitPath}
                         initialShowFutureOrbitPath={showFutureOrbitPath}
                         initialShowSatelliteCoverage={showSatelliteCoverage}
@@ -103,6 +112,21 @@ function MapSettingsIslandDialog({updateBackend}) {
                         initialShowTooltip={showTooltip}
                         initialShowTerminatorLine={showTerminatorLine}
                         initialShowGrid={showGrid}
+                        defaultSettings={{
+                            showPastOrbitPath: true,
+                            showFutureOrbitPath: true,
+                            showSatelliteCoverage: true,
+                            showSunIcon: true,
+                            showMoonIcon: true,
+                            showTerminatorLine: true,
+                            showTooltip: false,
+                            showGrid: true,
+                            pastOrbitLineColor: '#33C833',
+                            futureOrbitLineColor: '#E4971E',
+                            satelliteCoverageColor: '#FFFFFF',
+                            orbitProjectionDuration: 240,
+                            tileLayerID: 'satellite',
+                        }}
                         handleShowPastOrbitPath={(value)=>{dispatch(setShowPastOrbitPath(value))}}
                         handleShowFutureOrbitPath={(value)=>{dispatch(setShowFutureOrbitPath(value))}}
                         handleShowSatelliteCoverage={(value)=>{dispatch(setShowSatelliteCoverage(value))}}
@@ -116,19 +140,10 @@ function MapSettingsIslandDialog({updateBackend}) {
                         handleShowTooltip={(value)=>{dispatch(setShowTooltip(value))}}
                         handleShowGrid={(value)=>{dispatch(setShowGrid(value))}}
                         handleTileLayerID={(value)=>{dispatch(setTileLayerID(value))}}
+                        onCancel={handleCloseDialog}
                         updateBackend={updateBackend}
                     />
                 </DialogContent>
-                <DialogActions
-                    sx={{
-                        bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'grey.100',
-                        borderTop: (theme) => `1px solid ${theme.palette.divider}`,
-                        px: 2,
-                        py: 1.5,
-                    }}
-                >
-                    <Button onClick={handleCloseDialog}>{t('map_settings.close')}</Button>
-                </DialogActions>
             </Dialog>
         </>
     );
