@@ -21,6 +21,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
     MapContainer,
     TileLayer,
+    WMSTileLayer,
     Marker,
     Polyline,
     Polygon,
@@ -58,7 +59,7 @@ import {
     setSatelliteId,
     setTargetMapSetting,
 } from './target-slice.jsx';
-import {getTileLayerById} from "../common/tile-layers.jsx";
+import {getMapCrsByTileLayerId, getTileLayerById} from "../common/tile-layers.jsx";
 import {homeIcon, sunIcon, moonIcon, satelliteIcon2} from '../common/dataurl-icons.jsx';
 import {
     TitleBar,
@@ -322,6 +323,14 @@ const TargetSatelliteMapContainer = ({}) => {
         }
         return null;
     }, [trackerId, trackerInstances]);
+    const selectedTileLayer = useMemo(
+        () => getTileLayerById(tileLayerID),
+        [tileLayerID]
+    );
+    const mapCrs = useMemo(
+        () => getMapCrsByTileLayerId(tileLayerID),
+        [tileLayerID]
+    );
 
     const satellitePosition = useSelector(satellitePositionSelector);
     const satelliteCoverage = useSelector(satelliteCoverageSelector);
@@ -614,7 +623,7 @@ const TargetSatelliteMapContainer = ({}) => {
 
     useEffect(() => {
         // zoom in and out a bit to fix the zoom factor issue
-        if (MapObject) {
+        if (MapObject && MapObject._container && document.contains(MapObject._container)) {
             const zoomLevel = MapObject.getZoom();
             const loc = MapObject.getCenter();
             setTimeout(() => {
@@ -675,9 +684,12 @@ const TargetSatelliteMapContainer = ({}) => {
                     </Box>
                 </Box>
             </TitleBar>
+            {/* Leaflet CRS is immutable after map init, so remount when projection changes. */}
             <MapContainer
+                key={`target-map-${selectedTileLayer.id}-${selectedTileLayer.projection || 'EPSG3857'}`}
                 className="target-map"
                 center={satellitePosition?.lat && satellitePosition?.lon ? [satellitePosition.lat, satellitePosition.lon] : [0, 0]}
+                crs={mapCrs}
                 zoom={mapZoomLevel}
                 style={{width: '100%', height: 'calc(100% - 60px)'}}
                 dragging={false}
@@ -693,7 +705,14 @@ const TargetSatelliteMapContainer = ({}) => {
             >
                 <MapEventComponent handleSetMapZoomLevel={handleSetMapZoomLevel}/>
 
-                <TileLayer url={getTileLayerById(tileLayerID)['url']}/>
+                {selectedTileLayer.type === 'wms' ? (
+                    <WMSTileLayer
+                        url={selectedTileLayer.url}
+                        {...selectedTileLayer.wmsOptions}
+                    />
+                ) : (
+                    <TileLayer url={selectedTileLayer.url}/>
+                )}
 
                 <Box sx={{'& > :not(style)': {m: 1}}} style={{right: 5, top: 5, position: 'absolute'}}>
                     <CenterHomeButton/>
@@ -769,7 +788,7 @@ const TargetSatelliteMapContainer = ({}) => {
             <MapStatusBar>
                 <SimpleTruncatedHtml
                     className={"attribution"}
-                    htmlString={`<a href="https://leafletjs.com" title="A JavaScript library for interactive maps" target="_blank" rel="noopener noreferrer">Leaflet</a> | ${getTileLayerById(tileLayerID)['attribution']}`}
+                    htmlString={`<a href="https://leafletjs.com" title="A JavaScript library for interactive maps" target="_blank" rel="noopener noreferrer">Leaflet</a> | ${selectedTileLayer.attribution}`}
                 />
             </MapStatusBar>
         </>

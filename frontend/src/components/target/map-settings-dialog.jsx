@@ -44,7 +44,6 @@ import {
     setOpenMapSettingsDialog,
     setShowGrid,
 } from "./target-slice.jsx";
-import {setOpenAddDialog} from "../hardware/camera-slice.jsx";
 
 function MapSettingsIslandDialog({updateBackend}) {
     const dispatch = useDispatch();
@@ -72,9 +71,31 @@ function MapSettingsIslandDialog({updateBackend}) {
 
     return (
         <>
-            <Dialog open={openMapSettingsDialog} onClose={handleCloseDialog} fullWidth maxWidth="sm">
-                <DialogTitle>{t('map_settings.title')}</DialogTitle>
-                <DialogContent>
+            <Dialog
+                open={openMapSettingsDialog}
+                onClose={handleCloseDialog}
+                fullWidth
+                maxWidth="sm"
+                PaperProps={{
+                    sx: {
+                        bgcolor: 'background.paper',
+                        border: (theme) => `1px solid ${theme.palette.divider}`,
+                        borderRadius: 2,
+                    },
+                }}
+            >
+                <DialogTitle
+                    sx={{
+                        bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'grey.100',
+                        borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+                        fontSize: '1.125rem',
+                        fontWeight: 'bold',
+                        py: 2.2,
+                    }}
+                >
+                    {t('map_settings.title')}
+                </DialogTitle>
+                <DialogContent sx={{ bgcolor: 'background.paper', px: 2, pt: 2, pb: 1 }}>
                     <MapSettingsIsland
                         initialShowPastOrbitPath={showPastOrbitPath}
                         initialShowFutureOrbitPath={showFutureOrbitPath}
@@ -106,7 +127,14 @@ function MapSettingsIslandDialog({updateBackend}) {
                     />
                 </DialogContent>
 
-                <DialogActions style={{padding: '0px 24px 20px 20px'}}>
+                <DialogActions
+                    sx={{
+                        bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'grey.100',
+                        borderTop: (theme) => `1px solid ${theme.palette.divider}`,
+                        px: 2,
+                        py: 1.5,
+                    }}
+                >
                     <Button onClick={handleCloseDialog}>{t('map_settings.close')}</Button>
                 </DialogActions>
             </Dialog>

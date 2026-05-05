@@ -17,8 +17,8 @@
  *
  */
 
-
 import {store} from './store.jsx';
+import L from 'leaflet';
 
 
 // Tile layers
@@ -64,6 +64,48 @@ export const tileLayers = [
         name: 'CartoDB Voyager',
         url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png}',
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    },
+    {
+        id: 'nasa_blue_marble_4326',
+        name: 'NASA Blue Marble (EPSG:4326)',
+        type: 'wms',
+        projection: 'EPSG4326',
+        url: 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi',
+        wmsOptions: {
+            layers: 'BlueMarble_ShadedRelief_Bathymetry',
+            format: 'image/jpeg',
+            transparent: false,
+            version: '1.1.1',
+        },
+        attribution: 'Imagery courtesy NASA GIBS',
+    },
+    {
+        id: 'nasa_osm_land_mask_4326',
+        name: 'NASA OSM Land Mask (EPSG:4326)',
+        type: 'wms',
+        projection: 'EPSG4326',
+        url: 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi',
+        wmsOptions: {
+            layers: 'OSM_Land_Mask',
+            format: 'image/png',
+            transparent: false,
+            version: '1.1.1',
+        },
+        attribution: 'Data courtesy NASA GIBS',
+    },
+    {
+        id: 'nasa_osm_land_water_map_4326',
+        name: 'NASA OSM Land/Water Map (EPSG:4326)',
+        type: 'wms',
+        projection: 'EPSG4326',
+        url: 'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi',
+        wmsOptions: {
+            layers: 'OSM_Land_Water_Map',
+            format: 'image/png',
+            transparent: false,
+            version: '1.1.1',
+        },
+        attribution: 'Data courtesy NASA GIBS',
     }
 ];
 
@@ -73,8 +115,14 @@ export const tileLayers = [
  * @returns {Object|null} - The tile layer object if found, otherwise null.
  */
 export function getTileLayerById(id) {
-    const tileLayer = tileLayers.find(layer => layer.id === id) || {};
-    if (id==="stadiadark") {
+    const baseLayer = tileLayers.find(layer => layer.id === id);
+    const fallbackLayer = tileLayers.find(layer => layer.id === 'satellite') || tileLayers[0] || {};
+    const tileLayer = {
+        ...((baseLayer && baseLayer.id) ? baseLayer : fallbackLayer),
+        wmsOptions: { ...(baseLayer?.wmsOptions || fallbackLayer?.wmsOptions || {}) },
+    };
+
+    if (tileLayer.id === 'stadiadark') {
         const state = store.getState();
         const preferences = state.preferences.preferences;
         const apiKey = preferences.find(pref => pref.name === "stadia_maps_api_key");
@@ -83,6 +131,14 @@ export function getTileLayerById(id) {
         }
     }
 
-    return tileLayer
+    return tileLayer;
 }
 
+export function getMapCrsByTileLayerId(id) {
+    const tileLayer = getTileLayerById(id);
+    if (tileLayer.projection === 'EPSG4326') {
+        return L.CRS.EPSG4326;
+    }
+
+    return L.CRS.EPSG3857;
+}
