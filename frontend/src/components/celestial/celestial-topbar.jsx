@@ -773,7 +773,7 @@ const CelestialTopBar = ({
                                 }}
                             >
                                 <MenuItem value="mission">Mission / Spacecraft</MenuItem>
-                                <MenuItem value="body">Planet / Moon</MenuItem>
+                                <MenuItem value="body">Solar Body</MenuItem>
                             </Select>
                         </FormControl>
 
@@ -1254,7 +1254,7 @@ const CelestialTopBar = ({
                                 }
                             >
                                 <MenuItem value="mission">Mission / Spacecraft</MenuItem>
-                                <MenuItem value="body">Planet / Moon</MenuItem>
+                                <MenuItem value="body">Solar Body</MenuItem>
                             </Select>
                         </FormControl>
                         <TextField

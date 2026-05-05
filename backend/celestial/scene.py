@@ -550,6 +550,27 @@ def _extract_earth_position_xyz_au(planets: List[Dict[str, Any]]) -> Optional[Li
     return None
 
 
+def _build_body_snapshot_by_id(planets: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    snapshot = {
+        str(body.get("id") or "").strip().lower(): dict(body) for body in planets if body.get("id")
+    }
+    # Sun is the heliocentric frame origin; expose it as a selectable body target
+    # without duplicating it in the regular planets array.
+    snapshot.setdefault(
+        "sun",
+        {
+            "id": "sun",
+            "name": "Sun",
+            "body_type": "star",
+            "position_xyz_au": [0.0, 0.0, 0.0],
+            "velocity_xyz_au_per_day": [0.0, 0.0, 0.0],
+            "orbit_samples_xyz_au": [],
+            "phase": None,
+        },
+    )
+    return snapshot
+
+
 async def _load_observer_location() -> Optional[Dict[str, Any]]:
     """Load the first configured ground-station location for observer sky coordinates."""
     async with AsyncSessionLocal() as dbsession:
@@ -1529,9 +1550,7 @@ async def build_celestial_scene(
 
     solar_meta, planets = compute_solar_system_snapshot(epoch)
     earth_position_xyz_au = _extract_earth_position_xyz_au(planets)
-    body_snapshot_by_id = {
-        str(body.get("id") or "").strip().lower(): dict(body) for body in planets if body.get("id")
-    }
+    body_snapshot_by_id = _build_body_snapshot_by_id(planets)
     asteroid_zones, asteroid_resonance_gaps, asteroid_meta = get_static_asteroid_zones()
     celestial = await _fetch_celestial_with_cache(
         targets,
@@ -1650,9 +1669,7 @@ async def build_celestial_tracks(
     observer_location = await _load_observer_location()
     _, planets = compute_solar_system_snapshot(epoch)
     earth_position_xyz_au = _extract_earth_position_xyz_au(planets)
-    body_snapshot_by_id = {
-        str(body.get("id") or "").strip().lower(): dict(body) for body in planets if body.get("id")
-    }
+    body_snapshot_by_id = _build_body_snapshot_by_id(planets)
     celestial = await _fetch_celestial_with_cache(
         targets,
         epoch,

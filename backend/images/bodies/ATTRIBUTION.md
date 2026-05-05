@@ -15,7 +15,7 @@ Downloaded texture files used:
 - `2k_uranus.jpg`
 - `2k_neptune.jpg`
 - `2k_moon.jpg`
-- `2k_sun.jpg`
+- `2k_sun.jpg` (legacy source; current Sun icon uses the H-alpha source below)
 - `2k_ceres_fictional.jpg`
 - `2k_eris_fictional.jpg`
 - `2k_haumea_fictional.jpg`
@@ -39,3 +39,11 @@ Additional moon texture sources used:
 Generated icons in this folder are derived from these textures via:
 
 - `backend/scripts/render_planet_icon.py`
+
+Sun H-alpha replacement source (current `sun-sphere-icon.png`):
+
+- File: `Sun in Hydrogen-Alpha on 1-21-18 (24956978767).png`
+- URL: https://upload.wikimedia.org/wikipedia/commons/6/60/Sun_in_Hydrogen-Alpha_on_1-21-18_%2824956978767%29.png
+- License: CC0
+- Author: Stephen Rahn
+- Processing note: background black keyed to transparency, then exported to `64/128/256` icon sizes.

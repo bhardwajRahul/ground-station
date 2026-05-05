@@ -28,6 +28,14 @@ const MAX_ZOOM = 20000;
 const WHEEL_COMMIT_DELAY_MS = 180;
 const FOCUS_ANIMATION_DURATION_MS = 420;
 const DEFAULT_VIEWPORT = { zoom: 18, panX: 0, panY: 0 };
+const OFFSCREEN_TARGET_EDGE_INSET_PX = 12;
+const OFFSCREEN_TARGET_VISIBILITY_PADDING_PX = 6;
+const OFFSCREEN_TARGET_ARROW_LENGTH_PX = 14;
+const OFFSCREEN_TARGET_LABEL_GAP_PX = 18;
+const OFFSCREEN_TARGET_STAGGER_PX = 14;
+const OFFSCREEN_TARGET_LABEL_DEPTH_STEP_PX = 9;
+const OFFSCREEN_TARGET_LABEL_SEARCH_STEPS = 7;
+const OFFSCREEN_TARGET_LABEL_SAFE_MARGIN_PX = 4;
 const DEFAULT_DISPLAY_OPTIONS = {
     showGrid: true,
     showPlanets: true,
@@ -196,6 +204,36 @@ const drawTextOnArc = (ctx, text, cx, cy, radius, centerAngle, style = {}) => {
     });
 
     ctx.restore();
+};
+const isPointInsideViewport = (x, y, width, height, padding = 0) => (
+    x >= padding
+    && x <= (width - padding)
+    && y >= padding
+    && y <= (height - padding)
+);
+const projectToViewportEdge = ({
+    fromX,
+    fromY,
+    toX,
+    toY,
+    minX,
+    minY,
+    maxX,
+    maxY,
+}) => {
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    if (Math.abs(dx) < 0.0001 && Math.abs(dy) < 0.0001) return null;
+
+    const tx = Math.abs(dx) < 0.0001 ? Infinity : (dx > 0 ? (maxX - fromX) / dx : (minX - fromX) / dx);
+    const ty = Math.abs(dy) < 0.0001 ? Infinity : (dy > 0 ? (maxY - fromY) / dy : (minY - fromY) / dy);
+    const t = Math.min(tx, ty);
+    if (!Number.isFinite(t) || t <= 0) return null;
+
+    return {
+        x: fromX + dx * t,
+        y: fromY + dy * t,
+    };
 };
 
 const SolarSystemCanvas = ({
@@ -573,6 +611,55 @@ const SolarSystemCanvas = ({
 
             placedLabelBoxes.push(placement.box);
         };
+        const findOffscreenLabelPlacement = ({
+            baseX,
+            baseY,
+            ux,
+            uy,
+            perpX,
+            perpY,
+            textWidth,
+            textHeight,
+            baseSideShift = 0,
+        }) => {
+            const bgPadX = 4;
+            const bgPadY = 2;
+            const sideCandidates = [baseSideShift];
+
+            for (let step = 1; step <= OFFSCREEN_TARGET_LABEL_SEARCH_STEPS; step += 1) {
+                const delta = step * OFFSCREEN_TARGET_STAGGER_PX;
+                sideCandidates.push(baseSideShift + delta);
+                sideCandidates.push(baseSideShift - delta);
+            }
+
+            const minLabelX = OFFSCREEN_TARGET_EDGE_INSET_PX + textWidth / 2 + OFFSCREEN_TARGET_LABEL_SAFE_MARGIN_PX;
+            const maxLabelX = width - OFFSCREEN_TARGET_EDGE_INSET_PX - textWidth / 2 - OFFSCREEN_TARGET_LABEL_SAFE_MARGIN_PX;
+            const minLabelY = OFFSCREEN_TARGET_EDGE_INSET_PX + textHeight / 2 + OFFSCREEN_TARGET_LABEL_SAFE_MARGIN_PX;
+            const maxLabelY = height - OFFSCREEN_TARGET_EDGE_INSET_PX - textHeight / 2 - OFFSCREEN_TARGET_LABEL_SAFE_MARGIN_PX;
+
+            // Probe outward from the preferred spot until we find a free label box.
+            for (let depthStep = 0; depthStep <= OFFSCREEN_TARGET_LABEL_SEARCH_STEPS; depthStep += 1) {
+                const inwardDistance = OFFSCREEN_TARGET_LABEL_GAP_PX + depthStep * OFFSCREEN_TARGET_LABEL_DEPTH_STEP_PX;
+                for (const sideShift of sideCandidates) {
+                    const rawX = baseX - ux * inwardDistance + perpX * sideShift;
+                    const rawY = baseY - uy * inwardDistance + perpY * sideShift;
+                    const centerX = clamp(rawX, minLabelX, maxLabelX);
+                    const centerY = clamp(rawY, minLabelY, maxLabelY);
+                    const box = {
+                        x: centerX - textWidth / 2 - bgPadX,
+                        y: centerY - textHeight / 2 - bgPadY,
+                        w: textWidth + bgPadX * 2,
+                        h: textHeight + bgPadY * 2,
+                    };
+
+                    if (!placedLabelBoxes.some((existing) => boxesOverlap(existing, box))) {
+                        return { centerX, centerY, box };
+                    }
+                }
+            }
+
+            return null;
+        };
 
         // World-space grid (moves with pan/zoom).
         if (effectiveDisplayOptions.showGrid) {
@@ -780,6 +867,141 @@ const SolarSystemCanvas = ({
                 }
             });
         }
+
+        const drawOffscreenDirectionIndicator = (target, offsetIndex = 0) => {
+            const screenX = Number(target?.x);
+            const screenY = Number(target?.y);
+            if (!Number.isFinite(screenX) || !Number.isFinite(screenY)) return;
+
+            if (isPointInsideViewport(
+                screenX,
+                screenY,
+                width,
+                height,
+                OFFSCREEN_TARGET_VISIBILITY_PADDING_PX,
+            )) {
+                return;
+            }
+
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const edgePoint = projectToViewportEdge({
+                fromX: centerX,
+                fromY: centerY,
+                toX: screenX,
+                toY: screenY,
+                minX: OFFSCREEN_TARGET_EDGE_INSET_PX,
+                minY: OFFSCREEN_TARGET_EDGE_INSET_PX,
+                maxX: width - OFFSCREEN_TARGET_EDGE_INSET_PX,
+                maxY: height - OFFSCREEN_TARGET_EDGE_INSET_PX,
+            });
+            if (!edgePoint) return;
+
+            const dx = screenX - centerX;
+            const dy = screenY - centerY;
+            const distance = Math.hypot(dx, dy);
+            if (distance < 0.001) return;
+
+            const ux = dx / distance;
+            const uy = dy / distance;
+            const perpX = -uy;
+            const perpY = ux;
+            const stagger = offsetIndex * OFFSCREEN_TARGET_STAGGER_PX;
+
+            const tipX = clamp(
+                edgePoint.x,
+                OFFSCREEN_TARGET_EDGE_INSET_PX,
+                width - OFFSCREEN_TARGET_EDGE_INSET_PX,
+            );
+            const tipY = clamp(
+                edgePoint.y,
+                OFFSCREEN_TARGET_EDGE_INSET_PX,
+                height - OFFSCREEN_TARGET_EDGE_INSET_PX,
+            );
+            const baseX = tipX - ux * OFFSCREEN_TARGET_ARROW_LENGTH_PX;
+            const baseY = tipY - uy * OFFSCREEN_TARGET_ARROW_LENGTH_PX;
+
+            ctx.save();
+            ctx.strokeStyle = target.color;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(baseX, baseY);
+            ctx.lineTo(tipX, tipY);
+            ctx.stroke();
+            drawArrowHead(ctx, baseX, baseY, tipX, tipY, target.color);
+
+            const text = String(target.label || '').trim();
+            if (text) {
+                ctx.font = '11px monospace';
+                const textWidth = Math.max(8, ctx.measureText(text).width);
+                const textHeight = 10;
+                const labelPlacement = findOffscreenLabelPlacement({
+                    baseX,
+                    baseY,
+                    ux,
+                    uy,
+                    perpX,
+                    perpY,
+                    textWidth,
+                    textHeight,
+                    baseSideShift: stagger,
+                });
+                if (!labelPlacement) {
+                    ctx.restore();
+                    return;
+                }
+                const boxX = labelPlacement.box.x;
+                const boxY = labelPlacement.box.y;
+                const boxWidth = labelPlacement.box.w;
+                const boxHeight = labelPlacement.box.h;
+
+                ctx.fillStyle = theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.52)' : 'rgba(255,255,255,0.76)';
+                ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+                ctx.strokeStyle = hexToRgba(target.color, 0.62);
+                ctx.lineWidth = 1;
+                ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+
+                ctx.fillStyle = target.color;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(text, labelPlacement.centerX, labelPlacement.centerY + 0.5);
+
+                placedLabelBoxes.push(labelPlacement.box);
+            }
+            ctx.restore();
+        };
+
+        const offscreenAnchors = [];
+        offscreenAnchors.push({
+            label: 'Sun',
+            color: '#f9c74f',
+            x: cx,
+            y: cy,
+        });
+        const earthPlanet = planets.find((planet) => String(planet?.id || '').trim().toLowerCase() === 'earth');
+        if (earthPlanet && hasFiniteXYZ(earthPlanet.position_xyz_au)) {
+            const [earthX, earthY] = toScreen(earthPlanet.position_xyz_au);
+            offscreenAnchors.push({
+                label: 'Earth',
+                color: PLANET_COLORS.earth,
+                x: earthX,
+                y: earthY,
+            });
+        }
+
+        const hiddenAnchors = offscreenAnchors.filter((target) => !isPointInsideViewport(
+            target.x,
+            target.y,
+            width,
+            height,
+            OFFSCREEN_TARGET_VISIBILITY_PADDING_PX,
+        ));
+
+        // Keep labels readable when both Sun and Earth are hidden in the same direction.
+        hiddenAnchors.forEach((target, index) => {
+            const offsetIndex = index - (hiddenAnchors.length - 1) / 2;
+            drawOffscreenDirectionIndicator(target, offsetIndex);
+        });
     }, [
         asteroidResonanceGaps,
         asteroidZones,

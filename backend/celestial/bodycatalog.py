@@ -13,6 +13,13 @@ from typing import Dict, List, Optional
 
 _BODY_CATALOG: List[Dict[str, object]] = [
     {
+        "body_id": "sun",
+        "name": "Sun",
+        "body_type": "star",
+        "parent_body_id": None,
+        "sort_order": 0,
+    },
+    {
         "body_id": "mercury",
         "name": "Mercury",
         "body_type": "planet",

@@ -346,6 +346,8 @@ def _saturn_moon_saturncentric_position_au(moon_id: str, day_offset: float) -> L
 
 
 def _body_position_au(name: str, day_offset: float) -> List[float]:
+    if name == "sun":
+        return [0.0, 0.0, 0.0]
     if name == "moon":
         earth_state = _planet_state("earth", day_offset)
         earth_pos = cast(List[float], earth_state["position_xyz_au"])
@@ -543,6 +545,7 @@ def compute_body_position_heliocentric_au(body_id: str, epoch: datetime) -> List
         raise ValueError("body_id is required")
 
     supported_bodies = {
+        "sun",
         "moon",
         *_PLANET_ELEMENTS.keys(),
         *_JUPITER_MOONS.keys(),
