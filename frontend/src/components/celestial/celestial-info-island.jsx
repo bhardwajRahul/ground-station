@@ -171,15 +171,10 @@ const CelestialInfoIsland = ({
                     borderColor: 'border.main',
                 }}
             >
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                         Celestial Info
                     </Typography>
-                    {normalizedTargetKey ? (
-                        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-                            {normalizedTargetKey}
-                        </Typography>
-                    ) : null}
                 </Box>
             </TitleBar>
 
