@@ -185,7 +185,7 @@ const getVisibilityState = (visible, elevationDeg) => {
 
 const formatAngle = (value, digits = 1) => {
     if (!Number.isFinite(value)) return '-';
-    return `${Number(value).toFixed(digits)} deg`;
+    return `${Number(value).toFixed(digits)}°`;
 };
 
 const SettingsDialog = ({ open, onClose }) => {
@@ -196,7 +196,6 @@ const SettingsDialog = ({ open, onClose }) => {
     const columns = [
         { name: 'displayName', label: 'Name', category: 'identity', alwaysVisible: true },
         { name: 'targetType', label: 'Type', category: 'identity' },
-        { name: 'color', label: 'Color', category: 'identity' },
         { name: 'command', label: 'Target ID', category: 'identity' },
         { name: 'source', label: 'Source', category: 'identity' },
         { name: 'sourceMode', label: 'Source Mode', category: 'identity' },
@@ -380,19 +379,51 @@ const MonitoredCelestialGridIsland = ({
                 minWidth: 170,
                 flex: 1,
                 renderCell: (params) => (
-                    <Typography
-                        component="span"
-                        variant="body2"
+                    <Box
                         sx={{
-                            fontWeight: 700,
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            lineHeight: 1.2,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-start',
+                            width: '100%',
+                            height: '100%',
+                            minWidth: 0,
+                            gap: 0.75,
                         }}
                     >
-                        {params?.value || '-'}
-                    </Typography>
+                        {(() => {
+                            const value = String(params.row?.color || '').trim();
+                            const valid = /^#[0-9A-Fa-f]{6}$/.test(value);
+                            const swatchColor = valid ? value : 'transparent';
+                            return (
+                                <Box
+                                    sx={{
+                                        width: 12,
+                                        height: 12,
+                                        borderRadius: '3px',
+                                        border: '1px solid',
+                                        borderColor: 'divider',
+                                        bgcolor: swatchColor,
+                                        flexShrink: 0,
+                                    }}
+                                    title={valid ? value.toUpperCase() : 'No color'}
+                                />
+                            );
+                        })()}
+                        <Typography
+                            component="span"
+                            variant="body2"
+                            sx={{
+                                fontWeight: 700,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                lineHeight: 1.2,
+                                minWidth: 0,
+                            }}
+                        >
+                            {params?.value || '-'}
+                        </Typography>
+                    </Box>
                 ),
             },
             {
@@ -400,34 +431,6 @@ const MonitoredCelestialGridIsland = ({
                 headerName: 'Type',
                 minWidth: 95,
                 valueGetter: (value) => (String(value || '').toLowerCase() === 'body' ? 'Body' : 'Mission'),
-            },
-            {
-                field: 'color',
-                headerName: 'Color',
-                minWidth: 90,
-                align: 'center',
-                headerAlign: 'center',
-                sortable: false,
-                renderCell: (params) => {
-                    const value = String(params.value || '').trim();
-                    const valid = /^#[0-9A-Fa-f]{6}$/.test(value);
-                    const color = valid ? value : 'transparent';
-                    return (
-                        <Box sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <Box
-                                sx={{
-                                    width: 18,
-                                    height: 18,
-                                    borderRadius: '4px',
-                                    border: '1px solid',
-                                    borderColor: 'divider',
-                                    bgcolor: color,
-                                }}
-                                title={valid ? value.toUpperCase() : 'No color'}
-                            />
-                        </Box>
-                    );
-                },
             },
             {
                 field: 'command',
@@ -453,7 +456,7 @@ const MonitoredCelestialGridIsland = ({
                 headerName: 'Elevation (deg)',
                 align: 'center',
                 headerAlign: 'center',
-                valueGetter: (value) => formatAngle(value, 1),
+                valueGetter: (value) => formatAngle(value, 2),
             },
             {
                 field: 'azimuthDeg',
@@ -461,7 +464,7 @@ const MonitoredCelestialGridIsland = ({
                 headerName: 'Azimuth (deg)',
                 align: 'center',
                 headerAlign: 'center',
-                valueGetter: (value) => formatAngle(value, 1),
+                valueGetter: (value) => formatAngle(value, 2),
             },
             {
                 field: 'distanceFromSunAu',

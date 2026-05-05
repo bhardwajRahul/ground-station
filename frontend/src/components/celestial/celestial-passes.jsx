@@ -168,7 +168,7 @@ const formatDuration = (seconds) => {
 const formatAngle = (value) => {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return '-';
-    return `${numeric.toFixed(1)} deg`;
+    return `${numeric.toFixed(2)}°`;
 };
 
 const getProgress = (startMs, endMs, nowMs) => {
