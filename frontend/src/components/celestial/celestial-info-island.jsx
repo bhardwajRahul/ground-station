@@ -3,6 +3,7 @@ import { Box, Chip, CircularProgress, Divider, Typography } from '@mui/material'
 import { alpha } from '@mui/material/styles';
 import { getClassNamesBasedOnGridEditing, TitleBar } from '../common/common.jsx';
 import { useUserTimeSettings } from '../../hooks/useUserTimeSettings.jsx';
+import BodyIcon from './body-icon.jsx';
 
 const AU_IN_KM = 149597870.7;
 const SECONDS_PER_DAY = 86400;
@@ -140,7 +141,14 @@ const CelestialInfoIsland = ({
         || '',
     );
     const targetIdentifier = targetType === 'body'
-        ? String(selectedTrack?.body_id || selectedMonitored?.bodyId || selectedTrack?.command || '-')
+        ? String(
+            selectedTrack?.body_id
+            || selectedMonitored?.bodyId
+            || selectedMonitored?.body_id
+            || selectedTrack?.command
+            || selectedMonitored?.command
+            || '-'
+        )
         : String(selectedTrack?.command || selectedMonitored?.command || '-');
     const selectedColor = normalizeHexColor(selectedTrack?.color || selectedMonitored?.color || '');
 
@@ -185,6 +193,20 @@ const CelestialInfoIsland = ({
                             Select a body or mission from Monitored Celestial or Celestial Passes.
                         </Typography>
                     </Box>
+                ) : loading && !selectedTrack ? (
+                    <Box sx={{
+                        height: '100%',
+                        minHeight: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                    }}>
+                        <CircularProgress color="secondary" />
+                        <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
+                            Loading...
+                        </Typography>
+                    </Box>
                 ) : (
                     <>
                         <Box
@@ -208,22 +230,22 @@ const CelestialInfoIsland = ({
                                     : 'none',
                             }}
                         >
-                            {loading && !selectedTrack ? (
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                                    <CircularProgress size={16} />
-                                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                        Loading details...
-                                    </Typography>
-                                </Box>
-                            ) : null}
                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
-                                <Box sx={{ minWidth: 0 }}>
-                                    <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.15 }}>
-                                        {targetName || '-'}
-                                    </Typography>
-                                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                        {targetType === 'body' ? 'Body' : 'Mission'} · {targetIdentifier}
-                                    </Typography>
+                                <Box sx={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <BodyIcon
+                                        targetType={targetType}
+                                        bodyId={targetIdentifier}
+                                        size={44}
+                                        alt={targetName || 'Body'}
+                                    />
+                                    <Box sx={{ minWidth: 0 }}>
+                                        <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.15 }}>
+                                            {targetName || '-'}
+                                        </Typography>
+                                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                            {targetType === 'body' ? 'Body' : 'Mission'} · {targetIdentifier}
+                                        </Typography>
+                                    </Box>
                                 </Box>
                                 {statusChip}
                             </Box>

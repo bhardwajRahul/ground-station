@@ -218,12 +218,11 @@ app.add_middleware(
 
 process_manager.set_sio(sio)
 
-# Mount static directories
-app.mount("/satimages", StaticFiles(directory="satimages"), name="satimages")
-
 # Mount data directories for recordings, snapshots, decoded data (SSTV, AFSK, Morse, etc.), and audio
 # Ensure these directories exist before mounting
 backend_dir = os.path.dirname(os.path.abspath(__file__))
+satellites_dir = os.path.join(backend_dir, "..", "images", "satellites")
+bodies_dir = os.path.join(backend_dir, "..", "images", "bodies")
 recordings_dir = os.path.join(backend_dir, "..", "data", "recordings")
 snapshots_dir = os.path.join(backend_dir, "..", "data", "snapshots")
 decoded_dir = os.path.join(backend_dir, "..", "data", "decoded")
@@ -231,6 +230,8 @@ audio_dir = os.path.join(backend_dir, "..", "data", "audio")
 transcriptions_dir = os.path.join(backend_dir, "..", "data", "transcriptions")
 
 # Create directories if they don't exist
+os.makedirs(satellites_dir, exist_ok=True)
+os.makedirs(bodies_dir, exist_ok=True)
 os.makedirs(recordings_dir, exist_ok=True)
 os.makedirs(snapshots_dir, exist_ok=True)
 os.makedirs(decoded_dir, exist_ok=True)
@@ -238,6 +239,7 @@ os.makedirs(audio_dir, exist_ok=True)
 os.makedirs(transcriptions_dir, exist_ok=True)
 
 # Use html=True to enable directory browsing
+app.mount("/satimages", StaticFiles(directory=satellites_dir, html=True), name="satimages")
 app.mount("/recordings", StaticFiles(directory=recordings_dir, html=True), name="recordings")
 app.mount("/snapshots", StaticFiles(directory=snapshots_dir, html=True), name="snapshots")
 app.mount("/decoded", StaticFiles(directory=decoded_dir, html=True), name="decoded")
@@ -246,6 +248,7 @@ app.mount("/audio", StaticFiles(directory=audio_dir, html=True), name="audio")
 app.mount(
     "/transcriptions", StaticFiles(directory=transcriptions_dir, html=False), name="transcriptions"
 )
+app.mount("/body-icons", StaticFiles(directory=bodies_dir, html=True), name="body-icons")
 
 
 # Add the version API endpoint BEFORE the catch-all route
