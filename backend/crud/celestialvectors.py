@@ -76,6 +76,43 @@ async def fetch_celestial_vectors_cache_entry(
         return {"success": False, "error": str(e)}
 
 
+async def fetch_latest_celestial_vectors_cache_entry(
+    session: AsyncSession,
+    command: str,
+    past_hours: int,
+    future_hours: int,
+    step_minutes: int,
+    valid_only: bool = False,
+    as_of: Optional[datetime] = None,
+) -> dict:
+    """Fetch the latest cached vectors row for command + projection window."""
+    try:
+        now_utc = as_of or datetime.now(timezone.utc)
+        stmt = select(CelestialVectorsCache).where(
+            CelestialVectorsCache.command == command,
+            CelestialVectorsCache.past_hours == int(past_hours),
+            CelestialVectorsCache.future_hours == int(future_hours),
+            CelestialVectorsCache.step_minutes == int(step_minutes),
+        )
+        if valid_only:
+            stmt = stmt.where(CelestialVectorsCache.expires_at >= now_utc)
+        stmt = stmt.order_by(
+            CelestialVectorsCache.epoch_bucket_utc.desc(),
+            CelestialVectorsCache.fetched_at.desc(),
+        )
+
+        result = await session.execute(stmt)
+        row = result.scalars().first()
+        if not row:
+            return {"success": True, "data": None, "error": None}
+
+        return {"success": True, "data": _normalize_entry(serialize_object(row)), "error": None}
+    except Exception as e:
+        logger.error(f"Error fetching latest celestial vectors cache entry: {e}")
+        logger.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+
 async def upsert_celestial_vectors_cache_entry(
     session: AsyncSession,
     data: Dict[str, Any],

@@ -30,6 +30,9 @@ def test_build_pass_events_extracts_crossing_window():
     assert event["peak_elevation_deg"] == 8.0
     assert event["estimated_start"] is False
     assert event["estimated_end"] is False
+    assert len(event["elevation_curve"]) >= 3
+    assert event["elevation_curve"][0]["elevation"] == 0.0
+    assert event["elevation_curve"][-1]["elevation"] == 0.0
     assert event["duration_seconds"] > 0
 
 
@@ -58,3 +61,4 @@ def test_build_pass_events_handles_open_ended_pass():
     assert event["estimated_start"] is True
     assert event["estimated_end"] is True
     assert event["peak_elevation_deg"] == 4.0
+    assert [point["elevation"] for point in event["elevation_curve"]] == [3.0, 4.0, 2.0]

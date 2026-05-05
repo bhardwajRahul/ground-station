@@ -345,9 +345,11 @@ const MonitoredCelestialGridIsland = ({
                 const speedKmS = Number.isFinite(speedAuPerDay) ? speedAuPerDay * AU_PER_DAY_TO_KM_PER_S : NaN;
                 const lightTimeMin = Number.isFinite(distanceAu) ? distanceAu * LIGHT_TIME_MIN_PER_AU : NaN;
                 const sampleCount = Array.isArray(track.orbit_samples_xyz_au) ? track.orbit_samples_xyz_au.length : 0;
-                const elevationDeg = Number(track?.sky_position?.el_deg);
-                const azimuthDeg = Number(track?.sky_position?.az_deg);
-                const visibility = getVisibilityState(track?.visibility?.visible, elevationDeg);
+                const rawElevationDeg = Number(track?.sky_position?.el_deg);
+                const rawAzimuthDeg = Number(track?.sky_position?.az_deg);
+                const elevationDeg = Number.isFinite(rawElevationDeg) ? rawElevationDeg : null;
+                const azimuthDeg = Number.isFinite(rawAzimuthDeg) ? rawAzimuthDeg : null;
+                const visibility = getVisibilityState(track?.visibility?.visible, rawElevationDeg);
                 return {
                     ...row,
                     targetType,
@@ -454,9 +456,10 @@ const MonitoredCelestialGridIsland = ({
                 field: 'elevationDeg',
                 minWidth: 130,
                 headerName: 'Elevation (deg)',
+                type: 'number',
                 align: 'center',
                 headerAlign: 'center',
-                valueGetter: (value) => formatAngle(value, 2),
+                valueFormatter: (value) => formatAngle(value, 2),
             },
             {
                 field: 'azimuthDeg',

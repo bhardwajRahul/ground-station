@@ -24,7 +24,9 @@ import {
     TextField,
     Tooltip,
     Typography,
+    useMediaQuery,
 } from '@mui/material';
+import { useTheme } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import ListAltIcon from '@mui/icons-material/ListAlt';
@@ -67,7 +69,7 @@ const HOUR_OPTIONS = [
 const PAST_HOUR_OPTIONS = [{ value: 0, label: '0h' }, ...HOUR_OPTIONS];
 const coercePastHours = (value) => {
     const parsed = Number(value);
-    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 24;
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 };
 const coerceFutureHours = (value) => {
     const parsed = Number(value);
@@ -155,12 +157,13 @@ const getMissionStatusMeta = (status, statusLabel = '') => {
 };
 
 const CelestialTopBar = ({
-    projectionPastHours = 24,
+    projectionPastHours = 0,
     projectionFutureHours = 24,
     onProjectionPastHoursChange,
     onProjectionFutureHoursChange,
 }) => {
     const dispatch = useDispatch();
+    const theme = useTheme();
     const { socket } = useSocket();
     const { timezone, locale } = useUserTimeSettings();
     const monitoredState = useSelector((state) => state.celestialMonitored);
@@ -173,6 +176,7 @@ const CelestialTopBar = ({
         formError,
         saveLoading,
     } = monitoredState || {};
+    const compactActionButtons = useMediaQuery(theme.breakpoints.down('md'));
     const form = {
         targetType: String(rawForm?.targetType || 'mission'),
         displayName: String(rawForm?.displayName || ''),
@@ -666,33 +670,77 @@ const CelestialTopBar = ({
                     </Stack>
                 </Stack>
 
-                <Stack direction="row" spacing={1} sx={{ ml: 'auto' }}>
-                    <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<AddIcon />}
-                        onClick={() => dispatch(openAddDialog())}
-                        disabled={!socket || celestialLoading}
-                    >
-                        Add
-                    </Button>
-                    <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<ListAltIcon />}
-                        onClick={() => dispatch(openManageDialog())}
-                    >
-                        Manage
-                    </Button>
-                    <Button
-                        size="small"
-                        variant="outlined"
-                        startIcon={<RefreshIcon />}
-                        disabled={!socket || celestialLoading || enabledCount === 0}
-                        onClick={handleRefreshAll}
-                    >
-                        Refresh All
-                    </Button>
+                <Stack direction="row" spacing={0.5} sx={{ ml: 'auto' }}>
+                    <Tooltip title="Add">
+                        <span>
+                            {compactActionButtons ? (
+                                <IconButton
+                                    size="small"
+                                    onClick={() => dispatch(openAddDialog())}
+                                    disabled={!socket || celestialLoading}
+                                    aria-label="Add"
+                                >
+                                    <AddIcon fontSize="small" />
+                                </IconButton>
+                            ) : (
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<AddIcon />}
+                                    onClick={() => dispatch(openAddDialog())}
+                                    disabled={!socket || celestialLoading}
+                                >
+                                    Add
+                                </Button>
+                            )}
+                        </span>
+                    </Tooltip>
+                    <Tooltip title="Manage">
+                        <span>
+                            {compactActionButtons ? (
+                                <IconButton
+                                    size="small"
+                                    onClick={() => dispatch(openManageDialog())}
+                                    aria-label="Manage"
+                                >
+                                    <ListAltIcon fontSize="small" />
+                                </IconButton>
+                            ) : (
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<ListAltIcon />}
+                                    onClick={() => dispatch(openManageDialog())}
+                                >
+                                    Manage
+                                </Button>
+                            )}
+                        </span>
+                    </Tooltip>
+                    <Tooltip title="Refresh All">
+                        <span>
+                            {compactActionButtons ? (
+                                <IconButton
+                                    size="small"
+                                    disabled={!socket || celestialLoading || enabledCount === 0}
+                                    onClick={handleRefreshAll}
+                                    aria-label="Refresh All"
+                                >
+                                    <RefreshIcon fontSize="small" />
+                                </IconButton>
+                            ) : (
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<RefreshIcon />}
+                                    disabled={!socket || celestialLoading || enabledCount === 0}
+                                    onClick={handleRefreshAll}
+                                >
+                                    Refresh All
+                                </Button>
+                            )}
+                        </span>
+                    </Tooltip>
                 </Stack>
             </Box>
 

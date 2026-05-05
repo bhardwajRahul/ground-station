@@ -32,6 +32,10 @@ CACHE_TTL_SECONDS = 120
 VECTOR_DB_TTL_SECONDS = 30 * 60
 VECTOR_EPOCH_BUCKET_MINUTES = 10
 COMPUTED_EPOCH_BUCKET_SECONDS = 60
+SKY_MOTION_ACCURACY_TARGET_DEG = 0.25
+SKY_MOTION_SAFETY_FACTOR = 0.5
+SKY_MOTION_DYNAMIC_TTL_MIN_SECONDS = 2 * 60
+SKY_MOTION_DYNAMIC_TTL_MAX_SECONDS = 6 * 60 * 60
 MAX_SAMPLES_PER_TARGET = 1500
 DEFAULT_CELESTIAL_TARGETS: List[Dict[str, str]] = []
 NO_EPHEMERIS_ERROR_FRAGMENT = "No ephemeris data returned by Horizons"
@@ -294,6 +298,244 @@ def _bucket_epoch(epoch: datetime, bucket_seconds: int) -> datetime:
     return datetime.fromtimestamp(bucketed, tz=timezone.utc)
 
 
+def _coerce_utc_datetime(value: Any) -> Optional[datetime]:
+    parsed: Optional[datetime]
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        parsed = _parse_iso_utc(value)
+    if not parsed:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _extract_orbit_samples(
+    payload: Dict[str, Any],
+    *,
+    epoch_fallback: datetime,
+    past_hours: int,
+    future_hours: int,
+) -> List[Tuple[datetime, List[float]]]:
+    positions_obj = payload.get("orbit_samples_xyz_au")
+    positions: List[List[float]] = []
+    if isinstance(positions_obj, list):
+        for sample in positions_obj:
+            if not isinstance(sample, list) or len(sample) < 3:
+                continue
+            try:
+                position = [float(sample[0]), float(sample[1]), float(sample[2])]
+            except (TypeError, ValueError):
+                continue
+            positions.append(position)
+
+    if len(positions) < 2:
+        return []
+
+    raw_times_obj = payload.get("orbit_sample_times_utc")
+    sample_times: List[datetime] = []
+    if isinstance(raw_times_obj, list) and len(raw_times_obj) == len(positions):
+        parsed_times = [_parse_iso_utc(item) for item in raw_times_obj]
+        if all(item is not None for item in parsed_times):
+            sample_times = [item for item in parsed_times if item is not None]
+
+    if len(sample_times) != len(positions):
+        start = epoch_fallback - timedelta(hours=int(past_hours))
+        span_seconds = max(1.0, float((int(past_hours) + int(future_hours)) * 3600))
+        if len(positions) == 1:
+            sample_times = [epoch_fallback]
+        else:
+            sample_times = [
+                start + timedelta(seconds=(span_seconds * idx / max(1, len(positions) - 1)))
+                for idx in range(len(positions))
+            ]
+
+    return list(zip(sample_times, positions))
+
+
+def _select_nearest_motion_samples(
+    samples: List[Tuple[datetime, List[float]]],
+    *,
+    epoch: datetime,
+) -> Optional[Tuple[Tuple[datetime, List[float]], Tuple[datetime, List[float]]]]:
+    ordered = sorted(samples, key=lambda item: item[0])
+    if len(ordered) < 2:
+        return None
+
+    next_index: Optional[int] = None
+    for idx, (sample_time, _) in enumerate(ordered):
+        if sample_time >= epoch:
+            next_index = idx
+            break
+
+    if next_index is None:
+        pair = (ordered[-2], ordered[-1])
+    elif next_index == 0:
+        pair = (ordered[0], ordered[1])
+    else:
+        pair = (ordered[next_index - 1], ordered[next_index])
+
+    first_time, _ = pair[0]
+    second_time, _ = pair[1]
+    if first_time == second_time:
+        return None
+    return pair
+
+
+def _horizon_unit_vector_from_az_el(*, az_deg: float, el_deg: float) -> Tuple[float, float, float]:
+    az_rad = math.radians(az_deg)
+    el_rad = math.radians(el_deg)
+    cos_el = math.cos(el_rad)
+    return (
+        cos_el * math.cos(az_rad),
+        cos_el * math.sin(az_rad),
+        math.sin(el_rad),
+    )
+
+
+def _angular_separation_deg_from_az_el(
+    *,
+    az1_deg: float,
+    el1_deg: float,
+    az2_deg: float,
+    el2_deg: float,
+) -> float:
+    v1 = _horizon_unit_vector_from_az_el(az_deg=az1_deg, el_deg=el1_deg)
+    v2 = _horizon_unit_vector_from_az_el(az_deg=az2_deg, el_deg=el2_deg)
+    dot = max(-1.0, min(1.0, (v1[0] * v2[0]) + (v1[1] * v2[1]) + (v1[2] * v2[2])))
+    return math.degrees(math.acos(dot))
+
+
+def _estimate_apparent_sky_motion_deg_per_min(
+    *,
+    payload: Dict[str, Any],
+    epoch: datetime,
+    past_hours: int,
+    future_hours: int,
+    observer_location: Optional[Dict[str, Any]],
+) -> Optional[float]:
+    if not observer_location:
+        return None
+    try:
+        observer_lat_deg = float(observer_location["lat"])
+        observer_lon_deg = float(observer_location["lon"])
+    except (TypeError, ValueError, KeyError):
+        return None
+
+    samples = _extract_orbit_samples(
+        payload,
+        epoch_fallback=epoch,
+        past_hours=past_hours,
+        future_hours=future_hours,
+    )
+    pair = _select_nearest_motion_samples(samples, epoch=epoch)
+    if not pair:
+        return None
+
+    (time_a, position_a), (time_b, position_b) = pair
+    delta_minutes = abs((time_b - time_a).total_seconds()) / 60.0
+    if delta_minutes <= 1e-6:
+        return None
+
+    try:
+        earth_a = compute_body_position_heliocentric_au("earth", time_a)
+        earth_b = compute_body_position_heliocentric_au("earth", time_b)
+    except Exception:
+        return None
+
+    try:
+        observer_view_a = compute_observer_sky_position(
+            target_heliocentric_xyz_au=position_a,
+            earth_heliocentric_xyz_au=earth_a,
+            epoch=time_a,
+            observer_lat_deg=observer_lat_deg,
+            observer_lon_deg=observer_lon_deg,
+        )
+        observer_view_b = compute_observer_sky_position(
+            target_heliocentric_xyz_au=position_b,
+            earth_heliocentric_xyz_au=earth_b,
+            epoch=time_b,
+            observer_lat_deg=observer_lat_deg,
+            observer_lon_deg=observer_lon_deg,
+        )
+        sky_a = observer_view_a.get("sky_position")
+        sky_b = observer_view_b.get("sky_position")
+        if not isinstance(sky_a, dict) or not isinstance(sky_b, dict):
+            return None
+        az_a = float(sky_a["az_deg"])
+        el_a = float(sky_a["el_deg"])
+        az_b = float(sky_b["az_deg"])
+        el_b = float(sky_b["el_deg"])
+    except Exception:
+        return None
+
+    if not all(math.isfinite(value) for value in (az_a, el_a, az_b, el_b)):
+        return None
+
+    separation_deg = _angular_separation_deg_from_az_el(
+        az1_deg=az_a,
+        el1_deg=el_a,
+        az2_deg=az_b,
+        el2_deg=el_b,
+    )
+    if not math.isfinite(separation_deg):
+        return None
+
+    return max(0.0, separation_deg / delta_minutes)
+
+
+def _compute_dynamic_cache_max_age_seconds(apparent_sky_motion_deg_per_min: float) -> int:
+    if apparent_sky_motion_deg_per_min <= 1e-9:
+        return SKY_MOTION_DYNAMIC_TTL_MAX_SECONDS
+    max_age_minutes = (
+        SKY_MOTION_SAFETY_FACTOR * SKY_MOTION_ACCURACY_TARGET_DEG
+    ) / apparent_sky_motion_deg_per_min
+    max_age_seconds = int(max_age_minutes * 60.0)
+    return max(
+        SKY_MOTION_DYNAMIC_TTL_MIN_SECONDS,
+        min(SKY_MOTION_DYNAMIC_TTL_MAX_SECONDS, max_age_seconds),
+    )
+
+
+def _evaluate_dynamic_vectors_cache_policy(
+    *,
+    payload: Dict[str, Any],
+    requested_epoch: datetime,
+    cached_epoch_bucket_utc: datetime,
+    observer_location: Optional[Dict[str, Any]],
+    past_hours: int,
+    future_hours: int,
+) -> Dict[str, Any]:
+    age_seconds = abs((requested_epoch - cached_epoch_bucket_utc).total_seconds())
+    apparent_motion = _estimate_apparent_sky_motion_deg_per_min(
+        payload=payload,
+        epoch=requested_epoch,
+        past_hours=past_hours,
+        future_hours=future_hours,
+        observer_location=observer_location,
+    )
+    if apparent_motion is None:
+        return {
+            "allowed": False,
+            "reason": "motion-unavailable",
+            "age_seconds": round(age_seconds, 3),
+            "max_age_seconds": None,
+            "apparent_sky_motion_deg_per_min": None,
+            "accuracy_target_deg": SKY_MOTION_ACCURACY_TARGET_DEG,
+        }
+
+    max_age_seconds = _compute_dynamic_cache_max_age_seconds(apparent_motion)
+    return {
+        "allowed": age_seconds <= max_age_seconds,
+        "reason": "ok" if age_seconds <= max_age_seconds else "too-old",
+        "age_seconds": round(age_seconds, 3),
+        "max_age_seconds": int(max_age_seconds),
+        "apparent_sky_motion_deg_per_min": round(apparent_motion, 6),
+        "accuracy_target_deg": SKY_MOTION_ACCURACY_TARGET_DEG,
+    }
+
+
 def _extract_earth_position_xyz_au(planets: List[Dict[str, Any]]) -> Optional[List[float]]:
     for body in planets:
         if str(body.get("id") or "").lower() == "earth":
@@ -415,6 +657,71 @@ def _interpolate_crossing_point(
     }
 
 
+def _serialize_pass_curve_point(
+    point: Dict[str, Any],
+    *,
+    elevation_deg: Optional[float] = None,
+) -> Dict[str, Any]:
+    point_time = point["time"]
+    point_elevation = float(elevation_deg) if elevation_deg is not None else float(point["el_deg"])
+    return {
+        "time": point_time.astimezone(timezone.utc).isoformat(),
+        "azimuth": float(point["az_deg"]),
+        "elevation": point_elevation,
+    }
+
+
+def _deduplicate_curve_points(points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    deduplicated: List[Dict[str, Any]] = []
+    for point in points:
+        point_time = str(point.get("time") or "").strip()
+        if deduplicated and deduplicated[-1].get("time") == point_time:
+            if float(point.get("elevation", -math.inf)) >= float(
+                deduplicated[-1].get("elevation", -math.inf)
+            ):
+                deduplicated[-1] = point
+            continue
+        deduplicated.append(point)
+    return deduplicated
+
+
+def _build_pass_elevation_curve(
+    *,
+    ordered_samples: List[Dict[str, Any]],
+    start_index: int,
+    end_index: int,
+    start_crossing: Optional[Dict[str, Any]],
+    end_crossing: Optional[Dict[str, Any]],
+    horizon_deg: float,
+) -> List[Dict[str, Any]]:
+    if not ordered_samples:
+        return []
+
+    clamped_start = max(0, min(start_index, len(ordered_samples) - 1))
+    clamped_end = max(clamped_start, min(end_index, len(ordered_samples) - 1))
+    curve_points: List[Dict[str, Any]] = []
+
+    if start_crossing:
+        curve_points.append(
+            _serialize_pass_curve_point(start_crossing, elevation_deg=float(horizon_deg))
+        )
+
+    for sample in ordered_samples[clamped_start : clamped_end + 1]:
+        if float(sample["el_deg"]) < float(horizon_deg):
+            continue
+        curve_points.append(_serialize_pass_curve_point(sample))
+
+    if end_crossing:
+        curve_points.append(
+            _serialize_pass_curve_point(end_crossing, elevation_deg=float(horizon_deg))
+        )
+
+    deduplicated = _deduplicate_curve_points(curve_points)
+    if len(deduplicated) < 2:
+        return []
+    return deduplicated
+
+
 def _build_pass_events_from_samples(
     row: Dict[str, Any],
     samples: List[Dict[str, Any]],
@@ -451,6 +758,8 @@ def _build_pass_events_from_samples(
                 "peak_time": sample["time"],
                 "peak_elevation_deg": float(sample["el_deg"]),
                 "peak_azimuth_deg": float(sample["az_deg"]),
+                "start_index": index,
+                "start_crossing": crossing if previous and not previous_above else None,
                 "estimated_start": estimated_start,
             }
 
@@ -464,6 +773,16 @@ def _build_pass_events_from_samples(
                 crossing = _interpolate_crossing_point(previous, sample, horizon_deg=horizon_deg)
                 end_time = crossing["time"]
                 end_az = float(crossing["az_deg"])
+                start_index = int(active_pass.get("start_index", index))
+                end_index = max(start_index, index - 1)
+                elevation_curve = _build_pass_elevation_curve(
+                    ordered_samples=ordered_samples,
+                    start_index=start_index,
+                    end_index=end_index,
+                    start_crossing=active_pass.get("start_crossing"),
+                    end_crossing=crossing,
+                    horizon_deg=horizon_deg,
+                )
                 duration_seconds = max(
                     0.0,
                     (end_time - active_pass["start_time"]).total_seconds(),
@@ -490,6 +809,7 @@ def _build_pass_events_from_samples(
                         "end_azimuth_deg": end_az,
                         "peak_azimuth_deg": float(active_pass["peak_azimuth_deg"]),
                         "peak_elevation_deg": float(active_pass["peak_elevation_deg"]),
+                        "elevation_curve": elevation_curve,
                         "estimated_start": bool(active_pass["estimated_start"]),
                         "estimated_end": False,
                         "horizon_threshold_deg": float(horizon_deg),
@@ -501,6 +821,16 @@ def _build_pass_events_from_samples(
         final_sample = ordered_samples[-1]
         end_time = final_sample["time"]
         end_az = float(final_sample["az_deg"])
+        start_index = int(active_pass.get("start_index", 0))
+        end_index = len(ordered_samples) - 1
+        elevation_curve = _build_pass_elevation_curve(
+            ordered_samples=ordered_samples,
+            start_index=start_index,
+            end_index=end_index,
+            start_crossing=active_pass.get("start_crossing"),
+            end_crossing=None,
+            horizon_deg=horizon_deg,
+        )
         duration_seconds = max(
             0.0,
             (end_time - active_pass["start_time"]).total_seconds(),
@@ -527,6 +857,7 @@ def _build_pass_events_from_samples(
                 "end_azimuth_deg": end_az,
                 "peak_azimuth_deg": float(active_pass["peak_azimuth_deg"]),
                 "peak_elevation_deg": float(active_pass["peak_elevation_deg"]),
+                "elevation_curve": elevation_curve,
                 "estimated_start": bool(active_pass["estimated_start"]),
                 "estimated_end": True,
                 "horizon_threshold_deg": float(horizon_deg),
@@ -742,6 +1073,29 @@ async def _load_vectors_from_db(
     return row if isinstance(row, dict) else None
 
 
+async def _load_latest_vectors_from_db(
+    command: str,
+    past_hours: int,
+    future_hours: int,
+    step_minutes: int,
+    valid_only: bool = False,
+) -> Optional[Dict[str, Any]]:
+    async with AsyncSessionLocal() as dbsession:
+        result = await crud_celestial_vectors.fetch_latest_celestial_vectors_cache_entry(
+            dbsession,
+            command=command,
+            past_hours=past_hours,
+            future_hours=future_hours,
+            step_minutes=step_minutes,
+            valid_only=valid_only,
+            as_of=datetime.now(timezone.utc),
+        )
+    if not result.get("success"):
+        return None
+    row = result.get("data")
+    return row if isinstance(row, dict) else None
+
+
 async def _store_vectors_in_db(
     command: str,
     epoch_bucket_utc: datetime,
@@ -776,6 +1130,7 @@ async def _get_vectors_snapshot(
     past_hours: int,
     future_hours: int,
     step_minutes: int,
+    observer_location: Optional[Dict[str, Any]],
     force_refresh: bool,
     logger: Any,
 ) -> Dict[str, Any]:
@@ -797,6 +1152,33 @@ async def _get_vectors_snapshot(
                 "stale": False,
                 "error": None,
             }
+
+        latest = await _load_latest_vectors_from_db(
+            command=command,
+            past_hours=past_hours,
+            future_hours=future_hours,
+            step_minutes=step_minutes,
+            valid_only=False,
+        )
+        if latest and isinstance(latest.get("payload"), dict):
+            cached_bucket = _coerce_utc_datetime(latest.get("epoch_bucket_utc"))
+            if cached_bucket:
+                policy = _evaluate_dynamic_vectors_cache_policy(
+                    payload=dict(latest["payload"]),
+                    requested_epoch=epoch,
+                    cached_epoch_bucket_utc=cached_bucket,
+                    observer_location=observer_location,
+                    past_hours=past_hours,
+                    future_hours=future_hours,
+                )
+                if policy.get("allowed"):
+                    return {
+                        "payload": dict(latest["payload"]),
+                        "cache": "db-dynamic-hit",
+                        "stale": False,
+                        "error": None,
+                        "cache_policy": policy,
+                    }
 
     try:
         fetched = await asyncio.to_thread(
@@ -1010,6 +1392,7 @@ async def _fetch_celestial_with_cache(
             past_hours=past_hours,
             future_hours=future_hours,
             step_minutes=step_minutes,
+            observer_location=observer_location,
             force_refresh=force_refresh,
             logger=logger,
         )
@@ -1027,6 +1410,8 @@ async def _fetch_celestial_with_cache(
             row_payload["cache"] = snapshot.get("cache")
             if snapshot.get("error"):
                 row_payload["error"] = snapshot.get("error")
+            if isinstance(snapshot.get("cache_policy"), dict):
+                row_payload["cache_policy"] = dict(snapshot["cache_policy"])
             _attach_observer_view_local(
                 row=row_payload,
                 epoch=epoch,
@@ -1131,6 +1516,13 @@ async def build_celestial_scene(
                 "asteroid_zones": asteroid_meta,
                 "cache_ttl_seconds": CACHE_TTL_SECONDS,
                 "vector_db_ttl_seconds": VECTOR_DB_TTL_SECONDS,
+                "vector_dynamic_validity": {
+                    "mode": "sky-motion",
+                    "accuracy_target_deg": SKY_MOTION_ACCURACY_TARGET_DEG,
+                    "safety_factor": SKY_MOTION_SAFETY_FACTOR,
+                    "min_age_seconds": SKY_MOTION_DYNAMIC_TTL_MIN_SECONDS,
+                    "max_age_seconds": SKY_MOTION_DYNAMIC_TTL_MAX_SECONDS,
+                },
                 "projection": {
                     "past_hours": past_hours,
                     "future_hours": future_hours,
@@ -1239,6 +1631,13 @@ async def build_celestial_tracks(
                 "celestial_source": "horizons",
                 "cache_ttl_seconds": CACHE_TTL_SECONDS,
                 "vector_db_ttl_seconds": VECTOR_DB_TTL_SECONDS,
+                "vector_dynamic_validity": {
+                    "mode": "sky-motion",
+                    "accuracy_target_deg": SKY_MOTION_ACCURACY_TARGET_DEG,
+                    "safety_factor": SKY_MOTION_SAFETY_FACTOR,
+                    "min_age_seconds": SKY_MOTION_DYNAMIC_TTL_MIN_SECONDS,
+                    "max_age_seconds": SKY_MOTION_DYNAMIC_TTL_MAX_SECONDS,
+                },
                 "projection": {
                     "past_hours": past_hours,
                     "future_hours": future_hours,
