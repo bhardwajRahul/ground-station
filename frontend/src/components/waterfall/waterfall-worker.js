@@ -39,6 +39,9 @@ let ringHeadY = 0; // points to the next row to write (newest row will be at rin
 let bandscopeCtx = null;
 let dBAxisCtx = null;
 let waterFallLeftMarginCtx = null;
+// Persistent left-margin state used to preserve timestamps/events across detach/reattach.
+let leftMarginStateCanvas = null;
+let leftMarginStateCtx = null;
 let bandscopeZoomScale = 1;
 let targetFPS = 15;
 let fftData = new Array(1024).fill(-120);
@@ -135,6 +138,60 @@ let presentRafId = null;
 let presentTimeoutId = null;
 let pendingRowsToPresent = 0;
 let needsPresent = false;
+
+function initLeftMarginStateCanvas(options = {}) {
+    if (!waterfallLeftMarginCanvas) return;
+
+    const reset = options.reset === true;
+    const width = waterfallLeftMarginCanvas.width;
+    const height = waterfallLeftMarginCanvas.height;
+    const needsCreate = !leftMarginStateCanvas
+        || leftMarginStateCanvas.width !== width
+        || leftMarginStateCanvas.height !== height;
+
+    if (needsCreate) {
+        leftMarginStateCanvas = new OffscreenCanvas(width, height);
+        leftMarginStateCtx = leftMarginStateCanvas.getContext('2d', {
+            alpha: true,
+            desynchronized: true,
+            willReadFrequently: false,
+        });
+    }
+
+    if (!leftMarginStateCtx) return;
+
+    if (needsCreate || reset) {
+        leftMarginStateCtx.fillStyle = theme.palette.background.paper;
+        leftMarginStateCtx.fillRect(0, 0, width, height);
+        return;
+    }
+
+    // Reattach path: seed visible left margin from persisted state.
+    if (waterFallLeftMarginCtx) {
+        waterFallLeftMarginCtx.drawImage(leftMarginStateCanvas, 0, 0);
+    }
+}
+
+function advanceHeadlessLeftMargin() {
+    if (!leftMarginStateCtx || !leftMarginStateCanvas) {
+        return;
+    }
+
+    const marginResult = updateWaterfallLeftMarginModule({
+        waterFallLeftMarginCtx: leftMarginStateCtx,
+        waterfallLeftMarginCanvas: leftMarginStateCanvas,
+        waterfallCanvas: null,
+        waterfallCtx: null,
+        rotatorEventQueue,
+        showRotatorDottedLines,
+        theme,
+        timezone,
+        lastTimestamp,
+        dottedLineImageData: null,
+        recordingDatetime
+    });
+    lastTimestamp = marginResult.lastTimestamp;
+}
 
 function rebuildPalette() {
     if (!dbRange || dbRange.length !== 2) return;
@@ -404,6 +461,10 @@ self.onmessage = function(eventMessage) {
 
         case 'releaseCanvas':
         case 'detachCanvases':
+            // Persist currently visible margin before releasing canvases.
+            if (leftMarginStateCtx && leftMarginStateCanvas && waterfallLeftMarginCanvas) {
+                leftMarginStateCtx.drawImage(waterfallLeftMarginCanvas, 0, 0);
+            }
             waterfallCanvas = null;
             bandscopeCanvas = null;
             dBAxisCanvas = null;
@@ -664,6 +725,9 @@ function setupCanvas(config = {}, options = {}) {
         waterfallCtx.fillRect(0, 0, waterfallCanvas.width, waterfallCanvas.height);
     }
 
+    // Keep a persistent left-margin history canvas so timestamp/event rows survive route unmounts.
+    initLeftMarginStateCanvas({ reset: shouldResetRing });
+
     // Clear the ring canvas when resetting.
     if (ringCtx && shouldResetRing) {
         ringCtx.fillStyle = theme.palette.background.default;
@@ -747,6 +811,8 @@ function ingestWaterfallRow(frame) {
         pendingRowsToPresent = Math.min(pendingRowsToPresent + 1, ringCanvas.height);
     } else {
         pendingRowsToPresent = 0;
+        // Keep left timestamp/event history moving while waterfall view is detached.
+        advanceHeadlessLeftMargin();
     }
     needsPresent = true;
 }
@@ -791,6 +857,10 @@ function presentWaterfall() {
             });
             lastTimestamp = marginResult.lastTimestamp;
             dottedLineImageData = marginResult.dottedLineImageData;
+        }
+        // Keep persistent left-margin state aligned with what was rendered visibly.
+        if (leftMarginStateCtx && leftMarginStateCanvas && waterfallLeftMarginCanvas) {
+            leftMarginStateCtx.drawImage(waterfallLeftMarginCanvas, 0, 0);
         }
     }
     pendingRowsToPresent = 0;

@@ -297,7 +297,9 @@ const MainWaterfallDisplay = React.memo(function MainWaterfallDisplay({
 
     const targetFPSRef = useRef(targetFPS);
     const waterfallControlRef = useRef(null);
-    const lastRotatorEventRef = useRef("");
+    // Keep track of the last event key we sent to the worker.
+    // Initialize from Redux to avoid replaying the current event on remount.
+    const lastRotatorEventRef = useRef(lastRotatorEvent || "");
     const [scrollFactor, setScrollFactor] = useState(1);
     const accumulatedRowsRef = useRef(0);
     const [bandscopeAxisYWidth, setBandscopeAxisYWidth] = useState(60);
@@ -405,16 +407,23 @@ const MainWaterfallDisplay = React.memo(function MainWaterfallDisplay({
     }, []);
 
     useEffect(() => {
-        if (waterfallRendererMode === 'worker' && workerRef.current && lastRotatorEvent) {
-            // Format event with decorative dashes for waterfall display
-            const formattedEvent = getRotatorEventDisplay(lastRotatorEvent);
-
-            workerRef.current.postMessage({
-                cmd: 'rotatorEvent',
-                event: formattedEvent,
-            });
+        if (waterfallRendererMode !== 'worker' || !workerRef.current || !lastRotatorEvent) {
+            return;
         }
-    }, [lastRotatorEvent, waterfallRendererMode]);
+
+        // Post only on event transitions, not on mount/remount with the same key.
+        if (lastRotatorEventRef.current === lastRotatorEvent) {
+            return;
+        }
+
+        // Format event with decorative dashes for waterfall display
+        const formattedEvent = getRotatorEventDisplay(lastRotatorEvent);
+        workerRef.current.postMessage({
+            cmd: 'rotatorEvent',
+            event: formattedEvent,
+        });
+        lastRotatorEventRef.current = lastRotatorEvent;
+    }, [lastRotatorEvent, waterfallRendererMode, workerRef]);
 
     useEffect(() => {
         if (waterfallRendererMode !== 'dom-tiles') {

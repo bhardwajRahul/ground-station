@@ -458,8 +458,9 @@ export function updateWaterfallLeftMargin({
         waterFallLeftMarginCtx.fillStyle = theme.palette.text.primary;
         waterFallLeftMarginCtx.fillText(newRotatorEvent, centerX, 0);
 
-        // Draw dotted line only if showRotatorDottedLines is enabled
-        if (showRotatorDottedLines) {
+        // Draw dotted line only when a target waterfall canvas/context is available.
+        // In headless left-margin updates we skip this overlay and keep timestamp continuity.
+        if (showRotatorDottedLines && waterfallCanvas && waterfallCtx) {
             // Get or create the imageData for the dotted line
             let imageData;
 
