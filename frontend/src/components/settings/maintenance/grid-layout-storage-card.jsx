@@ -30,30 +30,122 @@ import {
     AlertTitle,
     Backdrop,
     Box,
-    CircularProgress
+    CircularProgress,
+    Stack,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {useTranslation} from 'react-i18next';
 import {gridLayoutStoreName as overviewGridLayoutName} from "../../overview/main-layout.jsx";
 import {gridLayoutStoreName as targetGridLayoutName} from "../../target/main-layout.jsx";
 import {gridLayoutStoreName as waterfallGridLayoutName} from "../../waterfall/main-layout.jsx";
+import {gridLayoutStoreName as celestialGridLayoutName} from "../../celestial/main-layout.jsx";
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import {toast} from '../../../utils/toast-with-timestamp.jsx';
+
+const PAGE_LAYOUTS = [
+    {
+        key: overviewGridLayoutName,
+        label: 'Overview',
+        description: 'Resets the widget layout on the Overview page',
+    },
+    {
+        key: targetGridLayoutName,
+        label: 'Target',
+        description: 'Resets the widget layout on the Target page',
+    },
+    {
+        key: waterfallGridLayoutName,
+        label: 'Waterfall',
+        description: 'Resets the widget layout on the Waterfall page',
+    },
+    {
+        key: celestialGridLayoutName,
+        label: 'Celestial',
+        description: 'Resets the widget layout on the Celestial page',
+    },
+];
 
 const GridLayoutStorageCard = () => {
     const {t} = useTranslation('settings');
     const [confirmClearLayoutOpen, setConfirmClearLayoutOpen] = useState(false);
+    const [confirmSingleClearLayoutOpen, setConfirmSingleClearLayoutOpen] = useState(false);
+    const [pendingSingleClearLayout, setPendingSingleClearLayout] = useState(null);
     const [isReloading, setIsReloading] = useState(false);
+
+    const clearSingleLayout = (layoutLabel, storageKey) => {
+        localStorage.removeItem(storageKey);
+        toast.success(`${layoutLabel} layout has been cleared. Refresh the page to apply defaults.`);
+    };
+
+    const copyTextToClipboard = async (text) => {
+        // Keep a fallback for environments where navigator.clipboard is blocked or unavailable.
+        if (navigator?.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            return;
+        }
+
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.setAttribute('readonly', '');
+        textArea.style.position = 'absolute';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+    };
+
+    const exportLayoutToClipboard = async (layoutLabel, storageKey) => {
+        try {
+            const rawValue = localStorage.getItem(storageKey);
+            if (!rawValue) {
+                await copyTextToClipboard('null');
+                toast.warning(`${layoutLabel} layout has no saved local value. Copied "null" to clipboard.`);
+                return;
+            }
+
+            try {
+                const parsedValue = JSON.parse(rawValue);
+                await copyTextToClipboard(JSON.stringify(parsedValue, null, 2));
+                toast.success(`${layoutLabel} layout JSON copied to clipboard.`);
+            } catch {
+                await copyTextToClipboard(rawValue);
+                toast.warning(`${layoutLabel} layout value is not valid JSON. Raw value copied to clipboard.`);
+            }
+        } catch (error) {
+            toast.error(`Failed to copy ${layoutLabel} layout JSON: ${error?.message || 'Unknown error'}`);
+        }
+    };
 
     const clearLayoutLocalStorage = () => {
         setConfirmClearLayoutOpen(false);
-        localStorage.setItem(overviewGridLayoutName, null);
-        localStorage.setItem(targetGridLayoutName, null);
-        localStorage.setItem(waterfallGridLayoutName, null);
+        PAGE_LAYOUTS.forEach(({key}) => localStorage.removeItem(key));
 
         // Show reload spinner and reload after 1 second
         setIsReloading(true);
         setTimeout(() => {
             window.location.reload();
         }, 1000);
+    };
+
+    const openSingleClearDialog = (layout) => {
+        setPendingSingleClearLayout(layout);
+        setConfirmSingleClearLayoutOpen(true);
+    };
+
+    const closeSingleClearDialog = () => {
+        setConfirmSingleClearLayoutOpen(false);
+        setPendingSingleClearLayout(null);
+    };
+
+    const confirmSingleClearLayout = () => {
+        if (!pendingSingleClearLayout) {
+            closeSingleClearDialog();
+            return;
+        }
+
+        clearSingleLayout(pendingSingleClearLayout.label, pendingSingleClearLayout.key);
+        closeSingleClearDialog();
     };
 
     return (
@@ -93,63 +185,43 @@ const GridLayoutStorageCard = () => {
                 <Grid size={16}>
                     <Divider sx={{my: 2}}/>
                     <Typography variant="body2" color="text.secondary" gutterBottom>
-                        Or clear individual layouts:
+                        Or clear and export individual layouts:
                     </Typography>
                 </Grid>
 
-                <Grid size={10}>
-                    Clear Overview Grid Layout
-                    <Typography variant="body2" color="text.secondary">
-                        Resets the widget layout on the Overview page
-                    </Typography>
-                </Grid>
-                <Grid size={6}>
-                    <Button
-                        variant="outlined"
-                        color="warning"
-                        onClick={() => localStorage.setItem(overviewGridLayoutName, null)}
-                        fullWidth
-                        size="small"
-                    >
-                        Clear
-                    </Button>
-                </Grid>
-
-                <Grid size={10}>
-                    Clear Target Grid Layout
-                    <Typography variant="body2" color="text.secondary">
-                        Resets the widget layout on the Target page
-                    </Typography>
-                </Grid>
-                <Grid size={6}>
-                    <Button
-                        variant="outlined"
-                        color="warning"
-                        onClick={() => localStorage.setItem(targetGridLayoutName, null)}
-                        fullWidth
-                        size="small"
-                    >
-                        Clear
-                    </Button>
-                </Grid>
-
-                <Grid size={10}>
-                    Clear Waterfall Grid Layout
-                    <Typography variant="body2" color="text.secondary">
-                        Resets the widget layout on the Waterfall page
-                    </Typography>
-                </Grid>
-                <Grid size={6}>
-                    <Button
-                        variant="outlined"
-                        color="warning"
-                        onClick={() => localStorage.setItem(waterfallGridLayoutName, null)}
-                        fullWidth
-                        size="small"
-                    >
-                        Clear
-                    </Button>
-                </Grid>
+                {PAGE_LAYOUTS.map((layout) => (
+                    <React.Fragment key={layout.key}>
+                        <Grid size={10}>
+                            {`Clear ${layout.label} Grid Layout`}
+                            <Typography variant="body2" color="text.secondary">
+                                {layout.description}
+                            </Typography>
+                        </Grid>
+                        <Grid size={6}>
+                            <Stack direction={{xs: 'column', xl: 'row'}} spacing={1}>
+                                <Button
+                                    variant="outlined"
+                                    color="warning"
+                                    onClick={() => openSingleClearDialog(layout)}
+                                    fullWidth
+                                    size="small"
+                                >
+                                    Clear
+                                </Button>
+                                <Button
+                                    variant="outlined"
+                                    color="info"
+                                    startIcon={<ContentCopyIcon fontSize="small"/>}
+                                    onClick={() => exportLayoutToClipboard(layout.label, layout.key)}
+                                    fullWidth
+                                    size="small"
+                                >
+                                    Export JSON
+                                </Button>
+                            </Stack>
+                        </Grid>
+                    </React.Fragment>
+                ))}
             </Grid>
 
             {/* Clear Layout Confirmation Dialog */}
@@ -196,8 +268,8 @@ const GridLayoutStorageCard = () => {
                     </Box>
                     Clear All Grid Layouts?
                 </DialogTitle>
-                <DialogContent sx={{ px: 3, pt: 3, pb: 3 }}>
-                    <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
+                <DialogContent sx={{ px: 3, pt: '32px !important', pb: 3 }}>
+                    <Alert severity="info" sx={{ mb: 2 }}>
                         <AlertTitle>Local Browser Cache Only</AlertTitle>
                         This will only clear layout preferences stored in your browser's local storage. No backend data
                         will be affected.
@@ -216,6 +288,7 @@ const GridLayoutStorageCard = () => {
                                 <li>Overview page</li>
                                 <li>Target page</li>
                                 <li>Waterfall page</li>
+                                <li>Celestial page</li>
                             </ul>
                         </Typography>
                     </Box>
@@ -256,6 +329,75 @@ const GridLayoutStorageCard = () => {
                         }}
                     >
                         Clear Layouts
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Single Layout Confirmation Dialog */}
+            <Dialog
+                open={confirmSingleClearLayoutOpen}
+                onClose={closeSingleClearDialog}
+                maxWidth="xs"
+                fullWidth
+                PaperProps={{
+                    sx: {
+                        bgcolor: 'background.paper',
+                        borderRadius: 2,
+                    }
+                }}
+            >
+                <DialogTitle
+                    sx={{
+                        bgcolor: 'warning.main',
+                        color: 'warning.contrastText',
+                        fontSize: '1rem',
+                        fontWeight: 600,
+                        py: 2,
+                    }}
+                >
+                    {`Clear ${pendingSingleClearLayout?.label || ''} Layout?`}
+                </DialogTitle>
+                <DialogContent sx={{ px: 3, pt: '32px !important', pb: 2 }}>
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                        <AlertTitle>Local Browser Cache Only</AlertTitle>
+                        This only clears the saved layout in this browser.
+                    </Alert>
+                    <Typography variant="body2" color="text.secondary">
+                        Refresh the page after clearing to load the default layout.
+                    </Typography>
+                </DialogContent>
+                <DialogActions
+                    sx={{
+                        bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'grey.50',
+                        borderTop: (theme) => `1px solid ${theme.palette.divider}`,
+                        px: 3,
+                        py: 2,
+                        gap: 1.5,
+                    }}
+                >
+                    <Button
+                        onClick={closeSingleClearDialog}
+                        variant="outlined"
+                        color="inherit"
+                        sx={{
+                            minWidth: 100,
+                            textTransform: 'none',
+                            fontWeight: 500,
+                        }}
+                    >
+                        Cancel
+                    </Button>
+                    <Button
+                        onClick={confirmSingleClearLayout}
+                        color="warning"
+                        variant="contained"
+                        sx={{
+                            minWidth: 100,
+                            textTransform: 'none',
+                            fontWeight: 600,
+                        }}
+                    >
+                        Clear
                     </Button>
                 </DialogActions>
             </Dialog>

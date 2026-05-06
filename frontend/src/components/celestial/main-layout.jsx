@@ -48,7 +48,7 @@ import {
     setSolarSystemDisplayOption,
 } from './celestial-display-slice.jsx';
 
-const gridLayoutStoreName = 'celestial-layouts';
+export const gridLayoutStoreName = 'celestial-layouts';
 const LAYOUT_SCHEMA_VERSION = 3;
 const SHARED_RESIZE_HANDLES = ['s', 'sw', 'w', 'se', 'nw', 'ne', 'e'];
 const DEFAULT_PAST_HOURS = 0;
