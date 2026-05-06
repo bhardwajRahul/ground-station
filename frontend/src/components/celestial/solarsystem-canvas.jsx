@@ -36,6 +36,8 @@ const OFFSCREEN_TARGET_STAGGER_PX = 14;
 const OFFSCREEN_TARGET_LABEL_DEPTH_STEP_PX = 9;
 const OFFSCREEN_TARGET_LABEL_SEARCH_STEPS = 7;
 const OFFSCREEN_TARGET_LABEL_SAFE_MARGIN_PX = 4;
+const MAX_BACKGROUND_RING_RADIUS_PX = 12000;
+const MAX_ZONE_LABEL_RADIUS_PX = 3600;
 const DEFAULT_DISPLAY_OPTIONS = {
     showGrid: true,
     showPlanets: true,
@@ -520,6 +522,12 @@ const SolarSystemCanvas = ({
         const cx = width / 2 + viewport.panX;
         const cy = height / 2 + viewport.panY;
         const scale = viewport.zoom;
+        const nearestViewportX = clamp(cx, 0, width);
+        const nearestViewportY = clamp(cy, 0, height);
+        const minDistanceToViewportPx = Math.hypot(nearestViewportX - cx, nearestViewportY - cy);
+        const maxDistanceX = Math.max(Math.abs(cx), Math.abs(width - cx));
+        const maxDistanceY = Math.max(Math.abs(cy), Math.abs(height - cy));
+        const maxDistanceToViewportPx = Math.hypot(maxDistanceX, maxDistanceY);
 
         const toScreen = (position) => {
             const x = cx + (position?.[0] || 0) * scale;
@@ -698,6 +706,11 @@ const SolarSystemCanvas = ({
                 const innerPx = innerAu * scale;
                 const outerPx = outerAu * scale;
                 if (outerPx <= 2) return;
+                // Avoid expensive giant-radius arcs at high zoom and skip rings
+                // that cannot intersect the viewport.
+                if (outerPx > MAX_BACKGROUND_RING_RADIUS_PX) return;
+                if (outerPx < (minDistanceToViewportPx - 1)) return;
+                if (innerPx > (maxDistanceToViewportPx + 1)) return;
 
                 ctx.beginPath();
                 ctx.arc(cx, cy, outerPx, 0, Math.PI * 2);
@@ -707,7 +720,11 @@ const SolarSystemCanvas = ({
                 ctx.fill();
 
                 const midRadiusPx = ((innerAu + outerAu) / 2) * scale;
-                if (effectiveDisplayOptions.showZoneLabels && midRadiusPx > 55) {
+                if (
+                    effectiveDisplayOptions.showZoneLabels
+                    && midRadiusPx > 55
+                    && midRadiusPx <= MAX_ZONE_LABEL_RADIUS_PX
+                ) {
                     drawTextOnArc(
                         ctx,
                         zone?.name || '',
@@ -734,6 +751,9 @@ const SolarSystemCanvas = ({
             asteroidResonanceGaps.forEach((gap) => {
                 const radiusPx = (Number(gap?.a_au) || 0) * scale;
                 if (radiusPx <= 3) return;
+                if (radiusPx > MAX_BACKGROUND_RING_RADIUS_PX) return;
+                if (radiusPx < (minDistanceToViewportPx - 1)) return;
+                if (radiusPx > (maxDistanceToViewportPx + 1)) return;
                 ctx.beginPath();
                 ctx.arc(cx, cy, radiusPx, 0, Math.PI * 2);
                 ctx.strokeStyle = theme.palette.mode === 'dark'
