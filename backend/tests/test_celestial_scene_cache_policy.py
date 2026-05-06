@@ -160,3 +160,105 @@ async def test_get_vectors_snapshot_fetches_when_dynamic_policy_rejects(monkeypa
     assert result["payload"]["command"] == "Voyager 1"
     assert calls["fetch"] == 1
     assert calls["store"] == 1
+
+
+@pytest.mark.asyncio
+async def test_get_vectors_snapshot_cache_only_uses_latest_without_network(monkeypatch):
+    epoch = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    payload = {
+        "command": "Voyager 1",
+        "orbit_samples_xyz_au": [[1.0, 0.0, 0.0], [1.0, 0.1, 0.0]],
+        "orbit_sample_times_utc": [
+            (epoch - timedelta(minutes=30)).isoformat(),
+            (epoch + timedelta(minutes=30)).isoformat(),
+        ],
+    }
+    fetch_calls = {"count": 0}
+
+    async def _stub_load_vectors_from_db(*_args, **_kwargs):
+        return None
+
+    async def _stub_load_latest_vectors_from_db(*_args, **_kwargs):
+        return {
+            "payload": payload,
+            "epoch_bucket_utc": epoch - timedelta(minutes=50),
+        }
+
+    async def _stub_load_latest_vectors_for_command_from_db(*_args, **_kwargs):
+        return None
+
+    def _unexpected_fetch(*_args, **_kwargs):
+        fetch_calls["count"] += 1
+        return {"unexpected": True}
+
+    monkeypatch.setattr(scene, "_load_vectors_from_db", _stub_load_vectors_from_db)
+    monkeypatch.setattr(scene, "_load_latest_vectors_from_db", _stub_load_latest_vectors_from_db)
+    monkeypatch.setattr(
+        scene,
+        "_load_latest_vectors_for_command_from_db",
+        _stub_load_latest_vectors_for_command_from_db,
+    )
+    monkeypatch.setattr(scene, "fetch_celestial_vectors", _unexpected_fetch)
+
+    result = await scene._get_vectors_snapshot(
+        command="Voyager 1",
+        epoch=epoch,
+        past_hours=1,
+        future_hours=24,
+        step_minutes=60,
+        observer_location={"lat": 40.0, "lon": 22.0},
+        force_refresh=True,
+        logger=_DummyLogger(),
+        allow_network_fetch=False,
+    )
+
+    assert result["cache"] == "db-cache-only-latest-hit"
+    assert result["stale"] is False
+    assert result["payload"]["command"] == "Voyager 1"
+    assert fetch_calls["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_get_vectors_snapshot_cache_only_falls_back_to_latest_command(monkeypatch):
+    epoch = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
+    payload = {
+        "command": "Voyager 1",
+        "orbit_samples_xyz_au": [[1.0, 0.0, 0.0], [1.0, 0.1, 0.0]],
+        "orbit_sample_times_utc": [
+            (epoch - timedelta(minutes=60)).isoformat(),
+            (epoch + timedelta(minutes=60)).isoformat(),
+        ],
+    }
+
+    async def _stub_load_vectors_from_db(*_args, **_kwargs):
+        return None
+
+    async def _stub_load_latest_vectors_from_db(*_args, **_kwargs):
+        return None
+
+    async def _stub_load_latest_vectors_for_command_from_db(*_args, **_kwargs):
+        return {"payload": payload}
+
+    monkeypatch.setattr(scene, "_load_vectors_from_db", _stub_load_vectors_from_db)
+    monkeypatch.setattr(scene, "_load_latest_vectors_from_db", _stub_load_latest_vectors_from_db)
+    monkeypatch.setattr(
+        scene,
+        "_load_latest_vectors_for_command_from_db",
+        _stub_load_latest_vectors_for_command_from_db,
+    )
+
+    result = await scene._get_vectors_snapshot(
+        command="Voyager 1",
+        epoch=epoch,
+        past_hours=12,
+        future_hours=12,
+        step_minutes=120,
+        observer_location={"lat": 40.0, "lon": 22.0},
+        force_refresh=True,
+        logger=_DummyLogger(),
+        allow_network_fetch=False,
+    )
+
+    assert result["cache"] == "db-cache-only-command-hit"
+    assert result["stale"] is False
+    assert result["payload"]["command"] == "Voyager 1"

@@ -113,6 +113,37 @@ async def fetch_latest_celestial_vectors_cache_entry(
         return {"success": False, "error": str(e)}
 
 
+async def fetch_latest_celestial_vectors_cache_entry_for_command(
+    session: AsyncSession,
+    command: str,
+    valid_only: bool = False,
+    as_of: Optional[datetime] = None,
+) -> dict:
+    """Fetch the latest cached vectors row for a command regardless of projection options."""
+    try:
+        now_utc = as_of or datetime.now(timezone.utc)
+        stmt = select(CelestialVectorsCache).where(
+            CelestialVectorsCache.command == command,
+        )
+        if valid_only:
+            stmt = stmt.where(CelestialVectorsCache.expires_at >= now_utc)
+        stmt = stmt.order_by(
+            CelestialVectorsCache.fetched_at.desc(),
+            CelestialVectorsCache.epoch_bucket_utc.desc(),
+        )
+
+        result = await session.execute(stmt)
+        row = result.scalars().first()
+        if not row:
+            return {"success": True, "data": None, "error": None}
+
+        return {"success": True, "data": _normalize_entry(serialize_object(row)), "error": None}
+    except Exception as e:
+        logger.error(f"Error fetching latest celestial vectors cache entry by command: {e}")
+        logger.error(traceback.format_exc())
+        return {"success": False, "error": str(e)}
+
+
 async def upsert_celestial_vectors_cache_entry(
     session: AsyncSession,
     data: Dict[str, Any],

@@ -1,12 +1,15 @@
 """Background task scheduler for the ground station."""
 
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 import observations.events as obs_events
+from celestial.scene import refresh_monitored_celestial_vectors_cache
+from common.arguments import arguments
 from common.logger import logger
 from db import AsyncSessionLocal
 from observations.constants import DEFAULT_AUTO_GENERATE_INTERVAL_HOURS
@@ -133,6 +136,29 @@ async def run_initial_observation_generation():
         logger.exception(e)
 
 
+async def sync_celestial_vectors_cache_job():
+    """Periodic cache-fill job that prefetches monitored mission vectors from Horizons."""
+    try:
+        result = await refresh_monitored_celestial_vectors_cache(logger=logger)
+        if result.get("success"):
+            logger.info(
+                "Scheduled celestial vectors sync completed: refreshed=%s failed=%s count=%s",
+                result.get("refreshed", 0),
+                result.get("failed", 0),
+                result.get("count", 0),
+            )
+            return
+        if result.get("skipped"):
+            logger.info("Scheduled celestial vectors sync skipped: %s", result.get("error"))
+            return
+        logger.warning(
+            "Scheduled celestial vectors sync completed with errors: %s", result.get("error")
+        )
+    except Exception as e:
+        logger.error(f"Error during scheduled celestial vectors sync: {e}")
+        logger.exception(e)
+
+
 def start_scheduler(sio, process_manager, background_task_manager):
     """Initialize and start the background task scheduler."""
     global scheduler
@@ -174,6 +200,27 @@ def start_scheduler(sio, process_manager, background_task_manager):
         name="Generate scheduled observations",
         replace_existing=True,
     )
+
+    celestial_sync_enabled = bool(getattr(arguments, "celestial_periodic_sync_enabled", True))
+    try:
+        celestial_sync_interval_minutes = int(
+            getattr(arguments, "celestial_periodic_sync_interval_minutes", 60)
+        )
+    except (TypeError, ValueError):
+        celestial_sync_interval_minutes = 60
+    celestial_sync_interval_minutes = max(5, celestial_sync_interval_minutes)
+    if celestial_sync_enabled:
+        # Run once immediately at startup, then continue at the configured interval.
+        scheduler.add_job(
+            sync_celestial_vectors_cache_job,
+            trigger=IntervalTrigger(minutes=celestial_sync_interval_minutes),
+            id="sync_celestial_vectors_cache",
+            name="Synchronize celestial vectors cache",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            next_run_time=datetime.now(timezone.utc),
+        )
 
     scheduler.start()
 

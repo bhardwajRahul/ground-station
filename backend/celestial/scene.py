@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import crud.celestialvectors as crud_celestial_vectors
 import crud.locations as crud_locations
+import crud.monitoredcelestial as crud_monitored
 from celestial.asteroidzones import get_static_asteroid_zones
 from celestial.horizons import fetch_celestial_vectors
 from celestial.observermath import compute_observer_sky_position
@@ -26,16 +27,43 @@ from celestial.solarsystem import (
     compute_body_position_heliocentric_au,
     compute_solar_system_snapshot,
 )
+from common.arguments import arguments
 from db import AsyncSessionLocal
 
-CACHE_TTL_SECONDS = 120
-VECTOR_DB_TTL_SECONDS = 30 * 60
-VECTOR_EPOCH_BUCKET_MINUTES = 10
-COMPUTED_EPOCH_BUCKET_SECONDS = 60
-SKY_MOTION_ACCURACY_TARGET_DEG = 0.25
-SKY_MOTION_SAFETY_FACTOR = 0.5
-SKY_MOTION_DYNAMIC_TTL_MIN_SECONDS = 2 * 60
-SKY_MOTION_DYNAMIC_TTL_MAX_SECONDS = 6 * 60 * 60
+
+def _config_int(name: str, default: int, minimum: int) -> int:
+    try:
+        value = int(getattr(arguments, name, default))
+    except (TypeError, ValueError):
+        value = int(default)
+    return max(minimum, value)
+
+
+def _config_float(name: str, default: float, minimum: float) -> float:
+    try:
+        value = float(getattr(arguments, name, default))
+    except (TypeError, ValueError):
+        value = float(default)
+    return max(minimum, value)
+
+
+CACHE_TTL_SECONDS = _config_int("celestial_runtime_cache_ttl_seconds", 120, 0)
+VECTOR_DB_TTL_SECONDS = _config_int("celestial_vector_db_ttl_seconds", 2 * 60 * 60, 60)
+VECTOR_EPOCH_BUCKET_MINUTES = _config_int("celestial_vector_epoch_bucket_minutes", 60, 1)
+COMPUTED_EPOCH_BUCKET_SECONDS = _config_int("celestial_computed_epoch_bucket_seconds", 60, 1)
+SKY_MOTION_ACCURACY_TARGET_DEG = _config_float(
+    "celestial_sky_motion_accuracy_target_deg", 0.25, 0.01
+)
+SKY_MOTION_SAFETY_FACTOR = _config_float("celestial_sky_motion_safety_factor", 0.5, 0.01)
+SKY_MOTION_DYNAMIC_TTL_MIN_SECONDS = _config_int("celestial_dynamic_cache_min_seconds", 2 * 60, 1)
+SKY_MOTION_DYNAMIC_TTL_MAX_SECONDS = _config_int(
+    "celestial_dynamic_cache_max_seconds",
+    6 * 60 * 60,
+    SKY_MOTION_DYNAMIC_TTL_MIN_SECONDS,
+)
+SCHEDULED_SYNC_PAST_HOURS = _config_int("celestial_sync_past_hours", 1, 0)
+SCHEDULED_SYNC_FUTURE_HOURS = _config_int("celestial_sync_future_hours", 24, 1)
+SCHEDULED_SYNC_STEP_MINUTES = _config_int("celestial_sync_step_minutes", 60, 1)
 MAX_SAMPLES_PER_TARGET = 1500
 DEFAULT_CELESTIAL_TARGETS: List[Dict[str, str]] = []
 NO_EPHEMERIS_ERROR_FRAGMENT = "No ephemeris data returned by Horizons"
@@ -52,6 +80,7 @@ class CacheEntry:
 
 _computed_cache: Dict[str, CacheEntry] = {}
 _computed_cache_lock = threading.Lock()
+_scheduled_sync_lock = asyncio.Lock()
 
 
 def _target_key_from_parts(
@@ -354,6 +383,50 @@ def _extract_orbit_samples(
             ]
 
     return list(zip(sample_times, positions))
+
+
+def _interpolate_position_xyz_au_at_epoch(
+    *,
+    payload: Dict[str, Any],
+    epoch: datetime,
+    past_hours: int,
+    future_hours: int,
+) -> Optional[List[float]]:
+    """Interpolate a mission position at the requested epoch using cached orbit samples."""
+    samples = _extract_orbit_samples(
+        payload,
+        epoch_fallback=epoch,
+        past_hours=past_hours,
+        future_hours=future_hours,
+    )
+    if not samples:
+        return None
+
+    ordered = sorted(samples, key=lambda item: item[0])
+    first_time, first_pos = ordered[0]
+    last_time, last_pos = ordered[-1]
+    if epoch <= first_time:
+        return [float(first_pos[0]), float(first_pos[1]), float(first_pos[2])]
+    if epoch >= last_time:
+        return [float(last_pos[0]), float(last_pos[1]), float(last_pos[2])]
+
+    for index in range(1, len(ordered)):
+        left_time, left_pos = ordered[index - 1]
+        right_time, right_pos = ordered[index]
+        if epoch > right_time:
+            continue
+
+        span_seconds = (right_time - left_time).total_seconds()
+        if span_seconds <= 1e-9:
+            return [float(left_pos[0]), float(left_pos[1]), float(left_pos[2])]
+        ratio = max(0.0, min(1.0, (epoch - left_time).total_seconds() / span_seconds))
+        return [
+            float(left_pos[0]) + ((float(right_pos[0]) - float(left_pos[0])) * ratio),
+            float(left_pos[1]) + ((float(right_pos[1]) - float(left_pos[1])) * ratio),
+            float(left_pos[2]) + ((float(right_pos[2]) - float(left_pos[2])) * ratio),
+        ]
+
+    return [float(last_pos[0]), float(last_pos[1]), float(last_pos[2])]
 
 
 def _select_nearest_motion_samples(
@@ -1179,6 +1252,25 @@ async def _load_latest_vectors_from_db(
     return row if isinstance(row, dict) else None
 
 
+async def _load_latest_vectors_for_command_from_db(
+    command: str,
+    valid_only: bool = False,
+) -> Optional[Dict[str, Any]]:
+    async with AsyncSessionLocal() as dbsession:
+        result = (
+            await crud_celestial_vectors.fetch_latest_celestial_vectors_cache_entry_for_command(
+                dbsession,
+                command=command,
+                valid_only=valid_only,
+                as_of=datetime.now(timezone.utc),
+            )
+        )
+    if not result.get("success"):
+        return None
+    row = result.get("data")
+    return row if isinstance(row, dict) else None
+
+
 async def _store_vectors_in_db(
     command: str,
     epoch_bucket_utc: datetime,
@@ -1216,23 +1308,32 @@ async def _get_vectors_snapshot(
     observer_location: Optional[Dict[str, Any]],
     force_refresh: bool,
     logger: Any,
+    allow_network_fetch: bool = True,
 ) -> Dict[str, Any]:
     epoch_bucket_utc = _bucket_epoch(epoch, VECTOR_EPOCH_BUCKET_MINUTES * 60)
 
-    if not force_refresh:
+    # Cache-only callers still query DB even when force_refresh=True.
+    if (not force_refresh) or (not allow_network_fetch):
+        valid_only = not force_refresh and allow_network_fetch
         cached = await _load_vectors_from_db(
             command=command,
             epoch_bucket_utc=epoch_bucket_utc,
             past_hours=past_hours,
             future_hours=future_hours,
             step_minutes=step_minutes,
-            valid_only=True,
+            valid_only=valid_only,
         )
         if cached and isinstance(cached.get("payload"), dict):
+            cached_expires_at = _coerce_utc_datetime(cached.get("expires_at"))
+            cached_is_expired = (
+                bool(cached_expires_at)
+                and cached_expires_at is not None
+                and cached_expires_at < datetime.now(timezone.utc)
+            )
             return {
                 "payload": dict(cached["payload"]),
-                "cache": "db-hit",
-                "stale": False,
+                "cache": "db-hit" if allow_network_fetch else "db-cache-only-hit",
+                "stale": False if valid_only else bool(cached_is_expired),
                 "error": None,
             }
 
@@ -1244,6 +1345,19 @@ async def _get_vectors_snapshot(
             valid_only=False,
         )
         if latest and isinstance(latest.get("payload"), dict):
+            if not allow_network_fetch:
+                latest_expires_at = _coerce_utc_datetime(latest.get("expires_at"))
+                latest_is_expired = (
+                    bool(latest_expires_at)
+                    and latest_expires_at is not None
+                    and latest_expires_at < datetime.now(timezone.utc)
+                )
+                return {
+                    "payload": dict(latest["payload"]),
+                    "cache": "db-cache-only-latest-hit",
+                    "stale": bool(latest_is_expired),
+                    "error": None,
+                }
             cached_bucket = _coerce_utc_datetime(latest.get("epoch_bucket_utc"))
             if cached_bucket:
                 policy = _evaluate_dynamic_vectors_cache_policy(
@@ -1262,6 +1376,40 @@ async def _get_vectors_snapshot(
                         "error": None,
                         "cache_policy": policy,
                     }
+
+        # Fall back to any latest payload for this command when projection-specific cache is empty.
+        if not allow_network_fetch:
+            latest_for_command = await _load_latest_vectors_for_command_from_db(
+                command=command,
+                valid_only=False,
+            )
+            if latest_for_command and isinstance(latest_for_command.get("payload"), dict):
+                latest_any_expires_at = _coerce_utc_datetime(latest_for_command.get("expires_at"))
+                latest_any_is_expired = (
+                    bool(latest_any_expires_at)
+                    and latest_any_expires_at is not None
+                    and latest_any_expires_at < datetime.now(timezone.utc)
+                )
+                return {
+                    "payload": dict(latest_for_command["payload"]),
+                    "cache": "db-cache-only-command-hit",
+                    "stale": bool(latest_any_is_expired),
+                    "error": None,
+                }
+            return {
+                "payload": None,
+                "cache": "cache-only-miss",
+                "stale": True,
+                "error": f"No cached vectors available for command '{command}'",
+            }
+
+    if not allow_network_fetch:
+        return {
+            "payload": None,
+            "cache": "cache-only-miss",
+            "stale": True,
+            "error": f"No cached vectors available for command '{command}'",
+        }
 
     try:
         fetched = await asyncio.to_thread(
@@ -1361,6 +1509,7 @@ async def _fetch_celestial_with_cache(
     earth_position_xyz_au: Optional[List[float]],
     body_snapshot_by_id: Dict[str, Dict[str, Any]],
     force_refresh: bool,
+    allow_network_fetch: bool,
     logger,
     per_row_callback: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
@@ -1478,6 +1627,7 @@ async def _fetch_celestial_with_cache(
             observer_location=observer_location,
             force_refresh=force_refresh,
             logger=logger,
+            allow_network_fetch=allow_network_fetch,
         )
 
         payload = snapshot.get("payload")
@@ -1495,6 +1645,15 @@ async def _fetch_celestial_with_cache(
                 row_payload["error"] = snapshot.get("error")
             if isinstance(snapshot.get("cache_policy"), dict):
                 row_payload["cache_policy"] = dict(snapshot["cache_policy"])
+            # Keep "current" vectors fresh between periodic Horizons syncs.
+            interpolated_position = _interpolate_position_xyz_au_at_epoch(
+                payload=row_payload,
+                epoch=epoch,
+                past_hours=past_hours,
+                future_hours=future_hours,
+            )
+            if interpolated_position:
+                row_payload["position_xyz_au"] = interpolated_position
             _attach_observer_view_local(
                 row=row_payload,
                 epoch=epoch,
@@ -1540,6 +1699,7 @@ async def build_celestial_scene(
     data: Optional[Dict[str, Any]],
     logger,
     force_refresh: bool = False,
+    allow_network_fetch: bool = True,
     per_row_callback: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Build a scene payload for UI rendering and backend sharing."""
@@ -1562,6 +1722,7 @@ async def build_celestial_scene(
         earth_position_xyz_au,
         body_snapshot_by_id,
         force_refresh,
+        allow_network_fetch,
         logger,
         per_row_callback,
     )
@@ -1660,6 +1821,7 @@ async def build_celestial_tracks(
     data: Optional[Dict[str, Any]],
     logger,
     force_refresh: bool = False,
+    allow_network_fetch: bool = True,
     per_row_callback: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Build only Horizons-backed tracked celestial objects."""
@@ -1680,6 +1842,7 @@ async def build_celestial_tracks(
         earth_position_xyz_au,
         body_snapshot_by_id,
         force_refresh,
+        allow_network_fetch,
         logger,
         per_row_callback,
     )
@@ -1731,3 +1894,97 @@ async def build_celestial_tracks(
             },
         },
     }
+
+
+async def refresh_monitored_celestial_vectors_cache(logger: Any) -> Dict[str, Any]:
+    """Refresh Horizons vectors for enabled monitored mission targets."""
+    if _scheduled_sync_lock.locked():
+        return {
+            "success": False,
+            "skipped": True,
+            "error": "Scheduled celestial vectors sync already running",
+        }
+
+    async with _scheduled_sync_lock:
+        payload = {
+            "past_hours": SCHEDULED_SYNC_PAST_HOURS,
+            "future_hours": SCHEDULED_SYNC_FUTURE_HOURS,
+            "step_minutes": SCHEDULED_SYNC_STEP_MINUTES,
+        }
+        past_hours, future_hours, step_minutes = _parse_projection_options(payload)
+        epoch = datetime.now(timezone.utc)
+
+        async with AsyncSessionLocal() as dbsession:
+            monitored_result = await crud_monitored.fetch_monitored_celestial(
+                dbsession,
+                enabled_only=True,
+            )
+
+        if not monitored_result.get("success"):
+            return {
+                "success": False,
+                "error": monitored_result.get("error")
+                or "Failed loading monitored celestial targets",
+            }
+
+        rows_obj = monitored_result.get("data")
+        rows: List[Dict[str, Any]] = rows_obj if isinstance(rows_obj, list) else []
+        commands = sorted(
+            {
+                str(row.get("command") or "").strip()
+                for row in rows
+                if str(row.get("target_type") or "mission").strip().lower() == "mission"
+                and str(row.get("command") or "").strip()
+            }
+        )
+
+        if not commands:
+            return {
+                "success": True,
+                "count": 0,
+                "refreshed": 0,
+                "failed": 0,
+                "projection": {
+                    "past_hours": past_hours,
+                    "future_hours": future_hours,
+                    "step_minutes": step_minutes,
+                },
+            }
+
+        refreshed = 0
+        failed = 0
+        errors: List[Dict[str, str]] = []
+
+        # Keep the scheduler job deterministic and easy to observe in logs.
+        for command in commands:
+            snapshot = await _get_vectors_snapshot(
+                command=command,
+                epoch=epoch,
+                past_hours=past_hours,
+                future_hours=future_hours,
+                step_minutes=step_minutes,
+                observer_location=None,
+                force_refresh=True,
+                logger=logger,
+                allow_network_fetch=True,
+            )
+            if isinstance(snapshot.get("payload"), dict):
+                refreshed += 1
+                continue
+            failed += 1
+            errors.append(
+                {"command": command, "error": str(snapshot.get("error") or "Unknown error")}
+            )
+
+        return {
+            "success": failed == 0,
+            "count": len(commands),
+            "refreshed": refreshed,
+            "failed": failed,
+            "errors": errors,
+            "projection": {
+                "past_hours": past_hours,
+                "future_hours": future_hours,
+                "step_minutes": step_minutes,
+            },
+        }

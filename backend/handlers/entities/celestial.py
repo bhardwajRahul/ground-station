@@ -217,7 +217,12 @@ async def get_celestial_scene(
     """Fetch current celestial scene for one-time UI render data."""
     logger.debug(f"Fetching celestial scene, data: {data}")
     payload = await _build_scene_payload(data, logger)
-    scene = await build_celestial_scene(data=payload, logger=logger, force_refresh=False)
+    scene = await build_celestial_scene(
+        data=payload,
+        logger=logger,
+        force_refresh=False,
+        allow_network_fetch=False,
+    )
     return cast(Dict[str, Any], scene)
 
 
@@ -246,6 +251,7 @@ async def get_celestial_tracks(
         data=payload,
         logger=logger,
         force_refresh=False,
+        allow_network_fetch=False,
         per_row_callback=emit_partial_row,
     )
     return cast(Dict[str, Any], tracks)
@@ -257,7 +263,12 @@ async def refresh_celestial_now(
     """Force-refresh celestial scene and broadcast live update event."""
     logger.info(f"Force refreshing celestial scene, data: {data}")
     payload = await _build_scene_payload(data, logger)
-    scene = await build_celestial_scene(data=payload, logger=logger, force_refresh=True)
+    scene = await build_celestial_scene(
+        data=payload,
+        logger=logger,
+        force_refresh=True,
+        allow_network_fetch=False,
+    )
     if scene.get("success"):
         scene_data_obj = scene.get("data")
         scene_data = cast(
@@ -342,6 +353,7 @@ async def refresh_monitored_celestial_now(
             data=payload,
             logger=logger,
             force_refresh=True,
+            allow_network_fetch=False,
             per_row_callback=emit_partial_row,
         )
         if not tracks.get("success"):

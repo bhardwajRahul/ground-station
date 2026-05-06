@@ -9,12 +9,15 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import requests
 
 HORIZONS_API_URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
+logger = logging.getLogger("ground-station")
 
 
 def _extract_ephemeris_lines(result_text: str) -> List[str]:
@@ -153,8 +156,36 @@ def fetch_celestial_vectors(
         "STEP_SIZE": f"'{bounded_step_minutes} m'",
     }
 
-    response = requests.get(HORIZONS_API_URL, params=params, timeout=timeout_seconds)
-    response.raise_for_status()
+    # Measure the remote Horizons HTTP round-trip for vectors retrieval.
+    request_started_at = time.perf_counter()
+    try:
+        response = requests.get(HORIZONS_API_URL, params=params, timeout=timeout_seconds)
+        response.raise_for_status()
+    except Exception as exc:
+        elapsed_ms = (time.perf_counter() - request_started_at) * 1000.0
+        logger.warning(
+            "Horizons vectors request failed for command '%s' in %.1f ms "
+            "(window=%s..%s step=%sm): %s",
+            command,
+            elapsed_ms,
+            start_time,
+            stop_time,
+            bounded_step_minutes,
+            exc,
+        )
+        raise
+
+    elapsed_ms = (time.perf_counter() - request_started_at) * 1000.0
+    logger.info(
+        "Horizons vectors request completed for command '%s' in %.1f ms "
+        "(status=%s window=%s..%s step=%sm)",
+        command,
+        elapsed_ms,
+        response.status_code,
+        start_time,
+        stop_time,
+        bounded_step_minutes,
+    )
 
     payload = response.json()
     result_text = payload.get("result", "")
