@@ -38,6 +38,7 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import RadioButtonCheckedIcon from '@mui/icons-material/RadioButtonChecked';
 import AccessTimeFilledIcon from '@mui/icons-material/AccessTimeFilled';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
+import ArrowUpwardRoundedIcon from '@mui/icons-material/ArrowUpwardRounded';
 import {
     fetchNextPasses,
     updateSatellitePassesWithElevationCurves,
@@ -527,6 +528,9 @@ const NextPassesIsland = React.memo(function NextPassesIsland() {
     const {socket} = useSocket();
     const dispatch = useDispatch();
     const { t } = useTranslation('target');
+    const theme = useTheme();
+    const isCompactHeader = useMediaQuery(theme.breakpoints.down('lg'));
+    const isTightHeader = useMediaQuery(theme.breakpoints.down('md'));
     const trackerInstances = useSelector((state) => state.trackerInstances?.instances || []);
     const trackingState = useSelector((state) => state.targetSatTrack?.trackingState || {});
     const satelliteDetails = useSelector((state) => state.targetSatTrack?.satelliteData?.details || {});
@@ -871,6 +875,21 @@ const NextPassesIsland = React.memo(function NextPassesIsland() {
         return () => window.removeEventListener('keydown', handleKeyboardShortcuts);
     }, [handleQuickPreset, isSatelliteTarget]);
 
+    const useIconQuickFilters = isCompactHeader;
+    const quickFilterButtonSx = useMemo(() => ({
+        minHeight: isTightHeader ? 20 : (isCompactHeader ? 22 : 24),
+        height: isTightHeader ? 20 : (isCompactHeader ? 22 : 24),
+        py: 0,
+        px: isTightHeader ? 0.7 : (isCompactHeader ? 0.85 : 1),
+        lineHeight: 1.05,
+        fontSize: isTightHeader ? '0.64rem' : (isCompactHeader ? '0.68rem' : '0.72rem'),
+        minWidth: useIconQuickFilters ? 30 : 'auto',
+    }), [isCompactHeader, isTightHeader, useIconQuickFilters]);
+    const titleIconButtonSx = useMemo(
+        () => ({ padding: isTightHeader ? '1px' : '2px' }),
+        [isTightHeader]
+    );
+
     if (!isSatelliteTarget) {
         return (
             <CelestialPasses
@@ -901,8 +920,16 @@ const NextPassesIsland = React.memo(function NextPassesIsland() {
                 }}
             >
                 <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', height: '100%'}}>
-                    <Box sx={{display: 'flex', alignItems: 'center'}}>
-                        <Typography variant="subtitle2" sx={{fontWeight: 'bold'}}>
+                    <Box sx={{display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, pr: 1}}>
+                        <Typography
+                            variant="subtitle2"
+                            sx={{
+                                fontWeight: 'bold',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                            }}
+                        >
                             {hasTargets
                                 ? t('next_passes.title', { name: satelliteData['details']['name'], hours: nextPassesHours })
                                 : 'Next Passes'}
@@ -910,31 +937,55 @@ const NextPassesIsland = React.memo(function NextPassesIsland() {
                     </Box>
                     {hasTargets && (
                     <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-                        <Tooltip title="Alt+1">
+                        <Tooltip title="All passes (Alt+1)">
                             <span>
-                                <Button size="small" variant={quickFilterPreset === 'all' ? 'contained' : 'outlined'} onClick={() => handleQuickPreset('all')} sx={{ minHeight: 24, height: 24, py: 0, px: 1, lineHeight: 1.1, fontSize: '0.72rem' }}>
-                                    All
+                                <Button
+                                    size="small"
+                                    variant={quickFilterPreset === 'all' ? 'contained' : 'outlined'}
+                                    onClick={() => handleQuickPreset('all')}
+                                    sx={quickFilterButtonSx}
+                                    aria-label="All passes"
+                                >
+                                    {useIconQuickFilters ? <DoneAllIcon sx={{ fontSize: isTightHeader ? '0.82rem' : '0.9rem' }} /> : 'All'}
                                 </Button>
                             </span>
                         </Tooltip>
-                        <Tooltip title="Alt+2">
+                        <Tooltip title="Live passes (Alt+2)">
                             <span>
-                                <Button size="small" variant={quickFilterPreset === 'live' ? 'contained' : 'outlined'} onClick={() => handleQuickPreset('live')} sx={{ minHeight: 24, height: 24, py: 0, px: 1, lineHeight: 1.1, fontSize: '0.72rem' }}>
-                                    Live
+                                <Button
+                                    size="small"
+                                    variant={quickFilterPreset === 'live' ? 'contained' : 'outlined'}
+                                    onClick={() => handleQuickPreset('live')}
+                                    sx={quickFilterButtonSx}
+                                    aria-label="Live passes"
+                                >
+                                    {useIconQuickFilters ? <RadioButtonCheckedIcon sx={{ fontSize: isTightHeader ? '0.82rem' : '0.9rem' }} /> : 'Live'}
                                 </Button>
                             </span>
                         </Tooltip>
-                        <Tooltip title="Alt+3">
+                        <Tooltip title="Live or next 30 minutes (Alt+3)">
                             <span>
-                                <Button size="small" variant={quickFilterPreset === 'next30' ? 'contained' : 'outlined'} onClick={() => handleQuickPreset('next30')} sx={{ minHeight: 24, height: 24, py: 0, px: 1, lineHeight: 1.1, fontSize: '0.72rem' }}>
-                                    Next 30m
+                                <Button
+                                    size="small"
+                                    variant={quickFilterPreset === 'next30' ? 'contained' : 'outlined'}
+                                    onClick={() => handleQuickPreset('next30')}
+                                    sx={quickFilterButtonSx}
+                                    aria-label="Next 30 minutes"
+                                >
+                                    {useIconQuickFilters ? <AccessTimeFilledIcon sx={{ fontSize: isTightHeader ? '0.82rem' : '0.9rem' }} /> : 'Next 30m'}
                                 </Button>
                             </span>
                         </Tooltip>
-                        <Tooltip title="Alt+4">
+                        <Tooltip title="Highest elevation first (Alt+4)">
                             <span>
-                                <Button size="small" variant={quickFilterPreset === 'highEl' ? 'contained' : 'outlined'} onClick={() => handleQuickPreset('highEl')} sx={{ minHeight: 24, height: 24, py: 0, px: 1, lineHeight: 1.1, fontSize: '0.72rem' }}>
-                                    High El
+                                <Button
+                                    size="small"
+                                    variant={quickFilterPreset === 'highEl' ? 'contained' : 'outlined'}
+                                    onClick={() => handleQuickPreset('highEl')}
+                                    sx={quickFilterButtonSx}
+                                    aria-label="Highest elevation first"
+                                >
+                                    {useIconQuickFilters ? <ArrowUpwardRoundedIcon sx={{ fontSize: isTightHeader ? '0.82rem' : '0.9rem' }} /> : 'High El'}
                                 </Button>
                             </span>
                         </Tooltip>
@@ -943,7 +994,7 @@ const NextPassesIsland = React.memo(function NextPassesIsland() {
                                 <IconButton
                                     size="small"
                                     onClick={handleOpenSettings}
-                                    sx={{ padding: '2px' }}
+                                    sx={titleIconButtonSx}
                                 >
                                     <SettingsIcon fontSize="small" />
                                 </IconButton>
@@ -955,7 +1006,7 @@ const NextPassesIsland = React.memo(function NextPassesIsland() {
                                     size="small"
                                     onClick={handleRefreshPasses}
                                     disabled={passesLoading || !satelliteId}
-                                    sx={{ padding: '2px' }}
+                                    sx={titleIconButtonSx}
                                 >
                                     <RefreshIcon fontSize="small" />
                                 </IconButton>

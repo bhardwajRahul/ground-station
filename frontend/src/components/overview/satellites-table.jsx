@@ -46,6 +46,11 @@ import {
 import { useTranslation } from 'react-i18next';
 import { enUS, elGR } from '@mui/x-data-grid/locales';
 import SettingsIcon from '@mui/icons-material/Settings';
+import DoneAllIcon from '@mui/icons-material/DoneAll';
+import VisibilityIcon from '@mui/icons-material/Visibility';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import SettingsInputAntennaIcon from '@mui/icons-material/SettingsInputAntenna';
+import BlockIcon from '@mui/icons-material/Block';
 import {useSocket} from "../common/socket.jsx";
 import { toast } from '../../utils/toast-with-timestamp.jsx';
 import SatellitesTableSettingsDialog from './satellites-table-settings-dialog.jsx';
@@ -513,6 +518,9 @@ const SatelliteDetailsTable = React.memo(function SatelliteDetailsTable() {
     const dispatch = useDispatch();
     const { t } = useTranslation('overview');
     const { socket } = useSocket();
+    const theme = useTheme();
+    const isCompactHeader = useMediaQuery(theme.breakpoints.down('lg'));
+    const isTightHeader = useMediaQuery(theme.breakpoints.down('md'));
     const containerRef = useRef(null);
     const [containerHeight, setContainerHeight] = useState(0);
     const apiRef = useGridApiRef();
@@ -714,6 +722,21 @@ const SatelliteDetailsTable = React.memo(function SatelliteDetailsTable() {
         return () => window.removeEventListener('keydown', handleKeyboardShortcuts);
     }, [handleQuickPreset]);
 
+    const quickFilterButtonSx = React.useMemo(() => ({
+        minHeight: isTightHeader ? 20 : (isCompactHeader ? 22 : 24),
+        height: isTightHeader ? 20 : (isCompactHeader ? 22 : 24),
+        py: 0,
+        px: isTightHeader ? 0.7 : (isCompactHeader ? 0.85 : 1),
+        lineHeight: 1.05,
+        fontSize: isTightHeader ? '0.64rem' : (isCompactHeader ? '0.68rem' : '0.72rem'),
+        minWidth: isTightHeader ? 30 : 'auto',
+        whiteSpace: 'nowrap',
+    }), [isCompactHeader, isTightHeader]);
+    const titleIconButtonSx = React.useMemo(
+        () => ({ padding: isTightHeader ? '1px' : '2px' }),
+        [isTightHeader]
+    );
+
     return (
         <>
             <TitleBar
@@ -745,27 +768,77 @@ const SatelliteDetailsTable = React.memo(function SatelliteDetailsTable() {
                         </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexShrink: 0 }}>
-                        <Button size="small" variant={quickFilterPreset === 'all' ? 'contained' : 'outlined'} onClick={() => handleQuickPreset('all')} sx={{ minHeight: 24, height: 24, py: 0, px: 1, lineHeight: 1.1, fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
-                            All
-                        </Button>
-                        <Button size="small" variant={quickFilterPreset === 'visible' ? 'contained' : 'outlined'} onClick={() => handleQuickPreset('visible')} sx={{ minHeight: 24, height: 24, py: 0, px: 1, lineHeight: 1.1, fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
-                            Visible
-                        </Button>
-                        <Button size="small" variant={quickFilterPreset === 'rising' ? 'contained' : 'outlined'} onClick={() => handleQuickPreset('rising')} sx={{ minHeight: 24, height: 24, py: 0, px: 1, lineHeight: 1.1, fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
-                            Rising
-                        </Button>
-                        <Button size="small" variant={quickFilterPreset === 'activeTx' ? 'contained' : 'outlined'} onClick={() => handleQuickPreset('activeTx')} sx={{ minHeight: 24, height: 24, py: 0, px: 1, lineHeight: 1.1, fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
-                            Active TX
-                        </Button>
-                        <Button size="small" variant={quickFilterPreset === 'decayed' ? 'contained' : 'outlined'} onClick={() => handleQuickPreset('decayed')} sx={{ minHeight: 24, height: 24, py: 0, px: 1, lineHeight: 1.1, fontSize: '0.72rem', whiteSpace: 'nowrap' }}>
-                            Decayed
-                        </Button>
+                        <Tooltip title="All satellites (Alt+1)">
+                            <span>
+                                <Button
+                                    size="small"
+                                    variant={quickFilterPreset === 'all' ? 'contained' : 'outlined'}
+                                    onClick={() => handleQuickPreset('all')}
+                                    sx={quickFilterButtonSx}
+                                    aria-label="All satellites"
+                                >
+                                    {isTightHeader ? <DoneAllIcon sx={{ fontSize: '0.82rem' }} /> : 'All'}
+                                </Button>
+                            </span>
+                        </Tooltip>
+                        <Tooltip title="Visible satellites (Alt+2)">
+                            <span>
+                                <Button
+                                    size="small"
+                                    variant={quickFilterPreset === 'visible' ? 'contained' : 'outlined'}
+                                    onClick={() => handleQuickPreset('visible')}
+                                    sx={quickFilterButtonSx}
+                                    aria-label="Visible satellites"
+                                >
+                                    {isTightHeader ? <VisibilityIcon sx={{ fontSize: '0.82rem' }} /> : 'Visible'}
+                                </Button>
+                            </span>
+                        </Tooltip>
+                        <Tooltip title="Rising satellites (Alt+3)">
+                            <span>
+                                <Button
+                                    size="small"
+                                    variant={quickFilterPreset === 'rising' ? 'contained' : 'outlined'}
+                                    onClick={() => handleQuickPreset('rising')}
+                                    sx={quickFilterButtonSx}
+                                    aria-label="Rising satellites"
+                                >
+                                    {isTightHeader ? <TrendingUpIcon sx={{ fontSize: '0.82rem' }} /> : 'Rising'}
+                                </Button>
+                            </span>
+                        </Tooltip>
+                        <Tooltip title="Satellites with active transmitters (Alt+4)">
+                            <span>
+                                <Button
+                                    size="small"
+                                    variant={quickFilterPreset === 'activeTx' ? 'contained' : 'outlined'}
+                                    onClick={() => handleQuickPreset('activeTx')}
+                                    sx={quickFilterButtonSx}
+                                    aria-label="Satellites with active transmitters"
+                                >
+                                    {isTightHeader ? <SettingsInputAntennaIcon sx={{ fontSize: '0.82rem' }} /> : 'Active TX'}
+                                </Button>
+                            </span>
+                        </Tooltip>
+                        <Tooltip title="Decayed satellites (Alt+5)">
+                            <span>
+                                <Button
+                                    size="small"
+                                    variant={quickFilterPreset === 'decayed' ? 'contained' : 'outlined'}
+                                    onClick={() => handleQuickPreset('decayed')}
+                                    sx={quickFilterButtonSx}
+                                    aria-label="Decayed satellites"
+                                >
+                                    {isTightHeader ? <BlockIcon sx={{ fontSize: '0.82rem' }} /> : 'Decayed'}
+                                </Button>
+                            </span>
+                        </Tooltip>
                         <Tooltip title={t('satellites_table_settings.title')}>
                             <span>
                                 <IconButton
                                     size="small"
                                     onClick={handleOpenSettings}
-                                    sx={{ padding: '2px' }}
+                                    sx={titleIconButtonSx}
                                 >
                                     <SettingsIcon fontSize="small" />
                                 </IconButton>

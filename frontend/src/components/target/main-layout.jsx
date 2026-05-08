@@ -42,7 +42,7 @@ import {
     setSatelliteId,
     fetchNextPasses,
 } from './target-slice.jsx'
-import TargetSatelliteInfoIsland from "./satellite-info.jsx";
+import TargetInfoIsland from "./target-info-island.jsx";
 import NextPassesIsland from "./next-passes.jsx";
 import CameraView from "../common/camera-view.jsx";
 import {
@@ -53,9 +53,9 @@ import {
     satellitePathsSelector,
     satelliteTransmittersSelector
 } from './state-selectors.jsx';
-import TargetSatelliteMapContainer from './satellite-map.jsx';
+import TargetMapContainer from './target-map.jsx';
 import SatellitePassTimeline from "./timeline-main.jsx";
-import TargetSatelliteSelectorBar from "./target-satellite-selector-bar.jsx";
+import TargetSelectorBar from "./target-selector-bar.jsx";
 import RotatorControl from "../dashboard/rotator-control.jsx";
 import RigControl from "../dashboard/rig-control.jsx";
 
@@ -646,10 +646,10 @@ const TargetSatelliteLayout = React.memo(function TargetSatelliteLayout() {
     // pre-make the components
     let gridContents = [
         <StyledIslandParent key="map">
-            <TargetSatelliteMapContainer/>
+            <TargetMapContainer/>
         </StyledIslandParent>,
         <StyledIslandParentScrollbar key="info">
-            <TargetSatelliteInfoIsland/>
+            <TargetInfoIsland/>
         </StyledIslandParentScrollbar>,
         <StyledIslandParentNoScrollbar key="passes">
             <NextPassesIsland/>
@@ -692,7 +692,7 @@ const TargetSatelliteLayout = React.memo(function TargetSatelliteLayout() {
 
     return (
         <>
-            <TargetSatelliteSelectorBar/>
+            <TargetSelectorBar/>
             <div ref={containerRef}>
                 {ResponsiveGridLayoutParent}
             </div>

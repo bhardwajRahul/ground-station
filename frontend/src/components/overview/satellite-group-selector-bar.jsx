@@ -20,7 +20,7 @@
 import React, { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useStore } from "react-redux";
-import { Box, FormControl, InputLabel, Select, MenuItem, ListSubheader, Chip, Menu, Typography, Badge, Tooltip, ToggleButton, Button, Stack } from "@mui/material";
+import { Box, FormControl, InputLabel, Select, MenuItem, ListSubheader, Chip, Menu, Typography, Badge, Tooltip, ToggleButton, Button, Stack, useMediaQuery, useTheme } from "@mui/material";
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
@@ -46,6 +46,9 @@ const SatelliteGroupSelectorBar = React.memo(function SatelliteGroupSelectorBar(
     const { t } = useTranslation('overview');
     const { socket } = useSocket();
     const store = useStore();
+    const theme = useTheme();
+    const isCompactHeader = useMediaQuery(theme.breakpoints.down('lg'));
+    const isTightHeader = useMediaQuery(theme.breakpoints.down('md'));
 
     const selectedSatGroupId = useSelector(state => state.overviewSatTrack.selectedSatGroupId);
     const satGroups = useSelector(state => state.overviewSatTrack.satGroups);
@@ -247,19 +250,23 @@ const SatelliteGroupSelectorBar = React.memo(function SatelliteGroupSelectorBar(
                 display: 'flex',
                 alignItems: 'center',
                 gap: '16px',
-                padding: '12px 12px',
+                padding: isTightHeader ? '8px 10px' : '12px 12px',
                 bgcolor: 'background.paper',
                 borderBottom: '1px solid',
                 borderColor: 'border.main',
-                height: '64px',
-                minHeight: '64px',
-                maxHeight: '64px',
+                height: isTightHeader ? '56px' : '64px',
+                minHeight: isTightHeader ? '56px' : '64px',
+                maxHeight: isTightHeader ? '56px' : '64px',
                 maxWidth: '100%',
                 overflow: 'hidden',
             }}
         >
             <FormControl
-                sx={{ minWidth: 200, maxWidth: 300, flexShrink: 0 }}
+                sx={{
+                    minWidth: isTightHeader ? 160 : (isCompactHeader ? 180 : 200),
+                    maxWidth: isTightHeader ? 250 : 300,
+                    flexShrink: 0,
+                }}
                 disabled={passesLoading}
                 variant="outlined"
                 size="small"
@@ -351,57 +358,71 @@ const SatelliteGroupSelectorBar = React.memo(function SatelliteGroupSelectorBar(
                 >
                     {/* All pills - let IntersectionObserver determine visibility */}
                     {pillGroups.map((group) => (
-                        <Button
+                        <Tooltip
                             key={group.id}
-                            data-pill-id={group.id}
-                            ref={(el) => {
-                                if (el) {
-                                    pillRefs.current.set(group.id, el);
-                                } else {
-                                    pillRefs.current.delete(group.id);
-                                }
-                            }}
-                            variant={selectedSatGroupId === group.id ? "contained" : "outlined"}
-                            size="small"
-                            onClick={() => handleRecentGroupClick(group.id)}
-                            sx={{
-                                flexShrink: 0,
-                                textTransform: 'none',
-                                borderRadius: '16px',
-                                px: 2,
-                            }}
+                            title={`${group.name} (${group.satelliteCount} satellites)`}
+                            arrow
                         >
-                            {group.name}
-                            <Box
-                                component="span"
+                            <Button
+                                data-pill-id={group.id}
+                                ref={(el) => {
+                                    if (el) {
+                                        pillRefs.current.set(group.id, el);
+                                    } else {
+                                        pillRefs.current.delete(group.id);
+                                    }
+                                }}
+                                variant={selectedSatGroupId === group.id ? "contained" : "outlined"}
+                                size="small"
+                                onClick={() => handleRecentGroupClick(group.id)}
                                 sx={{
-                                    ml: 1,
-                                    opacity: 0.7,
-                                    fontWeight: 'bold',
+                                    flexShrink: 0,
+                                    textTransform: 'none',
+                                    borderRadius: '16px',
+                                    px: isTightHeader ? 1 : (isCompactHeader ? 1.25 : 2),
+                                    minHeight: isTightHeader ? 22 : (isCompactHeader ? 24 : 28),
+                                    height: isTightHeader ? 22 : (isCompactHeader ? 24 : 28),
+                                    fontSize: isTightHeader ? '0.68rem' : (isCompactHeader ? '0.72rem' : '0.78rem'),
+                                    lineHeight: 1.05,
                                 }}
                             >
-                                {group.satelliteCount}
-                            </Box>
-                        </Button>
+                                {group.name}
+                                <Box
+                                    component="span"
+                                    sx={{
+                                        ml: 1,
+                                        opacity: 0.7,
+                                        fontWeight: 'bold',
+                                        fontSize: 'inherit',
+                                    }}
+                                >
+                                    {group.satelliteCount}
+                                </Box>
+                            </Button>
+                        </Tooltip>
                     ))}
                 </Box>
 
                 {/* "More" button */}
                 {hasHiddenPills && (
-                    <Chip
-                        label={`+${hiddenPills.length}`}
-                        size="small"
-                        clickable
-                        onClick={handleMoreClick}
-                        sx={{
-                            cursor: 'pointer',
-                            flexShrink: 0,
-                            bgcolor: 'action.selected',
-                            '&:hover': {
-                                bgcolor: 'action.hover',
-                            },
-                        }}
-                    />
+                    <Tooltip title={`Show ${hiddenPills.length} more groups`} arrow>
+                        <Chip
+                            label={`+${hiddenPills.length}`}
+                            size="small"
+                            clickable
+                            onClick={handleMoreClick}
+                            sx={{
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                                height: isTightHeader ? 20 : 24,
+                                fontSize: isTightHeader ? '0.68rem' : '0.75rem',
+                                bgcolor: 'action.selected',
+                                '&:hover': {
+                                    bgcolor: 'action.hover',
+                                },
+                            }}
+                        />
+                    </Tooltip>
                 )}
 
                 {/* Dropdown menu for hidden pills */}
@@ -456,7 +477,7 @@ const SatelliteGroupSelectorBar = React.memo(function SatelliteGroupSelectorBar(
                         display: 'flex',
                         alignItems: 'center',
                         gap: '12px',
-                        padding: '6px 12px',
+                        padding: isTightHeader ? '4px 8px' : '6px 12px',
                         bgcolor: 'action.hover',
                         borderRadius: '16px',
                         flexShrink: 0,
@@ -465,7 +486,7 @@ const SatelliteGroupSelectorBar = React.memo(function SatelliteGroupSelectorBar(
                     }}
                 >
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <VisibilityIcon sx={{ fontSize: '1.2rem', color: 'success.main' }} />
+                        <VisibilityIcon sx={{ fontSize: isTightHeader ? '1rem' : '1.2rem', color: 'success.main' }} />
                         <Typography variant="body2" sx={{ fontWeight: 'bold', color: 'text.primary' }}>
                             {visibleSatellitesCount}
                         </Typography>
@@ -473,7 +494,7 @@ const SatelliteGroupSelectorBar = React.memo(function SatelliteGroupSelectorBar(
 
                     {risingCount > 0 && (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                            <TrendingUpIcon sx={{ fontSize: '1rem', color: 'info.main' }} />
+                            <TrendingUpIcon sx={{ fontSize: isTightHeader ? '0.85rem' : '1rem', color: 'info.main' }} />
                             <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'info.main' }}>
                                 {risingCount}
                             </Typography>
@@ -482,7 +503,7 @@ const SatelliteGroupSelectorBar = React.memo(function SatelliteGroupSelectorBar(
 
                     {peakCount > 0 && (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                            <HorizontalRuleIcon sx={{ fontSize: '1rem', color: 'warning.main' }} />
+                            <HorizontalRuleIcon sx={{ fontSize: isTightHeader ? '0.85rem' : '1rem', color: 'warning.main' }} />
                             <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'warning.main' }}>
                                 {peakCount}
                             </Typography>
@@ -491,7 +512,7 @@ const SatelliteGroupSelectorBar = React.memo(function SatelliteGroupSelectorBar(
 
                     {fallingCount > 0 && (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                            <TrendingDownIcon sx={{ fontSize: '1rem', color: 'error.main' }} />
+                            <TrendingDownIcon sx={{ fontSize: isTightHeader ? '0.85rem' : '1rem', color: 'error.main' }} />
                             <Typography variant="caption" sx={{ fontWeight: 'bold', color: 'error.main' }}>
                                 {fallingCount}
                             </Typography>

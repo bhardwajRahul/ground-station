@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Box,
     Button,
@@ -18,10 +18,13 @@ import {
     Select,
     Tooltip,
     Typography,
+    useMediaQuery,
+    useTheme,
 } from '@mui/material';
 import { alpha, darken, lighten, styled } from '@mui/material/styles';
 import { DataGrid, gridClasses } from '@mui/x-data-grid';
 import AccessTimeFilledIcon from '@mui/icons-material/AccessTimeFilled';
+import ArrowUpwardRoundedIcon from '@mui/icons-material/ArrowUpwardRounded';
 import DoneAllIcon from '@mui/icons-material/DoneAll';
 import RadioButtonCheckedIcon from '@mui/icons-material/RadioButtonChecked';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -319,6 +322,9 @@ const CelestialPasses = ({
     refreshDisabled = false,
 }) => {
     const dispatch = useDispatch();
+    const theme = useTheme();
+    const isCompactHeader = useMediaQuery(theme.breakpoints.down('lg'));
+    const isTightHeader = useMediaQuery(theme.breakpoints.down('md'));
     const { timezone, locale } = useUserTimeSettings();
     const [quickFilterPreset, setQuickFilterPreset] = useState('all');
     const [settingsOpen, setSettingsOpen] = useState(false);
@@ -531,7 +537,7 @@ const CelestialPasses = ({
         { field: 'targetId', headerName: 'Target ID', minWidth: 180 },
     ], [nowMs, timezone, locale]);
 
-    const handleQuickPreset = (preset) => {
+    const handleQuickPreset = useCallback((preset) => {
         setQuickFilterPreset(preset);
         if (preset === 'highEl') {
             dispatch(setCelestialPassesTableSortModel([
@@ -544,7 +550,36 @@ const CelestialPasses = ({
             { field: 'status', sort: 'asc' },
             { field: 'eventStart', sort: 'asc' },
         ]));
-    };
+    }, [dispatch]);
+
+    useEffect(() => {
+        const handleKeyboardShortcuts = (event) => {
+            if (!event.altKey) return;
+            if (event.key === '1') handleQuickPreset('all');
+            else if (event.key === '2') handleQuickPreset('live');
+            else if (event.key === '3') handleQuickPreset('next30');
+            else if (event.key === '4') handleQuickPreset('highEl');
+            else return;
+            event.preventDefault();
+        };
+        window.addEventListener('keydown', handleKeyboardShortcuts);
+        return () => window.removeEventListener('keydown', handleKeyboardShortcuts);
+    }, [handleQuickPreset]);
+
+    const useIconQuickFilters = isCompactHeader;
+    const quickFilterButtonSx = useMemo(() => ({
+        minHeight: isTightHeader ? 20 : (isCompactHeader ? 22 : 24),
+        height: isTightHeader ? 20 : (isCompactHeader ? 22 : 24),
+        py: 0,
+        px: isTightHeader ? 0.7 : (isCompactHeader ? 0.85 : 1),
+        lineHeight: 1.05,
+        fontSize: isTightHeader ? '0.64rem' : (isCompactHeader ? '0.68rem' : '0.72rem'),
+        minWidth: useIconQuickFilters ? 30 : 'auto',
+    }), [isCompactHeader, isTightHeader, useIconQuickFilters]);
+    const titleIconButtonSx = useMemo(
+        () => ({ p: isTightHeader ? '1px' : '2px' }),
+        [isTightHeader]
+    );
 
     const getRowClassName = (params) => {
         const classes = ['pointer-cursor'];
@@ -585,21 +620,61 @@ const CelestialPasses = ({
                         </Typography>
                     </Box>
                     <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
-                        <Button size="small" variant={quickFilterPreset === 'all' ? 'contained' : 'outlined'} onClick={() => handleQuickPreset('all')} sx={{ minHeight: 24, height: 24, py: 0, px: 1, lineHeight: 1.1, fontSize: '0.72rem' }}>
-                            All
-                        </Button>
-                        <Button size="small" variant={quickFilterPreset === 'live' ? 'contained' : 'outlined'} onClick={() => handleQuickPreset('live')} sx={{ minHeight: 24, height: 24, py: 0, px: 1, lineHeight: 1.1, fontSize: '0.72rem' }}>
-                            Live
-                        </Button>
-                        <Button size="small" variant={quickFilterPreset === 'next30' ? 'contained' : 'outlined'} onClick={() => handleQuickPreset('next30')} sx={{ minHeight: 24, height: 24, py: 0, px: 1, lineHeight: 1.1, fontSize: '0.72rem' }}>
-                            Next 30m
-                        </Button>
-                        <Button size="small" variant={quickFilterPreset === 'highEl' ? 'contained' : 'outlined'} onClick={() => handleQuickPreset('highEl')} sx={{ minHeight: 24, height: 24, py: 0, px: 1, lineHeight: 1.1, fontSize: '0.72rem' }}>
-                            High El
-                        </Button>
+                        <Tooltip title="All passes (Alt+1)">
+                            <span>
+                                <Button
+                                    size="small"
+                                    variant={quickFilterPreset === 'all' ? 'contained' : 'outlined'}
+                                    onClick={() => handleQuickPreset('all')}
+                                    sx={quickFilterButtonSx}
+                                    aria-label="All passes"
+                                >
+                                    {useIconQuickFilters ? <DoneAllIcon sx={{ fontSize: isTightHeader ? '0.82rem' : '0.9rem' }} /> : 'All'}
+                                </Button>
+                            </span>
+                        </Tooltip>
+                        <Tooltip title="Live passes (Alt+2)">
+                            <span>
+                                <Button
+                                    size="small"
+                                    variant={quickFilterPreset === 'live' ? 'contained' : 'outlined'}
+                                    onClick={() => handleQuickPreset('live')}
+                                    sx={quickFilterButtonSx}
+                                    aria-label="Live passes"
+                                >
+                                    {useIconQuickFilters ? <RadioButtonCheckedIcon sx={{ fontSize: isTightHeader ? '0.82rem' : '0.9rem' }} /> : 'Live'}
+                                </Button>
+                            </span>
+                        </Tooltip>
+                        <Tooltip title="Live or next 30 minutes (Alt+3)">
+                            <span>
+                                <Button
+                                    size="small"
+                                    variant={quickFilterPreset === 'next30' ? 'contained' : 'outlined'}
+                                    onClick={() => handleQuickPreset('next30')}
+                                    sx={quickFilterButtonSx}
+                                    aria-label="Next 30 minutes"
+                                >
+                                    {useIconQuickFilters ? <AccessTimeFilledIcon sx={{ fontSize: isTightHeader ? '0.82rem' : '0.9rem' }} /> : 'Next 30m'}
+                                </Button>
+                            </span>
+                        </Tooltip>
+                        <Tooltip title="Highest elevation first (Alt+4)">
+                            <span>
+                                <Button
+                                    size="small"
+                                    variant={quickFilterPreset === 'highEl' ? 'contained' : 'outlined'}
+                                    onClick={() => handleQuickPreset('highEl')}
+                                    sx={quickFilterButtonSx}
+                                    aria-label="Highest elevation first"
+                                >
+                                    {useIconQuickFilters ? <ArrowUpwardRoundedIcon sx={{ fontSize: isTightHeader ? '0.82rem' : '0.9rem' }} /> : 'High El'}
+                                </Button>
+                            </span>
+                        </Tooltip>
                         <Tooltip title="Table settings">
                             <span>
-                                <IconButton size="small" onClick={() => setSettingsOpen(true)} sx={{ p: '2px' }}>
+                                <IconButton size="small" onClick={() => setSettingsOpen(true)} sx={titleIconButtonSx}>
                                     <SettingsIcon fontSize="small" />
                                 </IconButton>
                             </span>
@@ -610,7 +685,7 @@ const CelestialPasses = ({
                                     size="small"
                                     onClick={onRefresh}
                                     disabled={refreshDisabled || !onRefresh}
-                                    sx={{ p: '2px' }}
+                                    sx={titleIconButtonSx}
                                 >
                                     <RefreshIcon fontSize="small" />
                                 </IconButton>

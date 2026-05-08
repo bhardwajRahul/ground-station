@@ -39,6 +39,8 @@ import {
     DialogContent,
     DialogContentText,
     DialogActions,
+    useMediaQuery,
+    useTheme,
 } from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
 import { useSocket } from "../common/socket.jsx";
@@ -274,9 +276,12 @@ const resolveTabLedPresentation = ({ source, status, usedRigFallback }) => {
     };
 };
 
-const TargetSatelliteSelectorBar = React.memo(function TargetSatelliteSelectorBar() {
+const TargetSelectorBar = React.memo(function TargetSelectorBar() {
     const { socket } = useSocket();
     const dispatch = useDispatch();
+    const theme = useTheme();
+    const isCompactHeader = useMediaQuery(theme.breakpoints.down('lg'));
+    const isTightHeader = useMediaQuery(theme.breakpoints.down('md'));
 
     const {
         trackingState,
@@ -1666,9 +1671,9 @@ const TargetSatelliteSelectorBar = React.memo(function TargetSatelliteSelectorBa
                 bgcolor: 'background.paper',
                 borderBottom: '1px solid',
                 borderColor: 'border.main',
-                minHeight: '64px',
-                height: '64px',
-                maxHeight: '64px',
+                minHeight: isTightHeader ? '56px' : '64px',
+                height: isTightHeader ? '56px' : '64px',
+                maxHeight: isTightHeader ? '56px' : '64px',
                 minWidth: 0,
                 overflow: 'hidden',
             }}
@@ -1701,21 +1706,23 @@ const TargetSatelliteSelectorBar = React.memo(function TargetSatelliteSelectorBa
                                 gap: 0.5,
                             }}
                         >
-                            <IconButton
-                                onClick={handleOpenCreateDialog}
-                                sx={{
-                                    width: 42,
-                                    height: 42,
-                                    color: 'text.secondary',
-                                    '&:hover': {
-                                        backgroundColor: 'action.hover',
-                                    },
-                                }}
-                            >
-                                <Typography component="span" sx={{ fontSize: '1.9rem', lineHeight: 1, fontWeight: 700 }}>
-                                    +
-                                </Typography>
-                            </IconButton>
+                            <Tooltip title="Add target slot (satellite, mission, or body)" arrow>
+                                <IconButton
+                                    onClick={handleOpenCreateDialog}
+                                    sx={{
+                                        width: isTightHeader ? 34 : (isCompactHeader ? 38 : 42),
+                                        height: isTightHeader ? 34 : (isCompactHeader ? 38 : 42),
+                                        color: 'text.secondary',
+                                        '&:hover': {
+                                            backgroundColor: 'action.hover',
+                                        },
+                                    }}
+                                >
+                                    <Typography component="span" sx={{ fontSize: isTightHeader ? '1.55rem' : '1.9rem', lineHeight: 1, fontWeight: 700 }}>
+                                        +
+                                    </Typography>
+                                </IconButton>
+                            </Tooltip>
                             <Typography
                                 variant="button"
                                 sx={{
@@ -1867,26 +1874,28 @@ const TargetSatelliteSelectorBar = React.memo(function TargetSatelliteSelectorBa
                                                             {`Az ${option.satAz != null ? option.satAz.toFixed(1) : '--'}° • El ${option.satEl != null ? option.satEl.toFixed(1) : '--'}°`}
                                                         </Typography>
                                                     </Box>
-                                                    <IconButton
-                                                        component="span"
-                                                        size="small"
-                                                        aria-label={`Delete ${option.targetName} target`}
-                                                        onMouseDown={(event) => {
-                                                            event.preventDefault();
-                                                            event.stopPropagation();
-                                                        }}
-                                                        onClick={(event) => handleDeleteTarget(event, option)}
-                                                        sx={{
-                                                            p: 0.3,
-                                                            ml: 0.2,
-                                                            color: 'inherit',
-                                                            '&:hover': {
-                                                                bgcolor: 'rgba(255,255,255,0.16)',
-                                                            },
-                                                        }}
-                                                    >
-                                                        <CloseIcon sx={{ fontSize: '0.95rem' }} />
-                                                    </IconButton>
+                                                    <Tooltip title={`Delete target ${option.targetNumber}`} arrow>
+                                                        <IconButton
+                                                            component="span"
+                                                            size="small"
+                                                            aria-label={`Delete ${option.targetName} target`}
+                                                            onMouseDown={(event) => {
+                                                                event.preventDefault();
+                                                                event.stopPropagation();
+                                                            }}
+                                                            onClick={(event) => handleDeleteTarget(event, option)}
+                                                            sx={{
+                                                                p: isTightHeader ? 0.2 : 0.3,
+                                                                ml: 0.2,
+                                                                color: 'inherit',
+                                                                '&:hover': {
+                                                                    bgcolor: 'rgba(255,255,255,0.16)',
+                                                                },
+                                                            }}
+                                                        >
+                                                            <CloseIcon sx={{ fontSize: isTightHeader ? '0.82rem' : '0.95rem' }} />
+                                                        </IconButton>
+                                                    </Tooltip>
                                                 </Box>
                                             </Tooltip>
                                         }
@@ -1951,4 +1960,4 @@ const TargetSatelliteSelectorBar = React.memo(function TargetSatelliteSelectorBa
     );
 });
 
-export default TargetSatelliteSelectorBar;
+export default TargetSelectorBar;

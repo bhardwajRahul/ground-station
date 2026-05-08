@@ -66,12 +66,37 @@ import {fetchSatellite} from "./target-slice.jsx";
 import {useSocket} from "../common/socket.jsx";
 import { targetIdentifierSelector, targetTypeSelector, trackingStateSelector } from "./state-selectors.jsx";
 import {
+    buildTargetKeyFromTrackingState,
     normalizeTargetType as normalizeTrackingTargetType,
     resolveTargetDisplayName,
 } from './celestial-target-utils.js';
 // ElevationDisplay not used in target page; using satelliteData for elevation per request
 
-const TargetSatelliteInfoIsland = () => {
+const AU_IN_KM = 149597870.7;
+const SECONDS_PER_DAY = 86400;
+const AU_PER_DAY_TO_KM_PER_S = AU_IN_KM / SECONDS_PER_DAY;
+const LIGHT_TIME_MIN_PER_AU = 8.316746397;
+
+const magnitude3 = (vector) => {
+    if (!Array.isArray(vector) || vector.length < 3) return NaN;
+    const [x, y, z] = vector;
+    if (![x, y, z].every((value) => Number.isFinite(value))) return NaN;
+    return Math.sqrt(x * x + y * y + z * z);
+};
+
+const formatCountdownDiff = (diffMs) => {
+    if (!Number.isFinite(diffMs) || diffMs <= 0) return '0s';
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+    if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+};
+
+const TargetInfoIsland = () => {
     const { t } = useTranslation('target');
     const { t: tSat } = useTranslation('satellites');
     const dispatch = useDispatch();
@@ -83,12 +108,12 @@ const TargetSatelliteInfoIsland = () => {
     const celestialState = useSelector((state) => state.celestial || {});
     const monitoredRows = useSelector((state) => state.celestialMonitored?.monitored || []);
     const trackerInstances = useSelector((state) => state.trackerInstances?.instances || []);
-    const selectedSatellitePositions = useSelector(state => state.overviewSatTrack.selectedSatellitePositions);
     const navigate = useNavigate();
     const transmitters = satelliteData?.transmitters || [];
     const [satelliteEditDialogOpen, setSatelliteEditDialogOpen] = React.useState(false);
     const [transmittersDialogOpen, setTransmittersDialogOpen] = React.useState(false);
-    const [countdown, setCountdown] = React.useState('');
+    const [satelliteCountdown, setSatelliteCountdown] = React.useState('');
+    const [nonSatelliteCountdown, setNonSatelliteCountdown] = React.useState('');
     const selectedNoradId = satelliteData?.details?.norad_id || satelliteId || null;
     const selectedSatelliteName = satelliteData?.details?.name || '';
     const hasTargets = trackerInstances.length > 0;
@@ -109,12 +134,66 @@ const TargetSatelliteInfoIsland = () => {
     const detailsTargetType = normalizeTrackingTargetType(satelliteData?.details || {});
     // Mission/body retargets can temporarily show old satellite telemetry until worker updates arrive.
     const hasCurrentNonSatelliteTelemetry = !isSatelliteTarget && detailsTargetType === targetType;
+    const nonSatelliteTargetKey = React.useMemo(
+        () => buildTargetKeyFromTrackingState(trackingState),
+        [trackingState],
+    );
+    const celestialRows = React.useMemo(
+        () => (Array.isArray(celestialState?.celestialTracks?.celestial) ? celestialState.celestialTracks.celestial : []),
+        [celestialState?.celestialTracks?.celestial],
+    );
+    const celestialPassRows = React.useMemo(
+        () => (Array.isArray(celestialState?.celestialTracks?.celestial_passes) ? celestialState.celestialTracks.celestial_passes : []),
+        [celestialState?.celestialTracks?.celestial_passes],
+    );
+    // Keep the info card resilient: prefer exact target_key, then fall back to command/body lookups.
+    const nonSatelliteTrack = React.useMemo(() => {
+        if (isSatelliteTarget) return null;
+        if (nonSatelliteTargetKey) {
+            const keyMatch = celestialRows.find((row) => String(row?.target_key || '').trim() === nonSatelliteTargetKey);
+            if (keyMatch) return keyMatch;
+        }
+        if (targetType === 'mission') {
+            const command = String(trackingState?.command || '').trim();
+            if (command) {
+                return celestialRows.find((row) => String(row?.command || '').trim() === command) || null;
+            }
+            return null;
+        }
+        const bodyId = String(trackingState?.body_id || '').trim().toLowerCase();
+        if (!bodyId) return null;
+        return celestialRows.find((row) => {
+            const rowBody = String(row?.body_id || row?.bodyId || row?.command || '').trim().toLowerCase();
+            return rowBody === bodyId;
+        }) || null;
+    }, [celestialRows, isSatelliteTarget, nonSatelliteTargetKey, targetType, trackingState?.body_id, trackingState?.command]);
+    // Monitored rows provide user-managed metadata (refresh timestamp, source mode, errors).
+    const monitoredTarget = React.useMemo(() => {
+        if (isSatelliteTarget) return null;
+        if (nonSatelliteTargetKey) {
+            const keyMatch = monitoredRows.find((row) => String(row?.targetKey || row?.target_key || '').trim() === nonSatelliteTargetKey);
+            if (keyMatch) return keyMatch;
+        }
+        if (targetType === 'mission') {
+            const command = String(trackingState?.command || '').trim();
+            if (command) {
+                return monitoredRows.find((row) => String(row?.command || '').trim() === command) || null;
+            }
+            return null;
+        }
+        const bodyId = String(trackingState?.body_id || '').trim().toLowerCase();
+        if (!bodyId) return null;
+        return monitoredRows.find((row) => {
+            const rowBody = String(row?.bodyId || row?.body_id || row?.command || '').trim().toLowerCase();
+            return rowBody === bodyId;
+        }) || null;
+    }, [isSatelliteTarget, monitoredRows, nonSatelliteTargetKey, targetType, trackingState?.body_id, trackingState?.command]);
     const nonSatelliteTargetName = String(
         resolveTargetDisplayName({
             trackingState,
             satelliteDetails: hasCurrentNonSatelliteTelemetry ? (satelliteData?.details || {}) : {},
             monitoredRows,
-            celestialRows: celestialState?.celestialTracks?.celestial || [],
+            celestialRows,
         })
         || targetIdentifier
         || ''
@@ -126,11 +205,104 @@ const TargetSatelliteInfoIsland = () => {
         || targetIdentifier
         || '-'
     ).trim();
-    const nonSatelliteAzimuth = hasCurrentNonSatelliteTelemetry ? Number(satelliteData?.position?.az) : NaN;
-    const nonSatelliteElevation = hasCurrentNonSatelliteTelemetry ? Number(satelliteData?.position?.el) : NaN;
+    // During retarget transitions tracker telemetry can arrive before celestial rows refresh.
+    // Use tracker az/el as a temporary fallback to avoid an empty UI state.
+    const trackAzimuth = Number(nonSatelliteTrack?.sky_position?.az_deg);
+    const trackElevation = Number(nonSatelliteTrack?.sky_position?.el_deg);
+    const fallbackAzimuth = hasCurrentNonSatelliteTelemetry ? Number(satelliteData?.position?.az) : NaN;
+    const fallbackElevation = hasCurrentNonSatelliteTelemetry ? Number(satelliteData?.position?.el) : NaN;
+    const nonSatelliteAzimuth = Number.isFinite(trackAzimuth) ? trackAzimuth : fallbackAzimuth;
+    const nonSatelliteElevation = Number.isFinite(trackElevation) ? trackElevation : fallbackElevation;
+    const nonSatelliteVisible = typeof nonSatelliteTrack?.visibility?.visible === 'boolean'
+        ? nonSatelliteTrack.visibility.visible
+        : (Number.isFinite(nonSatelliteElevation) ? nonSatelliteElevation > 0 : null);
+    const nonSatelliteError = String(nonSatelliteTrack?.error || monitoredTarget?.lastError || '').trim();
+    const nonSatelliteSource = String(
+        nonSatelliteTrack?.source
+        || (targetType === 'body' ? 'offline-solar-system' : 'horizons')
+    ).trim() || '-';
+    const nonSatelliteSourceMode = String(
+        monitoredTarget?.sourceMode
+        || monitoredTarget?.source_mode
+        || (targetType === 'body' ? 'static-body' : 'catalog')
+    ).trim() || '-';
+    const nonSatelliteCache = String(nonSatelliteTrack?.cache || '-').trim() || '-';
+    const nonSatelliteStale = Boolean(nonSatelliteTrack?.stale);
+    const nonSatelliteSampleCount = Array.isArray(nonSatelliteTrack?.orbit_samples_xyz_au)
+        ? nonSatelliteTrack.orbit_samples_xyz_au.length
+        : 0;
+    const nonSatelliteDistanceAu = magnitude3(nonSatelliteTrack?.position_xyz_au);
+    const nonSatelliteDistanceKm = Number.isFinite(nonSatelliteDistanceAu) ? nonSatelliteDistanceAu * AU_IN_KM : NaN;
+    const nonSatelliteSpeedAuPerDay = magnitude3(nonSatelliteTrack?.velocity_xyz_au_per_day);
+    const nonSatelliteSpeedKmS = Number.isFinite(nonSatelliteSpeedAuPerDay) ? nonSatelliteSpeedAuPerDay * AU_PER_DAY_TO_KM_PER_S : NaN;
+    const nonSatelliteLightTimeMinutes = Number.isFinite(nonSatelliteDistanceAu) ? nonSatelliteDistanceAu * LIGHT_TIME_MIN_PER_AU : NaN;
+    const nonSatelliteProjection = nonSatelliteTrack?.orbit_sampling || {};
+    const nonSatelliteLastRefresh = monitoredTarget?.lastRefreshAt || monitoredTarget?.last_refresh_at || null;
+    const nonSatelliteHasRealtime = Number.isFinite(nonSatelliteAzimuth) || Number.isFinite(nonSatelliteElevation);
+    const nonSatelliteStatusMeta = React.useMemo(() => {
+        if (nonSatelliteError) {
+            return {
+                chipColor: 'error',
+                chipLabel: 'Error',
+                dotColor: 'error.main',
+                gradient: (theme) => `linear-gradient(135deg, ${theme.palette.error.main}26 0%, ${theme.palette.error.main}0D 100%)`,
+            };
+        }
+        if (nonSatelliteVisible === true) {
+            return {
+                chipColor: 'success',
+                chipLabel: 'Visible',
+                dotColor: 'success.main',
+                gradient: (theme) => `linear-gradient(135deg, ${theme.palette.success.main}26 0%, ${theme.palette.success.main}0D 100%)`,
+            };
+        }
+        if (nonSatelliteVisible === false) {
+            return {
+                chipColor: 'default',
+                chipLabel: 'Below Horizon',
+                dotColor: 'warning.main',
+                gradient: (theme) => `linear-gradient(135deg, ${theme.palette.warning.main}26 0%, ${theme.palette.warning.main}0D 100%)`,
+            };
+        }
+        return {
+            chipColor: 'default',
+            chipLabel: 'Unknown',
+            dotColor: 'text.secondary',
+            gradient: (theme) => `linear-gradient(135deg, ${theme.palette.overlay.light} 0%, ${theme.palette.overlay.main} 100%)`,
+        };
+    }, [nonSatelliteError, nonSatelliteVisible]);
+    // Celestial passes are keyed by mission/body target_key instead of NORAD id.
+    const nonSatellitePassInfo = React.useMemo(() => {
+        if (isSatelliteTarget || !nonSatelliteTargetKey || celestialPassRows.length === 0) {
+            return null;
+        }
+        const now = new Date();
+        const targetPasses = celestialPassRows.filter((pass) => String(pass?.target_key || '').trim() === nonSatelliteTargetKey);
+        const activePass = targetPasses.find((pass) => {
+            const start = new Date(pass?.event_start);
+            const end = new Date(pass?.event_end);
+            return now >= start && now <= end;
+        });
+        if (activePass) {
+            return { type: 'active', pass: activePass };
+        }
+        let nextPass = null;
+        let earliestStart = null;
+        for (const pass of targetPasses) {
+            const start = new Date(pass?.event_start);
+            if (start > now && (!earliestStart || start < earliestStart)) {
+                earliestStart = start;
+                nextPass = pass;
+            }
+        }
+        if (nextPass) {
+            return { type: 'upcoming', pass: nextPass };
+        }
+        return null;
+    }, [celestialPassRows, isSatelliteTarget, nonSatelliteTargetKey]);
     const formatAngle = (value) => (Number.isFinite(value) ? `${value.toFixed(1)}°` : '--');
 
-    const passInfo = React.useMemo(() => {
+    const satellitePassInfo = React.useMemo(() => {
         if (!selectedNoradId || !Array.isArray(satellitePasses) || satellitePasses.length === 0) {
             return null;
         }
@@ -164,33 +336,40 @@ const TargetSatelliteInfoIsland = () => {
     }, [selectedNoradId, satellitePasses]);
 
     React.useEffect(() => {
-        if (!passInfo) {
-            setCountdown('');
+        if (!satellitePassInfo) {
+            setSatelliteCountdown('');
             return;
         }
         const updateCountdown = () => {
             const now = new Date();
-            const targetTime = passInfo.type === 'active'
-                ? new Date(passInfo.pass.event_end)
-                : new Date(passInfo.pass.event_start);
+            const targetTime = satellitePassInfo.type === 'active'
+                ? new Date(satellitePassInfo.pass.event_end)
+                : new Date(satellitePassInfo.pass.event_start);
             const diff = targetTime - now;
-            if (diff <= 0) {
-                setCountdown('0s');
-                return;
-            }
-            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-            if (days > 0) setCountdown(`${days}d ${hours}h ${minutes}m`);
-            else if (hours > 0) setCountdown(`${hours}h ${minutes}m ${seconds}s`);
-            else if (minutes > 0) setCountdown(`${minutes}m ${seconds}s`);
-            else setCountdown(`${seconds}s`);
+            setSatelliteCountdown(formatCountdownDiff(diff));
         };
         updateCountdown();
         const interval = window.setInterval(updateCountdown, 1000);
         return () => window.clearInterval(interval);
-    }, [passInfo]);
+    }, [satellitePassInfo]);
+
+    React.useEffect(() => {
+        if (!nonSatellitePassInfo) {
+            setNonSatelliteCountdown('');
+            return;
+        }
+        const updateCountdown = () => {
+            const now = new Date();
+            const targetTime = nonSatellitePassInfo.type === 'active'
+                ? new Date(nonSatellitePassInfo.pass.event_end)
+                : new Date(nonSatellitePassInfo.pass.event_start);
+            const diff = targetTime - now;
+            setNonSatelliteCountdown(formatCountdownDiff(diff));
+        };
+        updateCountdown();
+        const interval = window.setInterval(updateCountdown, 1000);
+        return () => window.clearInterval(interval);
+    }, [nonSatellitePassInfo]);
 
     const handleSatelliteSaved = () => {
         if (!selectedNoradId) {
@@ -444,8 +623,8 @@ const TargetSatelliteInfoIsland = () => {
                         <Box sx={{ display: 'flex', alignItems: 'center', px: 0.5, py: 0.3, bgcolor: 'overlay.main', borderRadius: 0.5 }}>
                             <AccessTimeIcon sx={{ fontSize: 11, mr: 0.4, color: 'text.secondary' }} />
                             <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.68rem' }} noWrap>
-                                {passInfo && countdown
-                                    ? (passInfo.type === 'active' ? `Pass ends in ${countdown}` : `Next pass in ${countdown}`)
+                                {satellitePassInfo && satelliteCountdown
+                                    ? (satellitePassInfo.type === 'active' ? `Pass ends in ${satelliteCountdown}` : `Next pass in ${satelliteCountdown}`)
                                     : 'No upcoming pass'}
                             </Typography>
                         </Box>
@@ -1004,61 +1183,347 @@ const TargetSatelliteInfoIsland = () => {
             )}
                 </>
             ) : (
-                <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1.5 }}>
-                    <Box sx={{ mb: 1.5, p: 1.25, bgcolor: 'overlay.light', borderRadius: 1 }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
-                            {nonSatelliteTargetName || '-'}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }} noWrap>
-                            {targetType === 'mission' ? 'Mission Command' : 'Body ID'} · {nonSatelliteIdentifier || '-'}
-                        </Typography>
-                        <Box sx={{ mt: 1, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-                            <Chip size="small" color="info" label={`Rotator: ${trackingState?.rotator_state || '-'}`} />
-                            <Chip size="small" variant="outlined" label={`Rig: ${trackingState?.rig_state || '-'}`} />
+                <>
+                    <Box sx={{
+                        p: 1,
+                        background: nonSatelliteStatusMeta.gradient,
+                        borderBottom: '1px solid',
+                        borderColor: 'border.main',
+                    }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
+                                <Box sx={{
+                                    width: 10,
+                                    height: 10,
+                                    borderRadius: '50%',
+                                    mr: 1,
+                                    flexShrink: 0,
+                                    bgcolor: nonSatelliteStatusMeta.dotColor,
+                                    boxShadow: (theme) => `0 0 8px ${theme.palette[nonSatelliteStatusMeta.chipColor]?.main || theme.palette.text.secondary}`,
+                                }} />
+                                <Box sx={{ minWidth: 0, flex: 1 }}>
+                                    <Typography variant="subtitle1" noWrap sx={{ fontWeight: 700, letterSpacing: '0.3px' }}>
+                                        {nonSatelliteTargetName || '-'}
+                                        <Typography
+                                            component="span"
+                                            variant="caption"
+                                            sx={{ ml: 0.75, color: 'text.secondary', fontWeight: 500, fontSize: '0.7rem' }}
+                                        >
+                                            {targetType === 'mission'
+                                                ? (nonSatelliteIdentifier || '-')
+                                                : `Body ID · ${nonSatelliteIdentifier || '-'}`}
+                                        </Typography>
+                                    </Typography>
+                                </Box>
+                            </Box>
                             <Chip
+                                label={nonSatelliteStatusMeta.chipLabel}
                                 size="small"
-                                color={Number.isFinite(nonSatelliteElevation) ? (nonSatelliteElevation > 0 ? 'success' : 'default') : 'default'}
-                                label={Number.isFinite(nonSatelliteElevation)
-                                    ? (nonSatelliteElevation > 0 ? 'Above Horizon' : 'Below Horizon')
-                                    : 'Visibility Unknown'}
+                                color={nonSatelliteStatusMeta.chipColor}
+                                sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700 }}
                             />
                         </Box>
+
+                        <Grid container spacing={0.5}>
+                            <Grid size={4}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', px: 0.5, py: 0.3, bgcolor: 'overlay.main', borderRadius: 0.5 }}>
+                                    <AccessTimeIcon sx={{ fontSize: 11, mr: 0.4, color: 'text.secondary' }} />
+                                    <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.68rem' }} noWrap>
+                                        {nonSatellitePassInfo && nonSatelliteCountdown
+                                            ? (nonSatellitePassInfo.type === 'active' ? `Pass ends in ${nonSatelliteCountdown}` : `Next pass in ${nonSatelliteCountdown}`)
+                                            : 'No upcoming pass'}
+                                    </Typography>
+                                </Box>
+                            </Grid>
+                            <Grid size={4}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', px: 0.5, py: 0.3, bgcolor: 'overlay.main', borderRadius: 0.5 }}>
+                                    <BusinessIcon sx={{ fontSize: 11, mr: 0.4, color: 'text.secondary' }} />
+                                    <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.68rem' }} noWrap>
+                                        {nonSatelliteSource}
+                                    </Typography>
+                                </Box>
+                            </Grid>
+                            <Grid size={4}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', px: 0.5, py: 0.3, bgcolor: 'overlay.main', borderRadius: 0.5 }}>
+                                    <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.68rem', whiteSpace: 'nowrap' }}>
+                                        Cache: {nonSatelliteCache}
+                                    </Typography>
+                                </Box>
+                            </Grid>
+                        </Grid>
                     </Box>
 
-                    {!hasCurrentNonSatelliteTelemetry ? (
-                        <Typography variant="caption" sx={{ color: 'warning.main', display: 'block', mb: 1.25 }}>
-                            Waiting for updated mission/body telemetry.
-                        </Typography>
-                    ) : null}
+                    <Box sx={{ pr: 1.5, pl: 1.5, pt: 1.5, pb: 1, flex: 1, overflow: 'auto' }}>
+                        {!nonSatelliteHasRealtime ? (
+                            <Typography variant="caption" sx={{ color: 'warning.main', display: 'block', mb: 1.25 }}>
+                                Waiting for updated mission/body telemetry.
+                            </Typography>
+                        ) : null}
 
-                    <Grid container spacing={1}>
-                        <Grid size={6}>
-                            <DataPoint icon={ExploreIcon} label="Target Azimuth" value={formatAngle(nonSatelliteAzimuth)} emphasis />
-                        </Grid>
-                        <Grid size={6}>
-                            <DataPoint icon={TrackChangesIcon} label="Target Elevation" value={formatAngle(nonSatelliteElevation)} emphasis />
-                        </Grid>
-                        <Grid size={6}>
-                            <DataPoint icon={InfoOutlinedIcon} label="Target Type" value={targetType === 'mission' ? 'Mission' : 'Body'} />
-                        </Grid>
-                        <Grid size={6}>
-                            <DataPoint
-                                icon={InfoOutlinedIcon}
-                                label={targetType === 'mission' ? 'Mission Command' : 'Body ID'}
-                                value={nonSatelliteIdentifier || '-'}
-                            />
-                        </Grid>
-                        <Grid size={6}>
-                            <DataPoint icon={MyLocationIcon} label="Rotator" value={String(trackingState?.rotator_id || '-')} />
-                        </Grid>
-                        <Grid size={6}>
-                            <DataPoint icon={RadioIcon} label="Rig" value={String(trackingState?.rig_id || '-')} />
-                        </Grid>
-                    </Grid>
-                </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                            <ExploreIcon sx={{ fontSize: 14, mr: 0.75, color: 'primary.main' }} />
+                            <Typography variant="overline" sx={{
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                color: 'primary.main',
+                                letterSpacing: '0.5px',
+                            }}>
+                                Real-Time Position
+                            </Typography>
+                        </Box>
+                        <Box sx={{ mb: 1.5, p: 1.25, bgcolor: 'overlay.light', borderRadius: 1 }}>
+                            <Grid container spacing={1}>
+                                <Grid size={6}>
+                                    <Box sx={{
+                                        textAlign: 'center',
+                                        p: 1,
+                                        bgcolor: 'background.paper',
+                                        borderRadius: 1,
+                                        border: '1px solid',
+                                        borderColor: 'divider',
+                                    }}>
+                                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', mb: 0.5 }}>
+                                            Elevation
+                                        </Typography>
+                                        <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main', fontFamily: 'monospace', lineHeight: 1 }}>
+                                            {formatAngle(nonSatelliteElevation)}
+                                        </Typography>
+                                    </Box>
+                                </Grid>
+                                <Grid size={6}>
+                                    <Box sx={{
+                                        textAlign: 'center',
+                                        p: 1,
+                                        bgcolor: 'background.paper',
+                                        borderRadius: 1,
+                                        border: '1px solid',
+                                        borderColor: 'divider',
+                                    }}>
+                                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', mb: 0.5 }}>
+                                            Azimuth
+                                        </Typography>
+                                        <Typography variant="h4" sx={{ fontWeight: 700, color: 'secondary.main', fontFamily: 'monospace', lineHeight: 1 }}>
+                                            {formatAngle(nonSatelliteAzimuth)}
+                                        </Typography>
+                                    </Box>
+                                </Grid>
+                                <Grid size={6}>
+                                    <Box sx={{
+                                        textAlign: 'center',
+                                        p: 1,
+                                        bgcolor: 'background.paper',
+                                        borderRadius: 1,
+                                        border: '1px solid',
+                                        borderColor: 'divider',
+                                    }}>
+                                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', mb: 0.5 }}>
+                                            Distance from Sun
+                                        </Typography>
+                                        <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', fontFamily: 'monospace', lineHeight: 1 }}>
+                                            {Number.isFinite(nonSatelliteDistanceAu) ? `${nonSatelliteDistanceAu.toFixed(4)} AU` : '--'}
+                                        </Typography>
+                                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.62rem' }}>
+                                            {Number.isFinite(nonSatelliteDistanceKm) ? `${(nonSatelliteDistanceKm / 1e6).toFixed(2)}M km` : ''}
+                                        </Typography>
+                                    </Box>
+                                </Grid>
+                                <Grid size={6}>
+                                    <Box sx={{
+                                        textAlign: 'center',
+                                        p: 1,
+                                        bgcolor: 'background.paper',
+                                        borderRadius: 1,
+                                        border: '1px solid',
+                                        borderColor: 'divider',
+                                    }}>
+                                        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', mb: 0.5 }}>
+                                            Speed
+                                        </Typography>
+                                        <Typography variant="h5" sx={{ fontWeight: 700, color: 'text.primary', fontFamily: 'monospace', lineHeight: 1 }}>
+                                            {Number.isFinite(nonSatelliteSpeedKmS) ? nonSatelliteSpeedKmS.toFixed(3) : '--'}
+                                            <Typography component="span" sx={{ ml: 0.5, fontSize: '0.7rem', color: 'text.secondary' }}>km/s</Typography>
+                                        </Typography>
+                                    </Box>
+                                </Grid>
+                            </Grid>
+                        </Box>
+
+                        <Section title="Target Geometry" icon={TrackChangesIcon}>
+                            <Grid container spacing={0.75}>
+                                <Grid size={6}>
+                                    <DataPoint icon={ExploreIcon} label="Azimuth" value={formatAngle(nonSatelliteAzimuth)} emphasis />
+                                </Grid>
+                                <Grid size={6}>
+                                    <DataPoint icon={TrackChangesIcon} label="Elevation" value={formatAngle(nonSatelliteElevation)} emphasis />
+                                </Grid>
+                                <Grid size={6}>
+                                    <DataPoint
+                                        icon={CheckCircleIcon}
+                                        label="Visibility"
+                                        value={nonSatelliteVisible == null ? 'Unknown' : (nonSatelliteVisible ? 'Above Horizon' : 'Below Horizon')}
+                                    />
+                                </Grid>
+                                <Grid size={6}>
+                                    <DataPoint
+                                        icon={AccessTimeIcon}
+                                        label="Light Time"
+                                        value={Number.isFinite(nonSatelliteLightTimeMinutes) ? nonSatelliteLightTimeMinutes.toFixed(2) : '--'}
+                                        unit="min"
+                                    />
+                                </Grid>
+                            </Grid>
+                        </Section>
+
+                        <Divider sx={{ my: 1, borderColor: 'border.main' }} />
+
+                        <Section title="Target Metadata" icon={InfoOutlinedIcon}>
+                            <Grid container spacing={0.75}>
+                                <Grid size={6}>
+                                    <DataPoint icon={InfoOutlinedIcon} label="Target Type" value={targetType === 'mission' ? 'Mission' : 'Body'} />
+                                </Grid>
+                                <Grid size={6}>
+                                    <DataPoint
+                                        icon={InfoOutlinedIcon}
+                                        label={targetType === 'mission' ? 'Mission Command' : 'Body ID'}
+                                        value={nonSatelliteIdentifier || '-'}
+                                    />
+                                </Grid>
+                                <Grid size={6}>
+                                    <DataPoint icon={PublicIcon} label="Target Key" value={nonSatelliteTargetKey || '-'} />
+                                </Grid>
+                                <Grid size={6}>
+                                    <DataPoint icon={RocketLaunchIcon} label="Source Mode" value={nonSatelliteSourceMode || '-'} />
+                                </Grid>
+                            </Grid>
+                        </Section>
+
+                        <Divider sx={{ my: 1, borderColor: 'border.main' }} />
+
+                        <Section title="Tracking Link" icon={MyLocationIcon}>
+                            <Grid container spacing={0.75}>
+                                <Grid size={6}>
+                                    <DataPoint icon={MyLocationIcon} label="Rotator" value={String(trackingState?.rotator_id || '-')} />
+                                </Grid>
+                                <Grid size={6}>
+                                    <DataPoint icon={RadioIcon} label="Rig" value={String(trackingState?.rig_id || '-')} />
+                                </Grid>
+                                <Grid size={6}>
+                                    <DataPoint icon={MyLocationIcon} label="Rotator State" value={String(trackingState?.rotator_state || '-')} />
+                                </Grid>
+                                <Grid size={6}>
+                                    <DataPoint icon={RadioIcon} label="Rig State" value={String(trackingState?.rig_state || '-')} />
+                                </Grid>
+                            </Grid>
+                        </Section>
+
+                        <Divider sx={{ my: 1, borderColor: 'border.main' }} />
+
+                        <Section title="Data Source" icon={BusinessIcon}>
+                            <Box sx={{ p: 1, bgcolor: 'overlay.light', borderRadius: 1 }}>
+                                <Grid container spacing={1}>
+                                    <Grid size={12}>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                                            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', textTransform: 'uppercase' }}>
+                                                Source
+                                            </Typography>
+                                            <Typography variant="caption" sx={{ color: 'text.primary', fontWeight: 600, fontSize: '0.65rem', fontFamily: 'monospace' }}>
+                                                {nonSatelliteSource}
+                                            </Typography>
+                                        </Box>
+                                    </Grid>
+                                    <Grid size={12}>
+                                        <Divider sx={{ my: 0.5 }} />
+                                    </Grid>
+                                    <Grid size={12}>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                                            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', textTransform: 'uppercase' }}>
+                                                Cache
+                                            </Typography>
+                                            <Typography variant="caption" sx={{ color: 'text.primary', fontWeight: 600, fontSize: '0.65rem', fontFamily: 'monospace' }}>
+                                                {nonSatelliteCache}
+                                            </Typography>
+                                        </Box>
+                                    </Grid>
+                                    <Grid size={12}>
+                                        <Divider sx={{ my: 0.5 }} />
+                                    </Grid>
+                                    <Grid size={12}>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                                            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', textTransform: 'uppercase' }}>
+                                                Stale
+                                            </Typography>
+                                            <Typography variant="caption" sx={{ color: 'text.primary', fontWeight: 600, fontSize: '0.65rem' }}>
+                                                {nonSatelliteStale ? 'Yes' : 'No'}
+                                            </Typography>
+                                        </Box>
+                                    </Grid>
+                                    <Grid size={12}>
+                                        <Divider sx={{ my: 0.5 }} />
+                                    </Grid>
+                                    <Grid size={12}>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                                            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', textTransform: 'uppercase' }}>
+                                                Samples
+                                            </Typography>
+                                            <Typography variant="caption" sx={{ color: 'text.primary', fontWeight: 600, fontSize: '0.65rem' }}>
+                                                {nonSatelliteSampleCount}
+                                            </Typography>
+                                        </Box>
+                                    </Grid>
+                                    {(Number.isFinite(nonSatelliteProjection?.past_hours) || Number.isFinite(nonSatelliteProjection?.future_hours)) && (
+                                        <>
+                                            <Grid size={12}>
+                                                <Divider sx={{ my: 0.5 }} />
+                                            </Grid>
+                                            <Grid size={12}>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                                                    <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', textTransform: 'uppercase' }}>
+                                                        Projection
+                                                    </Typography>
+                                                    <Typography variant="caption" sx={{ color: 'text.primary', fontWeight: 600, fontSize: '0.65rem' }}>
+                                                        {`${Number(nonSatelliteProjection?.past_hours || 0)}h / ${Number(nonSatelliteProjection?.future_hours || 0)}h @ ${Number(nonSatelliteProjection?.step_minutes || 0)}m`}
+                                                    </Typography>
+                                                </Box>
+                                            </Grid>
+                                        </>
+                                    )}
+                                    {nonSatelliteLastRefresh && (
+                                        <>
+                                            <Grid size={12}>
+                                                <Divider sx={{ my: 0.5 }} />
+                                            </Grid>
+                                            <Grid size={12}>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                                                    <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', textTransform: 'uppercase' }}>
+                                                        Last Refresh
+                                                    </Typography>
+                                                    <Typography variant="caption" sx={{ color: 'text.primary', fontWeight: 600, fontSize: '0.65rem' }}>
+                                                        {humanizeDate(nonSatelliteLastRefresh)}
+                                                    </Typography>
+                                                </Box>
+                                            </Grid>
+                                        </>
+                                    )}
+                                    {nonSatelliteError && (
+                                        <>
+                                            <Grid size={12}>
+                                                <Divider sx={{ my: 0.5 }} />
+                                            </Grid>
+                                            <Grid size={12}>
+                                                <Typography variant="caption" sx={{ color: 'error.main', fontSize: '0.64rem', display: 'block' }}>
+                                                    {nonSatelliteError}
+                                                </Typography>
+                                            </Grid>
+                                        </>
+                                    )}
+                                </Grid>
+                            </Box>
+                        </Section>
+                    </Box>
+                </>
             )}
         </Box>
     );
 }
 
-export default TargetSatelliteInfoIsland;
+export default TargetInfoIsland;

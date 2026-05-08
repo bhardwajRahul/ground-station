@@ -351,7 +351,7 @@ const FullscreenMapButton = React.memo(function FullscreenMapButton() {
     );
 });
 
-const TargetSatelliteMapContainer = ({}) => {
+const TargetMapContainer = ({}) => {
     const {socket} = useSocket();
     const dispatch = useDispatch();
     const { t } = useTranslation('target');
@@ -1056,4 +1056,4 @@ const TargetSatelliteMapContainer = ({}) => {
     );
 };
 
-export default TargetSatelliteMapContainer;
+export default TargetMapContainer;
