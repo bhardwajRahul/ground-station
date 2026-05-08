@@ -16,6 +16,7 @@ const OverviewPassTimeline = () => {
     const passesAreCached = useSelector((state) => state.overviewSatTrack.passesAreCached);
     const passesLoading = useSelector((state) => state.overviewSatTrack.passesLoading);
     const selectedSatGroupId = useSelector((state) => state.overviewSatTrack.selectedSatGroupId);
+    const selectedSatelliteId = useSelector((state) => state.overviewSatTrack.selectedSatelliteId);
     const showGeostationarySatellites = useSelector((state) => state.overviewSatTrack.showGeostationarySatellites);
     const passesRangeStart = useSelector((state) => state.overviewSatTrack.passesRangeStart);
     const passesRangeEnd = useSelector((state) => state.overviewSatTrack.passesRangeEnd);
@@ -61,6 +62,7 @@ const OverviewPassTimeline = () => {
             showGeostationarySatellites={showGeostationarySatellites}
             onToggleGeostationary={handleToggleGeostationary}
             highlightActivePasses={true}
+            highlightSatelliteId={selectedSatelliteId}
             forceTimeWindowStart={passesRangeStart}
             forceTimeWindowEnd={passesRangeEnd}
             groundStationLocation={groundStationLocation}

@@ -54,6 +54,7 @@ const PassTimelineComponent = ({
   onToggleGeostationary = null, // New prop: callback for geostationary toggle
   highlightActivePasses = false, // New prop: if true, make active passes solid and inactive passes dashed/less opaque
   highlightTargetKey = '', // New prop: highlight pass curves for one mission/body target key
+  highlightSatelliteId = null, // New prop: highlight pass curves for one satellite NORAD id
   usePassAssignedColor = false, // New prop: use pass.color for stroke/fill when available
   forceTimeWindowStart = null, // New prop: force timeline window start (ISO datetime string)
   forceTimeWindowEnd = null, // New prop: force timeline window end (ISO datetime string)
@@ -65,6 +66,9 @@ const PassTimelineComponent = ({
   const { t } = useTranslation('target');
   const normalizedHighlightTargetKey = String(highlightTargetKey || '').trim();
   const hasHighlightedTarget = normalizedHighlightTargetKey.length > 0;
+  const normalizedHighlightSatelliteId = String(highlightSatelliteId ?? '').trim();
+  const hasHighlightedSatellite = normalizedHighlightSatelliteId.length > 0;
+  const hasHighlightedSelection = hasHighlightedTarget || hasHighlightedSatellite;
 
   // Zoom state: time window configuration
   // If forced time window is provided, use it; otherwise use initialTimeWindowHours
@@ -576,7 +580,11 @@ const PassTimelineComponent = ({
         const isCurrent = (activePass && pass.id === activePass.id) ||
                          (nowTime >= passStart.getTime() && nowTime <= passEnd.getTime());
         const passTargetKey = buildPassTargetKey(pass);
-        const isSelectedTarget = hasHighlightedTarget && passTargetKey === normalizedHighlightTargetKey;
+        const passNoradId = String(pass?.norad_id ?? '').trim();
+        const isSelectedTarget = (
+          (hasHighlightedTarget && passTargetKey === normalizedHighlightTargetKey)
+          || (hasHighlightedSatellite && passNoradId === normalizedHighlightSatelliteId)
+        );
 
         return {
           ...pass,
@@ -630,6 +638,8 @@ const PassTimelineComponent = ({
     currentTime,
     hasHighlightedTarget,
     normalizedHighlightTargetKey,
+    hasHighlightedSatellite,
+    normalizedHighlightSatelliteId,
   ]);
 
   // Event handlers
@@ -1048,7 +1058,7 @@ const PassTimelineComponent = ({
                     geoIndex={geoIndex}
                     totalGeoSats={totalGeoSats}
                     highlightActivePasses={highlightActivePasses}
-                    isTargetSelectionActive={hasHighlightedTarget}
+                    isTargetSelectionActive={hasHighlightedSelection}
                     usePassAssignedColor={usePassAssignedColor}
                   />
                 </Box>
