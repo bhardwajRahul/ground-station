@@ -17,7 +17,7 @@
  *
  */
 
-import React, { useCallback, useState, useEffect, useMemo } from "react";
+import React, { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import {
     Box,
     Typography,
@@ -361,6 +361,10 @@ const TargetSelectorBar = React.memo(function TargetSelectorBar() {
             .filter((entry) => entry.body_id.length > 0),
         [bodyCatalogEntries]
     );
+    const trackingStateRef = useRef(trackingState);
+    useEffect(() => {
+        trackingStateRef.current = trackingState;
+    }, [trackingState]);
     const runningObservationTrackerIds = useMemo(() => {
         const running = schedulerObservations.filter((obs) => obs?.status === 'running');
         return new Set(
@@ -719,6 +723,10 @@ const TargetSelectorBar = React.memo(function TargetSelectorBar() {
         trackerViews,
         trackingState,
     ]);
+    const handleRetargetTargetRef = useRef(handleRetargetTarget);
+    useEffect(() => {
+        handleRetargetTargetRef.current = handleRetargetTarget;
+    }, [handleRetargetTarget]);
 
     const handleCreateTargetSubmit = useCallback(async () => {
         setCreateDialogError('');
@@ -839,7 +847,7 @@ const TargetSelectorBar = React.memo(function TargetSelectorBar() {
             if (!command) {
                 return;
             }
-            await handleRetargetTarget({
+            await handleRetargetTargetRef.current({
                 targetType: TARGET_TYPES.MISSION,
                 targetName: String(targetOption?.target_name || targetOption?.display_name || command).trim(),
                 command,
@@ -852,7 +860,7 @@ const TargetSelectorBar = React.memo(function TargetSelectorBar() {
             if (!normalizedBodyId) {
                 return;
             }
-            await handleRetargetTarget({
+            await handleRetargetTargetRef.current({
                 targetType: TARGET_TYPES.BODY,
                 targetName: String(targetOption?.target_name || targetOption?.name || normalizedBodyId).trim(),
                 bodyId: normalizedBodyId,
@@ -864,15 +872,15 @@ const TargetSelectorBar = React.memo(function TargetSelectorBar() {
         if (!noradId) {
             return;
         }
-        const selectedGroupId = targetOption?.groups?.[0]?.id || trackingState?.group_id || '';
-        await handleRetargetTarget({
+        const selectedGroupId = targetOption?.groups?.[0]?.id || trackingStateRef.current?.group_id || '';
+        await handleRetargetTargetRef.current({
             targetType: TARGET_TYPES.SATELLITE,
             targetName: String(targetOption?.target_name || targetOption?.name || noradId).trim(),
             noradId,
             groupId: selectedGroupId,
             transmitters: getTransmittersFromSatellite(targetOption),
         });
-    }, [getTransmittersFromSatellite, handleRetargetTarget, trackingState]);
+    }, [getTransmittersFromSatellite]);
 
     const targetOptions = useMemo(() => tabTrackerInstances.map((instance, index) => {
         const instanceTrackerId = instance?.tracker_id || '';
