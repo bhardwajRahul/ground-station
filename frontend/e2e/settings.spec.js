@@ -11,12 +11,9 @@ test.describe('Preferences Settings', () => {
   });
 
   test('should display preferences page', async ({ page }) => {
-    // Check for General heading or preferences content
-    await expect(
-      page.getByRole('heading', { name: /general/i }).or(
-        page.getByText(/general/i).first()
-      )
-    ).toBeVisible({ timeout: 15000 });
+    // Validate the preferences form itself using stable selectors.
+    await expect(page.locator('#theme-selector')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('preferences-save-button')).toBeVisible({ timeout: 15000 });
   });
 
   test('should display theme preference option', async ({ page }) => {
