@@ -58,7 +58,7 @@ export default function RigEditDialog({
             >
                 {isEditing ? t("rig.edit_dialog_title") : t("rig.add_dialog_title")}
             </DialogTitle>
-            <DialogContent sx={{ bgcolor: "background.paper", px: 3, py: 3 }}>
+            <DialogContent sx={{ px: 3, py: 3 }}>
                 <Stack spacing={2} sx={{ mt: 3 }}>
                     <TextField
                         autoFocus

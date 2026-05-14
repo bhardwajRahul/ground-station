@@ -895,7 +895,18 @@ export default function MonitoredSatelliteDialog() {
                 {selectedMonitoredSatellite ? 'Edit Monitored Satellite' : 'Add Monitored Satellite'}
             </DialogTitle>
 
-            <DialogContent dividers sx={{ bgcolor: 'background.paper', px: 3, py: 3 }}>
+            <DialogContent
+                dividers
+                sx={{
+                    bgcolor: (theme) => (
+                        theme.palette.mode === 'dark'
+                            ? theme.palette.background.elevated
+                            : theme.palette.background.paper
+                    ),
+                    px: 3,
+                    py: 3,
+                }}
+            >
                 <Stack spacing={3} sx={{ mt: 2 }}>
                     {/* Error Alert */}
                     {saveError && (
@@ -1204,7 +1215,6 @@ export default function MonitoredSatelliteDialog() {
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    bgcolor: 'rgba(0, 0, 0, 0.3)',
                                     zIndex: 1,
                                     borderRadius: 1,
                                 }}
@@ -2409,7 +2419,15 @@ export default function MonitoredSatelliteDialog() {
             {/* Remove Session Confirmation Dialog */}
             <Dialog open={openRemoveSessionConfirm} onClose={() => setOpenRemoveSessionConfirm(false)}>
                 <DialogTitle>Remove SDR Session</DialogTitle>
-                <DialogContent>
+                <DialogContent
+                    sx={{
+                        bgcolor: (theme) => (
+                            theme.palette.mode === 'dark'
+                                ? theme.palette.background.elevated
+                                : theme.palette.background.paper
+                        ),
+                    }}
+                >
                     Are you sure you want to remove this SDR session?
                 </DialogContent>
                 <DialogActions>

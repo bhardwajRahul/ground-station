@@ -84,7 +84,7 @@ export const TranscriptionParamsDialog = ({
                     </IconButton>
                 </Box>
             </DialogTitle>
-            <DialogContent dividers sx={{ p: 3, backgroundColor: 'background.elevated' }}>
+            <DialogContent dividers sx={{ p: 3 }}>
                 <Box>
                     {!geminiConfigured && (
                         <Alert severity="warning" sx={{ mb: 2 }}>

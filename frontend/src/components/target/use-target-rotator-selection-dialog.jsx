@@ -331,7 +331,7 @@ export function useTargetRotatorSelectionDialog() {
                     </Box>
                 </Box>
             </DialogTitle>
-            <DialogContent sx={{ bgcolor: 'background.paper', px: 3, pb: 2.5, pt: 5 }}>
+            <DialogContent sx={{ px: 3, pb: 2.5, pt: 5 }}>
                 <Box sx={{ display: 'grid', gap: 1.25, pt: 2 }}>
                     <Box
                         sx={{

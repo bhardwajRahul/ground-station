@@ -97,7 +97,6 @@ function MapSettingsIslandDialog({updateBackend}) {
                 </DialogTitle>
                 <DialogContent
                     sx={{
-                        bgcolor: 'background.paper',
                         p: 0,
                         height: '72vh',
                         maxHeight: '72vh',

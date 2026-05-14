@@ -34,7 +34,7 @@ export const themeConfigs = {
         background: {
             default: '#111213',
             paper: '#1a1c1e',
-            elevated: '#23262a',
+            elevated: '#242526',
             titleBar: '#171a1d',
             appBar: '#272b30',
         },

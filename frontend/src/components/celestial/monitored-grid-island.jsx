@@ -46,7 +46,6 @@ const DIALOG_TITLE_SX = {
     py: 2.5,
 };
 const DIALOG_CONTENT_SX = {
-    bgcolor: 'background.paper',
     px: 3,
     py: 3,
 };

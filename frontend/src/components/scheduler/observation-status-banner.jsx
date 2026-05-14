@@ -453,7 +453,15 @@ export default function ObservationStatusBanner() {
                 <DialogTitle>
                     {selectedIsRunning ? 'Stop Observation' : 'Abort Observation'}
                 </DialogTitle>
-                <DialogContent>
+                <DialogContent
+                    sx={{
+                        bgcolor: (theme) => (
+                            theme.palette.mode === 'dark'
+                                ? theme.palette.background.elevated
+                                : theme.palette.background.paper
+                        ),
+                    }}
+                >
                     <DialogContentText>
                         {selectedIsRunning ? (
                             <>

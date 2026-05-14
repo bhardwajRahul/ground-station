@@ -238,7 +238,7 @@ export function AddEditDialog({formDialogOpen, handleRowsCallback, handleDialogO
                 Add a new satellite group
             </DialogTitle>
             <form onSubmit={handleFormSubmit}>
-                <DialogContent sx={{ bgcolor: 'background.paper', px: 3, py: 3, minHeight: 600 }}>
+                <DialogContent sx={{ px: 3, py: 3, minHeight: 600 }}>
                     <Box sx={{ mt: 3 }}>
                         <TextField
                             autoComplete="new-password"

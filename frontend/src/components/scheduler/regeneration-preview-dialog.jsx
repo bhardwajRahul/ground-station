@@ -100,7 +100,15 @@ const RegenerationPreviewDialog = ({ open, onClose, previewData, onConfirm }) =>
                 Regeneration Preview
             </DialogTitle>
 
-            <DialogContent>
+            <DialogContent
+                sx={{
+                    bgcolor: (theme) => (
+                        theme.palette.mode === 'dark'
+                            ? theme.palette.background.elevated
+                            : theme.palette.background.paper
+                    ),
+                }}
+            >
                 <Alert severity={!hasConflicts ? "success" : "info"} sx={{ mb: 2 }}>
                     <AlertTitle>
                         {!hasConflicts ? "No Conflicts - Ready to Generate" : `Auto-generation Strategy: ${current_strategy.toUpperCase()}`}

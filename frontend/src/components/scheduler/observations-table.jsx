@@ -838,7 +838,18 @@ const ObservationsTable = () => {
                     </Box>
                     Confirm Deletion
                 </DialogTitle>
-                <DialogContent sx={{ px: 3, pt: 3, pb: 3 }}>
+                <DialogContent
+                    sx={{
+                        bgcolor: (theme) => (
+                            theme.palette.mode === 'dark'
+                                ? theme.palette.background.elevated
+                                : theme.palette.background.paper
+                        ),
+                        px: 3,
+                        pt: 3,
+                        pb: 3,
+                    }}
+                >
                     <Typography variant="body1" sx={{ mt: 2, mb: 2, color: 'text.primary' }}>
                         Are you sure you want to delete {selectedIds.length} observation(s)? This action cannot be undone.
                     </Typography>
@@ -929,7 +940,15 @@ const ObservationsTable = () => {
             {/* Cancel Confirmation Dialog */}
             <Dialog open={openStopConfirm} onClose={() => setOpenStopConfirm(false)}>
                 <DialogTitle>Cancel Observation{selectedIds.length > 1 ? 's' : ''}</DialogTitle>
-                <DialogContent>
+                <DialogContent
+                    sx={{
+                        bgcolor: (theme) => (
+                            theme.palette.mode === 'dark'
+                                ? theme.palette.background.elevated
+                                : theme.palette.background.paper
+                        ),
+                    }}
+                >
                     {selectedIds.length === 1 ? (
                         (() => {
                             const obs = allObservations.find(o => o.id === selectedIds[0]);

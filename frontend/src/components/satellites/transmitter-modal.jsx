@@ -345,7 +345,7 @@ const TransmitterModal = ({ open, onClose, transmitter, satelliteId, isNew = fal
             >
                 {isNew ? 'Add New Transmitter' : 'Edit Transmitter'}
             </DialogTitle>
-            <DialogContent sx={{ bgcolor: 'background.paper', px: 3, py: 3 }}>
+            <DialogContent sx={{ px: 3, py: 3 }}>
                 <Box sx={{ mt: 2 }}>
                 {error && (
                     <Box sx={{
@@ -676,7 +676,7 @@ export const DeleteConfirmDialog = ({ open, onClose, onConfirm, transmitterName 
             >
                 Confirm Delete
             </DialogTitle>
-            <DialogContent sx={{ bgcolor: 'background.paper', px: 3, py: 3, mt: 2 }}>
+            <DialogContent sx={{ px: 3, py: 3, mt: 2 }}>
                 <Typography>
                     Are you sure you want to delete the transmitter "{transmitterName}"?
                 </Typography>

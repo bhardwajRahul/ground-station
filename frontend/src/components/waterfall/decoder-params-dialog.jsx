@@ -122,7 +122,7 @@ const DecoderParamsDialog = ({
                     </IconButton>
                 </Box>
             </DialogTitle>
-            <DialogContent dividers sx={{ p: 3, backgroundColor: 'background.elevated' }}>
+            <DialogContent dividers sx={{ p: 3 }}>
                 <Box>
                     {/* Decoder Configuration Suggestion */}
                     <DecoderConfigSuggestion

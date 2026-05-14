@@ -1060,7 +1060,7 @@ export default function SDRsPage() {
                             >
                                 {isEditing ? t('sdr.edit_dialog_title') : t('sdr.add_dialog_title')}
                             </DialogTitle>
-                            <DialogContent sx={{ bgcolor: 'background.paper', px: 3, py: 3 }}>
+                            <DialogContent sx={{ px: 3, py: 3 }}>
                                 <Box
                                     component="fieldset"
                                     disabled={isDialogLoading}

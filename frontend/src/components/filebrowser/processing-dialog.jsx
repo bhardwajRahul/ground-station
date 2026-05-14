@@ -341,7 +341,6 @@ export default function ProcessingDialog({ open, onClose, recording }) {
 
             <DialogContent
                 sx={{
-                    bgcolor: (theme) => (theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.36)' : 'grey.100'),
                     px: 3,
                     py: 3,
                 }}

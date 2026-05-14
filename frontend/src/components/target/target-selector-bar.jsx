@@ -1032,7 +1032,7 @@ const TargetSelectorBar = React.memo(function TargetSelectorBar() {
             >
                 Delete Target
             </DialogTitle>
-            <DialogContent sx={{ bgcolor: 'background.paper', px: 3, pb: 2.5 }}>
+            <DialogContent sx={{ px: 3, pb: 2.5 }}>
                 <Box sx={{ pt: 2 }}>
                     <DialogContentText sx={{ mb: 1 }}>
                         {`Delete ${pendingDeleteTarget ? `Target ${pendingDeleteTarget.targetNumber}` : 'this target'}?`}
@@ -1109,7 +1109,7 @@ const TargetSelectorBar = React.memo(function TargetSelectorBar() {
             >
                 {pendingAbortObservation?.status === 'running' ? 'Stop Observation' : 'Abort Observation'}
             </DialogTitle>
-            <DialogContent sx={{ bgcolor: 'background.paper', px: 3, pb: 2.5 }}>
+            <DialogContent sx={{ px: 3, pb: 2.5 }}>
                 <Box sx={{ pt: 2 }}>
                     <DialogContentText sx={{ mb: 1 }}>
                         {pendingAbortObservation?.status === 'running'
@@ -1206,7 +1206,7 @@ const TargetSelectorBar = React.memo(function TargetSelectorBar() {
                     />
                 </Box>
             </DialogTitle>
-            <DialogContent sx={{ bgcolor: 'background.paper', px: 3, pb: 2.5, pt: 5 }}>
+            <DialogContent sx={{ px: 3, pb: 2.5, pt: 5 }}>
                 <Box sx={{ display: 'grid', gap: 1.25, pt: 2 }}>
                     <Box
                         sx={{

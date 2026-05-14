@@ -77,7 +77,15 @@ const ObservationsTableSettingsDialog = ({ open, onClose }) => {
     return (
         <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
             <DialogTitle>Observations Table Settings</DialogTitle>
-            <DialogContent>
+            <DialogContent
+                sx={{
+                    bgcolor: (theme) => (
+                        theme.palette.mode === 'dark'
+                            ? theme.palette.background.elevated
+                            : theme.palette.background.paper
+                    ),
+                }}
+            >
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     Customize which columns are visible in the observations table.
                 </Typography>

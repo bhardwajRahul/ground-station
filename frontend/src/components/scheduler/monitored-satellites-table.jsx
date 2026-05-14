@@ -644,7 +644,18 @@ const MonitoredSatellitesTable = () => {
                     </Box>
                     Confirm Deletion
                 </DialogTitle>
-                <DialogContent sx={{ px: 3, pt: 3, pb: 3 }}>
+                <DialogContent
+                    sx={{
+                        bgcolor: (theme) => (
+                            theme.palette.mode === 'dark'
+                                ? theme.palette.background.elevated
+                                : theme.palette.background.paper
+                        ),
+                        px: 3,
+                        pt: 3,
+                        pb: 3,
+                    }}
+                >
                     <Typography variant="body1" sx={{ mt: 2, mb: 2, color: 'text.primary' }}>
                         Are you sure you want to delete {selectedIds.length} monitored satellite(s)? This will stop automatic observation generation for these satellites.
                     </Typography>
@@ -760,7 +771,15 @@ const MonitoredSatellitesTable = () => {
                 fullWidth
             >
                 <DialogTitle>No Enabled Monitors</DialogTitle>
-                <DialogContent>
+                <DialogContent
+                    sx={{
+                        bgcolor: (theme) => (
+                            theme.palette.mode === 'dark'
+                                ? theme.palette.background.elevated
+                                : theme.palette.background.paper
+                        ),
+                    }}
+                >
                     <Typography variant="body2">
                         There are no enabled monitored satellites. Enable at least one monitor to regenerate observations.
                     </Typography>

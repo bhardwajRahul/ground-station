@@ -306,7 +306,17 @@ const SatelliteEditDialog = ({ open, onClose, satelliteData, onSaved }) => {
                     })
                     : t('satellite_database.dialog_title_add')}
             </DialogTitle>
-            <DialogContent sx={{ bgcolor: 'background.paper', px: 3, py: 3 }}>
+            <DialogContent
+                sx={{
+                    bgcolor: (theme) => (
+                        theme.palette.mode === 'dark'
+                            ? theme.palette.background.elevated
+                            : theme.palette.background.paper
+                    ),
+                    px: 3,
+                    py: 3,
+                }}
+            >
                 <Tabs
                     value={activeTab}
                     onChange={(_event, value) => setActiveTab(value)}

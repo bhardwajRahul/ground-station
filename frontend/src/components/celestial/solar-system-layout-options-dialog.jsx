@@ -33,7 +33,6 @@ const DIALOG_TITLE_SX = {
 };
 
 const DIALOG_CONTENT_SX = {
-    bgcolor: 'background.paper',
     p: 0,
     height: '72vh',
     maxHeight: '72vh',

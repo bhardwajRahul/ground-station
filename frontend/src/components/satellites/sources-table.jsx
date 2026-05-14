@@ -721,7 +721,7 @@ export default function SourcesTable() {
                     >
                         {formValues.id ? t('orbital_sources.dialog_title_edit') : t('orbital_sources.dialog_title_add')}
                     </DialogTitle>
-                    <DialogContent sx={{ bgcolor: 'background.paper', px: 3, py: 3 }}>
+                    <DialogContent sx={{ px: 3, py: 3 }}>
                         <Stack spacing={2} sx={{ mt: 3 }}>
                             <FormControl fullWidth size="small" error={Boolean(validationErrors.provider)}>
                                 <InputLabel id="provider-label">{t('orbital_sources.provider')}</InputLabel>

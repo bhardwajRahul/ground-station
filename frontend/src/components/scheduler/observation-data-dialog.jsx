@@ -308,7 +308,16 @@ const ObservationDataDialog = ({ open, onClose, observation }) => {
                 {latestObservation?.error_message && <Tab label="Error Details" />}
             </Tabs>
 
-            <DialogContent sx={{ minHeight: 400 }}>
+            <DialogContent
+                sx={{
+                    bgcolor: (theme) => (
+                        theme.palette.mode === 'dark'
+                            ? theme.palette.background.elevated
+                            : theme.palette.background.paper
+                    ),
+                    minHeight: 400,
+                }}
+            >
                 {observationLoading ? (
                     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
                         <CircularProgress />
@@ -571,7 +580,15 @@ const ObservationDataDialog = ({ open, onClose, observation }) => {
                     <DialogTitle>
                         {selectedFile?.name || selectedFile?.filename}
                     </DialogTitle>
-                    <DialogContent>
+                    <DialogContent
+                        sx={{
+                            bgcolor: (theme) => (
+                                theme.palette.mode === 'dark'
+                                    ? theme.palette.background.elevated
+                                    : theme.palette.background.paper
+                            ),
+                        }}
+                    >
                         {selectedFile?.url && (selectedFile.url.endsWith('.png') || selectedFile.url.endsWith('.jpg') || selectedFile.url.endsWith('.jpeg')) ? (
                             <Box sx={{ textAlign: 'center' }}>
                                 <img

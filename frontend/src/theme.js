@@ -309,6 +309,15 @@ export function setupTheme(themeName = 'dark') {
                     }),
                 },
             },
+            MuiDialogContent: {
+                styleOverrides: {
+                    root: ({ theme }) => ({
+                        backgroundColor: theme.palette.mode === 'dark'
+                            ? theme.palette.background.elevated
+                            : theme.palette.background.paper,
+                    }),
+                },
+            },
             MuiPopover: {
                 styleOverrides: {
                     paper: ({ theme }) => ({

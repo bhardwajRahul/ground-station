@@ -1064,7 +1064,18 @@ const ObservationFormDialog = () => {
                 {selectedObservation?.id ? `Edit Observation: ${formData.name || 'Unnamed'}` : 'New Observation'}
             </DialogTitle>
 
-            <DialogContent dividers sx={{ bgcolor: 'background.paper', px: 3, py: 3 }}>
+            <DialogContent
+                dividers
+                sx={{
+                    bgcolor: (theme) => (
+                        theme.palette.mode === 'dark'
+                            ? theme.palette.background.elevated
+                            : theme.palette.background.paper
+                    ),
+                    px: 3,
+                    py: 3,
+                }}
+            >
                 <Stack spacing={3} sx={{ mt: 2 }}>
                     {/* Enabled Checkbox */}
                     <Box>
@@ -1338,7 +1349,6 @@ const ObservationFormDialog = () => {
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    bgcolor: 'rgba(0, 0, 0, 0.3)',
                                     zIndex: 1,
                                     borderRadius: 1,
                                 }}
@@ -2638,7 +2648,15 @@ const ObservationFormDialog = () => {
             {/* Delete Confirmation Dialog */}
             <Dialog open={openDeleteConfirm} onClose={() => setOpenDeleteConfirm(false)}>
                 <DialogTitle>Confirm Deletion</DialogTitle>
-                <DialogContent>
+                <DialogContent
+                    sx={{
+                        bgcolor: (theme) => (
+                            theme.palette.mode === 'dark'
+                                ? theme.palette.background.elevated
+                                : theme.palette.background.paper
+                        ),
+                    }}
+                >
                     Are you sure you want to delete the observation <strong>{selectedObservation?.satellite?.name || 'Unknown'}</strong>?
                     <br /><br />
                     This action cannot be undone.
@@ -2656,7 +2674,15 @@ const ObservationFormDialog = () => {
             {/* Cancel Confirmation Dialog */}
             <Dialog open={openCancelConfirm} onClose={() => setOpenCancelConfirm(false)}>
                 <DialogTitle>Cancel Observation</DialogTitle>
-                <DialogContent>
+                <DialogContent
+                    sx={{
+                        bgcolor: (theme) => (
+                            theme.palette.mode === 'dark'
+                                ? theme.palette.background.elevated
+                                : theme.palette.background.paper
+                        ),
+                    }}
+                >
                     Are you sure you want to cancel the observation <strong>{selectedObservation?.satellite?.name || 'Unknown'}</strong>?
                     <br /><br />
                     This will immediately cancel the observation and remove all scheduled jobs.
@@ -2674,7 +2700,15 @@ const ObservationFormDialog = () => {
             {/* Remove Session Confirmation Dialog */}
             <Dialog open={openRemoveSessionConfirm} onClose={() => setOpenRemoveSessionConfirm(false)}>
                 <DialogTitle>Remove SDR Session</DialogTitle>
-                <DialogContent>
+                <DialogContent
+                    sx={{
+                        bgcolor: (theme) => (
+                            theme.palette.mode === 'dark'
+                                ? theme.palette.background.elevated
+                                : theme.palette.background.paper
+                        ),
+                    }}
+                >
                     Are you sure you want to remove this SDR session?
                 </DialogContent>
                 <DialogActions>

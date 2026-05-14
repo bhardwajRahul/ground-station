@@ -63,7 +63,7 @@ export default function RotatorEditDialog({
             >
                 {isEditing ? t("rotator.edit_dialog_title") : t("rotator.add_dialog_title")}
             </DialogTitle>
-            <DialogContent sx={{ bgcolor: "background.paper", px: 3, py: 3, pt: "1em" }}>
+            <DialogContent sx={{ px: 3, py: 3, pt: "1em" }}>
                 <Stack spacing={2} sx={{ mt: 3 }}>
                     <TextField name="name" label={t("rotator.name")} fullWidth size="small" onChange={onChange} value={formValues.name} error={Boolean(validationErrors.name)} required />
                     <TextField name="host" label={t("rotator.host")} fullWidth size="small" onChange={onChange} value={formValues.host} error={Boolean(validationErrors.host)} required />
