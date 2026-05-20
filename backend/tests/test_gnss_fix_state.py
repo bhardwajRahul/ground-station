@@ -47,6 +47,14 @@ class TestDeriveGnssFixStatusFromOutput:
             is None
         )
 
+    def test_ignores_gnss_activity_heartbeat_for_fix_state(self):
+        assert (
+            derive_gnss_fix_status_from_output(
+                {"event": "gnss_activity", "has_pvt": True, "udp_packets_per_sec": 1500}
+            )
+            is None
+        )
+
 
 class TestGnssFixStreamKey:
     def test_uses_session_and_vfo(self):

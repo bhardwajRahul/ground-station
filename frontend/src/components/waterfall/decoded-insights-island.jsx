@@ -31,6 +31,7 @@ import {
     WaterfallStatusBarPaper,
 } from '../common/common.jsx';
 import DecodedPacketsDrawer from './decoded-packets-drawer.jsx';
+import GnssFixQualityTimeline from './gnss-fix-quality-timeline.jsx';
 import { useUserTimeSettings } from '../../hooks/useUserTimeSettings.jsx';
 import { formatDateTime, formatTime } from '../../utils/date-time.js';
 import {
@@ -209,6 +210,9 @@ const DecodedInsightsIsland = React.memo(function DecodedInsightsIsland() {
         gridEditable,
         decodedInsightsActiveTab,
         gnssSatellitesSortModel,
+        gnssReceiverSnapshot,
+        gnssActivitySnapshot,
+        gnssFixQualityTimeline,
         gnssFixLifecycle,
     } = useSelector(
         (state) => ({
@@ -216,6 +220,9 @@ const DecodedInsightsIsland = React.memo(function DecodedInsightsIsland() {
             gridEditable: state.waterfall.gridEditable,
             decodedInsightsActiveTab: state.gnss.decodedInsightsActiveTab,
             gnssSatellitesSortModel: state.gnss.gnssSatellitesSortModel,
+            gnssReceiverSnapshot: state.gnss.receiverSnapshot,
+            gnssActivitySnapshot: state.gnss.activitySnapshot,
+            gnssFixQualityTimeline: state.gnss.gnssFixQualityTimeline,
             gnssFixLifecycle: state.gnss.gnssFixLifecycle,
         }),
         shallowEqual
@@ -388,109 +395,41 @@ const DecodedInsightsIsland = React.memo(function DecodedInsightsIsland() {
     }, [outputs, relativeNowMs]);
 
     const receiverFix = useMemo(() => {
-        const gnssOutputs = outputs
-            .filter((item) => item?.type === 'decoder-output' && item?.decoder_type === 'gnss')
-            .map((item) => ({
-                timestampMs: Number(item.timestamp) * 1000,
-                output: item.output || {},
-            }))
-            .filter((item) => Number.isFinite(item.timestampMs))
-            .sort((a, b) => b.timestampMs - a.timestampMs);
-
-        const fix = {
-            lastUpdateMs: null,
-            latitude: null,
-            longitude: null,
-            altitudeM: null,
-            fixQuality: null,
-            satellites: null,
-        };
-
-        for (const item of gnssOutputs) {
-            const output = item.output || {};
-            const eventType = String(output.event || '').toLowerCase();
-            const lat = toFiniteNumber(output.latitude);
-            const lon = toFiniteNumber(output.longitude);
-            const alt = toFiniteNumber(output.altitude_m);
-            const sats = toFiniteNumber(output.satellites);
-
-            const isNmea = eventType === 'nmea' || eventType === 'nmea_gga' || eventType === 'nmea_rmc';
-            const hasCoords = lat !== null && lon !== null;
-            if (fix.lastUpdateMs === null && (isNmea || hasCoords)) {
-                fix.lastUpdateMs = item.timestampMs;
-            }
-
-            if (fix.latitude === null && lat !== null) fix.latitude = lat;
-            if (fix.longitude === null && lon !== null) fix.longitude = lon;
-            if (fix.altitudeM === null && alt !== null) fix.altitudeM = alt;
-            if ((fix.fixQuality === null || fix.fixQuality === '') && output.fix_quality !== undefined && output.fix_quality !== null && String(output.fix_quality) !== '') {
-                fix.fixQuality = String(output.fix_quality);
-            }
-            if (fix.satellites === null && sats !== null) fix.satellites = sats;
-
-            if (
-                fix.lastUpdateMs !== null &&
-                fix.latitude !== null &&
-                fix.longitude !== null &&
-                fix.altitudeM !== null &&
-                fix.fixQuality !== null &&
-                fix.satellites !== null
-            ) {
-                break;
-            }
-        }
-
+        const fix = gnssReceiverSnapshot || {};
         const hasCoords = fix.latitude !== null && fix.longitude !== null;
         const hasFixQuality = fix.fixQuality !== null && fix.fixQuality !== '' && fix.fixQuality !== '0';
         return {
-            ...fix,
+            lastUpdateMs: fix.lastUpdateMs ?? null,
+            latitude: fix.latitude ?? null,
+            longitude: fix.longitude ?? null,
+            altitudeM: fix.altitudeM ?? null,
+            fixQuality: fix.fixQuality ?? null,
+            satellites: fix.satellites ?? null,
             status: hasCoords || hasFixQuality ? 'FIX' : (fix.lastUpdateMs ? 'NO FIX' : 'NO DATA'),
         };
-    }, [outputs]);
+    }, [gnssReceiverSnapshot]);
 
     const gnssActivity = useMemo(() => {
-        const activityOutputs = outputs
-            .filter((item) => item?.type === 'decoder-output' && item?.decoder_type === 'gnss')
-            .map((item) => ({
-                timestampMs: Number(item.timestamp) * 1000,
-                output: item.output || {},
-            }))
-            .filter((item) => Number.isFinite(item.timestampMs) && String(item.output?.event || '') === 'gnss_activity')
-            .sort((a, b) => b.timestampMs - a.timestampMs);
-
-        const latest = activityOutputs[0];
-        if (!latest) {
-            return {
-                active: false,
-                heartbeatAlive: false,
-                lastSeenMs: null,
-                hasPvt: false,
-                packetsPerSec: 0,
-                monitorObsPerSec: 0,
-                lossOfLockTotal: 0,
-                lossOfLockDelta: 0,
-            };
-        }
-
-        const packetsPerSec = toFiniteNumber(latest.output?.udp_packets_per_sec) || 0;
-        const monitorObsPerSec = toFiniteNumber(latest.output?.monitor_observations_per_sec) || 0;
-        const lossOfLockTotal = toFiniteNumber(latest.output?.loss_of_lock_total) || 0;
-        const lossOfLockDelta = toFiniteNumber(latest.output?.loss_of_lock_delta) || 0;
-        const lastSeenMs = latest.timestampMs;
-        const fresh = (Date.now() - lastSeenMs) <= 3500;
-        const active = fresh && (Boolean(latest.output?.has_activity) || packetsPerSec > 0 || monitorObsPerSec > 0);
+        const activity = gnssActivitySnapshot || {};
+        const lastSeenMs = activity.lastHeartbeatMs ?? null;
+        const packetsPerSec = toFiniteNumber(activity.packetsPerSec) || 0;
+        const monitorObsPerSec = toFiniteNumber(activity.monitorObsPerSec) || 0;
+        const lossOfLockTotal = toFiniteNumber(activity.lossOfLockTotal) || 0;
+        const lossOfLockDelta = toFiniteNumber(activity.lossOfLockDelta) || 0;
+        const fresh = lastSeenMs !== null && (relativeNowMs - lastSeenMs) <= 3500;
+        const active = fresh && (Boolean(activity.hasActivity) || packetsPerSec > 0 || monitorObsPerSec > 0);
 
         return {
             active,
             heartbeatAlive: fresh,
             lastSeenMs,
-            hasPvt: Boolean(latest.output?.has_pvt),
+            hasPvt: Boolean(activity.hasPvt),
             packetsPerSec,
             monitorObsPerSec,
             lossOfLockTotal,
             lossOfLockDelta,
         };
-    }, [outputs]);
+    }, [gnssActivitySnapshot, relativeNowMs]);
 
     const gnssStatusStats = useMemo(() => {
         let trackingSatCount = 0;
@@ -547,6 +486,7 @@ const DecodedInsightsIsland = React.memo(function DecodedInsightsIsland() {
         currentStatus: gnssFixLifecycle?.currentStatus || 'NO DATA',
         currentFixStartedAtMs: gnssFixLifecycle?.currentFixStartedAtMs ?? null,
         lastFixAcquiredAtMs: gnssFixLifecycle?.lastFixAcquiredAtMs ?? null,
+        lastClosedFixAcquiredAtMs: gnssFixLifecycle?.lastClosedFixAcquiredAtMs ?? null,
         lastFixLostAtMs: gnssFixLifecycle?.lastFixLostAtMs ?? null,
         lastFixDurationMs: gnssFixLifecycle?.lastFixDurationMs ?? null,
         lastSignalAtMs: gnssFixLifecycle?.lastSignalAtMs ?? null,
@@ -562,6 +502,9 @@ const DecodedInsightsIsland = React.memo(function DecodedInsightsIsland() {
         : null;
     const lostAgoMs = fixLifecycle.lastFixLostAtMs !== null
         ? Math.max(0, relativeNowMs - fixLifecycle.lastFixLostAtMs)
+        : null;
+    const lastFixAcquiredAgoMs = fixLifecycle.lastClosedFixAcquiredAtMs !== null
+        ? Math.max(0, relativeNowMs - fixLifecycle.lastClosedFixAcquiredAtMs)
         : null;
     const gnssHeaderStatusColor = displayFixStatus === 'FIX'
         ? theme.palette.success.main
@@ -929,13 +872,23 @@ const DecodedInsightsIsland = React.memo(function DecodedInsightsIsland() {
                                         </Typography>
                                     </Box>
                                     <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.66rem', lineHeight: 1.2 }}>
-                                        {`Det ${satelliteRows.length} | Ev ${gnssEventCount} | Sats ${receiverFix.satellites !== null ? receiverFix.satellites : '-'} | Q ${receiverFix.fixQuality !== null ? receiverFix.fixQuality : '-'}`}
+                                        <Box component="span" sx={{ opacity: 0.72 }}>Detected </Box>
+                                        <Box component="span" sx={{ fontWeight: 700 }}>{satelliteRows.length}</Box>
+                                        <Box component="span" sx={{ opacity: 0.45 }}> | </Box>
+                                        <Box component="span" sx={{ opacity: 0.72 }}>Events </Box>
+                                        <Box component="span" sx={{ fontWeight: 700 }}>{gnssEventCount}</Box>
+                                        <Box component="span" sx={{ opacity: 0.45 }}> | </Box>
+                                        <Box component="span" sx={{ opacity: 0.72 }}>Satellites </Box>
+                                        <Box component="span" sx={{ fontWeight: 700 }}>{receiverFix.satellites !== null ? receiverFix.satellites : '-'}</Box>
+                                        <Box component="span" sx={{ opacity: 0.45 }}> | </Box>
+                                        <Box component="span" sx={{ opacity: 0.72 }}>Quality </Box>
+                                        <Box component="span" sx={{ fontWeight: 700 }}>{receiverFix.fixQuality !== null ? receiverFix.fixQuality : '-'}</Box>
                                     </Typography>
                                     <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.66rem', lineHeight: 1.2, fontFamily: 'monospace' }}>
                                         {`Pos: ${receiverFix.latitude !== null && receiverFix.longitude !== null ? `${receiverFix.latitude.toFixed(6)}, ${receiverFix.longitude.toFixed(6)}` : '-'} | Alt: ${receiverFix.altitudeM !== null ? `${receiverFix.altitudeM.toFixed(1)} m` : '-'}`}
                                     </Typography>
                                     <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.66rem', lineHeight: 1.2, fontFamily: 'monospace' }}>
-                                        {`Fix now ${currentFixElapsedMs !== null ? formatElapsedDuration(currentFixElapsedMs) : '-'} | Acq ${acquiredAgoMs !== null ? `${formatElapsedDuration(acquiredAgoMs)} ago` : '-'} | Lost ${lostAgoMs !== null ? `${formatElapsedDuration(lostAgoMs)} ago` : '-'} | Last fix ${fixLifecycle.lastFixDurationMs !== null ? formatElapsedDuration(fixLifecycle.lastFixDurationMs) : '-'}`}
+                                        {`Fix now ${currentFixElapsedMs !== null ? formatElapsedDuration(currentFixElapsedMs) : '-'} | Acq ${acquiredAgoMs !== null ? `${formatElapsedDuration(acquiredAgoMs)} ago` : '-'} | Lost ${lostAgoMs !== null ? `${formatElapsedDuration(lostAgoMs)} ago` : '-'} | Last fix ${lastFixAcquiredAgoMs !== null ? `${formatElapsedDuration(lastFixAcquiredAgoMs)} ago` : '-'}`}
                                     </Typography>
                                     <Typography
                                         variant="caption"
@@ -945,17 +898,12 @@ const DecodedInsightsIsland = React.memo(function DecodedInsightsIsland() {
                                             lineHeight: 1.2,
                                         }}
                                     >
-                                        {`Upd: ${receiverFix.lastUpdateMs ? formatTimestamp(receiverFix.lastUpdateMs) : '-'} | RX: `}
-                                        <Box
-                                            component="span"
-                                            sx={{
-                                                color: gnssActivity.active ? 'success.main' : gnssActivity.heartbeatAlive ? 'info.main' : 'text.secondary',
-                                                fontWeight: 700,
-                                            }}
-                                        >
-                                            {gnssActivity.active ? `${gnssActivity.packetsPerSec.toFixed(1)} pkt/s` : (gnssActivity.heartbeatAlive ? 'alive (no UDP packets)' : 'waiting')}
-                                        </Box>
+                                        {`Upd: ${receiverFix.lastUpdateMs ? formatTimestamp(receiverFix.lastUpdateMs) : '-'}`}
                                     </Typography>
+                                    <GnssFixQualityTimeline
+                                        timeline={gnssFixQualityTimeline}
+                                        nowMs={relativeNowMs}
+                                    />
                                 </Box>
 
                                 <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto', px: 1.25, py: 1 }}>

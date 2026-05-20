@@ -44,6 +44,10 @@ def derive_gnss_fix_status_from_output(output: Dict[str, Any]) -> Optional[str]:
         return explicit
 
     event_type = str(output.get("event") or "").strip().lower()
+    # GNSS activity heartbeat is transport telemetry; it should not drive fix transitions.
+    if event_type == "gnss_activity":
+        return None
+
     latitude = _to_finite_float(output.get("latitude"))
     longitude = _to_finite_float(output.get("longitude"))
     has_coords = latitude is not None and longitude is not None
