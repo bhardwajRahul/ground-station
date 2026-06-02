@@ -871,32 +871,32 @@ const TargetMapMapLibreRenderer = ({projection = MAPLIBRE_PROJECTION_MERCATOR}) 
                     {hasSatellitePosition ? (
                         <Marker longitude={satelliteLon} latitude={satelliteLat} anchor="center">
                             <div
-                                style={{
-                                    width: 30,
-                                    height: 30,
-                                    border: `2px solid ${theme.palette.error.main}`,
-                                    opacity: 0.8,
-                                    boxSizing: 'border-box',
-                                    pointerEvents: 'none',
-                                }}
-                            />
-                        </Marker>
-                    ) : null}
+                            style={{
+                                width: 30,
+                                height: 30,
+                                border: `2px solid ${theme.palette.error.main}`,
+                                opacity: 0.8,
+                                boxSizing: 'border-box',
+                                pointerEvents: 'none',
+                            }}
+                        />
+                    </Marker>
+                ) : null}
 
                     {hasSatellitePosition ? (
                         <Marker longitude={satelliteLon} latitude={satelliteLat} anchor="center">
                             <div
-                                style={{
-                                    width: 12,
-                                    height: 12,
-                                    background: '#38bdf8',
-                                    border: `1px solid ${theme.palette.error.main}`,
-                                    transform: 'rotate(45deg)',
-                                    boxShadow: `0 0 0 1px ${theme.palette.error.main}`,
-                                }}
-                            />
-                        </Marker>
-                    ) : null}
+                            style={{
+                                width: 12,
+                                height: 12,
+                                background: '#38bdf8',
+                                border: `1px solid ${theme.palette.error.main}`,
+                                transform: 'rotate(45deg)',
+                                boxShadow: `0 0 0 1px ${theme.palette.error.main}`,
+                            }}
+                        />
+                    </Marker>
+                ) : null}
 
                     {showTooltip && hasSatellitePosition ? (
                         <Popup
