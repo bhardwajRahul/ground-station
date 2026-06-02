@@ -781,6 +781,7 @@ const TargetMapMapLibreRenderer = () => {
                         <Popup
                             longitude={satelliteLon}
                             latitude={satelliteLat}
+                            maxWidth="none"
                             closeButton={false}
                             closeOnClick={false}
                             anchor="top"

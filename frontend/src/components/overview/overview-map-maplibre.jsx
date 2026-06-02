@@ -379,7 +379,8 @@ const MapLibreOverviewMapRenderer = ({handleSetTrackingOnBackend}) => {
                     satellite.norad_id,
                     satellite.tle1,
                     satellite.tle2,
-                    now
+                    now,
+                    satellite.name
                 );
 
                 if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(altitude)) {
@@ -1026,6 +1027,7 @@ const MapLibreOverviewMapRenderer = ({handleSetTrackingOnBackend}) => {
                                     <Popup
                                         longitude={marker.lon}
                                         latitude={marker.lat}
+                                        maxWidth="none"
                                         closeButton={false}
                                         closeOnClick={false}
                                         anchor="top"

@@ -376,7 +376,8 @@ const LeafletOverviewMapRenderer = ({handleSetTrackingOnBackend}) => {
                     satellite['norad_id'],
                     satellite['tle1'],
                     satellite['tle2'],
-                    now
+                    now,
+                    satellite['name']
                 );
 
                 // Validate satellite position - skip if invalid

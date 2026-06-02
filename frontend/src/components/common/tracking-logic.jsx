@@ -21,6 +21,30 @@
 import * as satellite from 'satellite.js';
 import { toast } from "../../utils/toast-with-timestamp.jsx";
 
+// Keep tracking propagation notifications quiet during high-frequency map refreshes.
+// We show one user-visible toast, then suppress the rest.
+let hasShownTrackingPropagationToast = false;
+
+function getSatelliteLabel(noradId, satelliteName) {
+    if (satelliteName && String(satelliteName).trim().length > 0) {
+        return `${satelliteName} (NORAD ${noradId})`;
+    }
+    return noradId ? `NORAD ${noradId}` : 'unknown satellite';
+}
+
+function notifyTrackingPropagationFailureOnce(noradId, satelliteName, detail = '') {
+    if (hasShownTrackingPropagationToast) {
+        return;
+    }
+    hasShownTrackingPropagationToast = true;
+
+    const satLabel = getSatelliteLabel(noradId, satelliteName);
+    const detailSuffix = detail ? ` (${detail})` : '';
+    toast.error(`Failed to track ${satLabel}. TLE data may be stale${detailSuffix}.`, {
+        autoClose: 8000,
+    });
+}
+
 /**
  * Calculates the latitude, longitude, altitude, and velocity of a satellite based on TLE data and date.
  *
@@ -28,10 +52,11 @@ import { toast } from "../../utils/toast-with-timestamp.jsx";
  * @param {string} tleLine1 The first line of the two-line element set (TLE) describing the satellite's orbit.
  * @param {string} tleLine2 The second line of the two-line element set (TLE) describing the satellite's orbit.
  * @param {Date} date The date and time for which to calculate the satellite's position and velocity.
+ * @param {string|null} satelliteName Optional satellite display name used in one-time error notification.
  * @return {Object|null} An object containing latitude (lat), longitude (lon), altitude, and velocity of the satellite.
  *                       Returns null if the satellite's position or velocity cannot be determined.
  */
-export function getSatelliteLatLon(noradId, tleLine1, tleLine2, date) {
+export function getSatelliteLatLon(noradId, tleLine1, tleLine2, date, satelliteName = null) {
 
     try {
         if (!noradId || !tleLine1 || !tleLine2 || !date) {
@@ -45,6 +70,7 @@ export function getSatelliteLatLon(noradId, tleLine1, tleLine2, date) {
         // 4=Semi-latus rectum <0, 6=Orbit decayed
         if (satrec.error) {
             console.error(`TLE parsing error for satellite ${noradId}: error code ${satrec.error}`);
+            notifyTrackingPropagationFailureOnce(noradId, satelliteName, `TLE parse error code ${satrec.error}`);
             return [0, 0, 0, 0];
         }
 
@@ -53,14 +79,19 @@ export function getSatelliteLatLon(noradId, tleLine1, tleLine2, date) {
         // satellite.js propagation to hang or take extremely long time
         const bstarThreshold = 0.01;
         if (satrec.bstar && Math.abs(satrec.bstar) > bstarThreshold) {
+            notifyTrackingPropagationFailureOnce(noradId, satelliteName, 'orbital decay');
             return [0, 0, 0, 0];
         }
 
         const pv = satellite.propagate(satrec, date);
 
         // Check if propagation failed OR if propagation detected an error (like orbit decay)
-        if (!pv.position || !pv.velocity || satrec.error) {
-            console.warn(`Failed to propagate satellite ${noradId}: ${!pv.position ? 'no position' : !pv.velocity ? 'no velocity' : `error code ${satrec.error}`}`);
+        if (!pv || !pv.position || !pv.velocity || satrec.error) {
+            const detail = !pv
+                ? 'no propagation result'
+                : (!pv.position ? 'no position' : (!pv.velocity ? 'no velocity' : `error code ${satrec.error}`));
+            console.warn(`Failed to propagate satellite ${noradId}: ${detail}`);
+            notifyTrackingPropagationFailureOnce(noradId, satelliteName, detail);
             return [0, 0, 0, 0];
         }
 
@@ -89,9 +120,7 @@ export function getSatelliteLatLon(noradId, tleLine1, tleLine2, date) {
 
     } catch (error) {
         console.error(`Error calculating satellite ${noradId} position and velocity: ${error.message}`);
-        toast.error(`Error calculating satellite ${noradId} position and velocity: ${error.message}`, {
-            autoClose: 5000,
-        });
+        notifyTrackingPropagationFailureOnce(noradId, satelliteName, error.message);
 
         return [0, 0, 0, 0];
     }
@@ -280,44 +309,42 @@ export function getSatellitePaths(tle, durationMinutes, stepMinutes = 1, noradId
         // Compute past points: from (now - durationMinutes) up to now (inclusive)
         for (let t = now.getTime() - durationMinutes * 60 * 1000; t <= now.getTime(); t += stepMs) {
             const time = new Date(t);
-            const { position } = satellite.propagate(satrec, time);
+            const pv = satellite.propagate(satrec, time);
 
             // Check for propagation errors (orbit decay, etc)
-            if (satrec.error) {
-                console.warn(`Satellite path propagation error at time ${time}: error code ${satrec.error}`);
+            if (!pv || !pv.position || satrec.error) {
+                const detail = !pv ? 'no propagation result' : (!pv.position ? 'no position' : `error code ${satrec.error}`);
+                console.warn(`Satellite path propagation error at time ${time}: ${detail}`);
                 break; // Stop calculating path if propagation fails
             }
-            if (position) {
-                const gmst = satellite.gstime(time);
-                const posGd = satellite.eciToGeodetic(position, gmst);
-                let lon = normalizeLongitude(satellite.degreesLong(posGd.longitude));
-                const lat = satellite.degreesLat(posGd.latitude);
-                // Validate coordinates before adding
-                if (isFinite(lat) && isFinite(lon)) {
-                    pastPoints.push({ lat, lon });
-                }
+            const gmst = satellite.gstime(time);
+            const posGd = satellite.eciToGeodetic(pv.position, gmst);
+            let lon = normalizeLongitude(satellite.degreesLong(posGd.longitude));
+            const lat = satellite.degreesLat(posGd.latitude);
+            // Validate coordinates before adding
+            if (isFinite(lat) && isFinite(lon)) {
+                pastPoints.push({ lat, lon });
             }
         }
 
         // Compute future points: from now up to (now + durationMinutes) (inclusive)
         for (let t = now.getTime(); t <= now.getTime() + durationMinutes * 60 * 1000; t += stepMs) {
             const time = new Date(t);
-            const { position } = satellite.propagate(satrec, time);
+            const pv = satellite.propagate(satrec, time);
 
             // Check for propagation errors (orbit decay, etc)
-            if (satrec.error) {
-                console.warn(`Satellite path propagation error at time ${time}: error code ${satrec.error}`);
+            if (!pv || !pv.position || satrec.error) {
+                const detail = !pv ? 'no propagation result' : (!pv.position ? 'no position' : `error code ${satrec.error}`);
+                console.warn(`Satellite path propagation error at time ${time}: ${detail}`);
                 break; // Stop calculating path if propagation fails
             }
-            if (position) {
-                const gmst = satellite.gstime(time);
-                const posGd = satellite.eciToGeodetic(position, gmst);
-                let lon = normalizeLongitude(satellite.degreesLong(posGd.longitude));
-                const lat = satellite.degreesLat(posGd.latitude);
-                // Validate coordinates before adding
-                if (isFinite(lat) && isFinite(lon)) {
-                    futurePoints.push({ lat, lon });
-                }
+            const gmst = satellite.gstime(time);
+            const posGd = satellite.eciToGeodetic(pv.position, gmst);
+            let lon = normalizeLongitude(satellite.degreesLong(posGd.longitude));
+            const lat = satellite.degreesLat(posGd.latitude);
+            // Validate coordinates before adding
+            if (isFinite(lat) && isFinite(lon)) {
+                futurePoints.push({ lat, lon });
             }
         }
 
@@ -328,9 +355,6 @@ export function getSatellitePaths(tle, durationMinutes, stepMinutes = 1, noradId
         return { past, future };
     } catch (error) {
         console.error("Error computing satellite paths:", error);
-        toast.error("Error computing satellite paths: " + error.message, {
-            autoClose: 5000,
-        });
         return { past: [], future: [] };
     }
 }
@@ -531,8 +555,11 @@ export function calculateSatelliteAzEl(tleLine1, tleLine2, groundStation, date =
 
         // Get satellite position and velocity in ECI coordinates
         const positionAndVelocity = satellite.propagate(satrec, date);
-        if (!positionAndVelocity.position || satrec.error) {
-            console.error(`Failed to propagate satellite position: ${!positionAndVelocity.position ? 'no position' : `error code ${satrec.error}`}`);
+        if (!positionAndVelocity || !positionAndVelocity.position || satrec.error) {
+            const detail = !positionAndVelocity
+                ? 'no propagation result'
+                : (!positionAndVelocity.position ? 'no position' : `error code ${satrec.error}`);
+            console.warn(`Failed to propagate satellite position: ${detail}`);
             return null;
         }
 
@@ -575,9 +602,6 @@ export function calculateSatelliteAzEl(tleLine1, tleLine2, groundStation, date =
 
     } catch (error) {
         console.error("Error calculating satellite azimuth and elevation:", error);
-        toast.error("Error calculating satellite tracking data: " + error.message, {
-            autoClose: 5000,
-        });
         return null;
     }
 }
