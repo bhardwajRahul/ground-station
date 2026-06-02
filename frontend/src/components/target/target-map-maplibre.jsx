@@ -101,6 +101,41 @@ function latLonToLngLat(point) {
     return [lon, lat];
 }
 
+function projectTerminatorForMapLibre(points) {
+    const normalizedPoints = Array.isArray(points)
+        ? points
+            .map((point) => (Array.isArray(point) && point.length >= 2 ? [Number(point[0]), Number(point[1])] : null))
+            .filter((point) => point && Number.isFinite(point[0]) && Number.isFinite(point[1]))
+        : [];
+
+    const line = normalizedPoints.filter(([, lon]) => lon >= -180 && lon <= 180);
+    if (line.length < 2) {
+        return { line: [], polygon: [] };
+    }
+
+    const polePoint = normalizedPoints.find(([lat]) => Math.abs(Math.abs(lat) - 90) < 0.5) || null;
+    if (!polePoint) {
+        const firstPoint = line[0];
+        const lastPoint = line[line.length - 1];
+        const polygon = (firstPoint && lastPoint && (firstPoint[0] !== lastPoint[0] || firstPoint[1] !== lastPoint[1]))
+            ? [...line, firstPoint]
+            : line;
+        return { line, polygon };
+    }
+
+    const poleLat = polePoint[0] >= 0 ? 90 : -90;
+    const firstLinePoint = line[0];
+    const lastLinePoint = line[line.length - 1];
+    const polygon = [
+        [poleLat, firstLinePoint[1]],
+        ...line,
+        [poleLat, lastLinePoint[1]],
+        [poleLat, firstLinePoint[1]],
+    ];
+
+    return { line, polygon };
+}
+
 function normalizeCoveragePoint(point) {
     if (Array.isArray(point) && point.length >= 2) {
         return [Number(point[0]), Number(point[1])];
@@ -273,11 +308,11 @@ const TargetMapMapLibreRenderer = () => {
 
     useEffect(() => {
         const update = () => {
-            const terminatorLine = createTerminatorLine().reverse();
-            const daySidePolygon = [...terminatorLine];
-            if (daySidePolygon.length > 0) {
-                daySidePolygon.push(daySidePolygon[daySidePolygon.length - 1]);
-            }
+            const rawTerminator = createTerminatorLine().reverse();
+            const {
+                line: terminatorLine,
+                polygon: daySidePolygon,
+            } = projectTerminatorForMapLibre(rawTerminator);
             const [sunPos, moonPos] = getSunMoonCoords();
             setSkyState({
                 terminatorLine,
@@ -675,6 +710,21 @@ const TargetMapMapLibreRenderer = () => {
                     {showMoonIcon && Array.isArray(skyState.moonPos) ? (
                         <Marker longitude={skyState.moonPos[1]} latitude={skyState.moonPos[0]} anchor="center">
                             <img src={moonIcon.options.iconUrl} alt="Moon" style={{width: 28, height: 28, opacity: 0.6}}/>
+                        </Marker>
+                    ) : null}
+
+                    {hasSatellitePosition ? (
+                        <Marker longitude={satelliteLon} latitude={satelliteLat} anchor="center">
+                            <div
+                                style={{
+                                    width: 30,
+                                    height: 30,
+                                    border: `2px solid ${theme.palette.error.main}`,
+                                    opacity: 0.8,
+                                    boxSizing: 'border-box',
+                                    pointerEvents: 'none',
+                                }}
+                            />
                         </Marker>
                     ) : null}
 

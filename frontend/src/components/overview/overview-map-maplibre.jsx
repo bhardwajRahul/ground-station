@@ -67,6 +67,7 @@ import TargetNumberIcon from '../common/target-number-icon.jsx';
 import createTerminatorLine from '../common/terminator-line.jsx';
 import {getSunMoonCoords} from '../common/sunmoon.jsx';
 import {useSocket} from '../common/socket.jsx';
+import {store} from '../common/store.jsx';
 import {CircularProgress, Backdrop} from '@mui/material';
 
 const viewSatelliteLimit = 100;
@@ -97,11 +98,56 @@ const emptyFeatureCollection = () => ({
 });
 
 function latLonToLngLat(point) {
-    if (!Array.isArray(point) || point.length < 2) return null;
-    const lat = Number(point[0]);
-    const lon = Number(point[1]);
+    let lat;
+    let lon;
+
+    if (Array.isArray(point) && point.length >= 2) {
+        lat = Number(point[0]);
+        lon = Number(point[1]);
+    } else if (point && typeof point === 'object') {
+        lat = Number(point.lat);
+        lon = Number(point.lon ?? point.lng);
+    } else {
+        return null;
+    }
+
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
     return [lon, lat];
+}
+
+function projectTerminatorForMapLibre(points) {
+    const normalizedPoints = Array.isArray(points)
+        ? points
+            .map((point) => (Array.isArray(point) && point.length >= 2 ? [Number(point[0]), Number(point[1])] : null))
+            .filter((point) => point && Number.isFinite(point[0]) && Number.isFinite(point[1]))
+        : [];
+
+    const line = normalizedPoints.filter(([, lon]) => lon >= -180 && lon <= 180);
+    if (line.length < 2) {
+        return { line: [], polygon: [] };
+    }
+
+    const polePoint = normalizedPoints.find(([lat]) => Math.abs(Math.abs(lat) - 90) < 0.5) || null;
+    if (!polePoint) {
+        const firstPoint = line[0];
+        const lastPoint = line[line.length - 1];
+        const polygon = (firstPoint && lastPoint && (firstPoint[0] !== lastPoint[0] || firstPoint[1] !== lastPoint[1]))
+            ? [...line, firstPoint]
+            : line;
+        return { line, polygon };
+    }
+
+    const poleLat = polePoint[0] >= 0 ? 90 : -90;
+    const firstLinePoint = line[0];
+    const lastLinePoint = line[line.length - 1];
+    const polygon = [
+        [poleLat, firstLinePoint[1]],
+        ...line,
+        [poleLat, lastLinePoint[1]],
+        [poleLat, firstLinePoint[1]],
+    ];
+
+    return { line, polygon };
 }
 
 function buildGridGeoJSON(latInterval = 15, lngInterval = 15) {
@@ -151,6 +197,11 @@ function areSatellitesEquivalent(prev = [], next = []) {
     return true;
 }
 
+function isMapLibreOverlayTarget(target) {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest('.maplibregl-marker, .maplibregl-popup'));
+}
+
 const OverviewAttributionBar = React.memo(function OverviewAttributionBar({htmlString}) {
     return (
         <MapStatusBar>
@@ -192,13 +243,13 @@ const MapLibreOverviewMapRenderer = ({handleSetTrackingOnBackend}) => {
         areSatellitesEquivalent
     );
 
-    const satelliteData = useSelector((state) => state.overviewSatTrack.satelliteData);
     const {location} = useSelector((state) => state.location);
     const trackerInstances = useSelector((state) => state.trackerInstances?.instances || []);
 
     const mapRef = useRef(null);
     const controlsBoxRef = useRef(null);
     const arrowControlsRef = useRef(null);
+    const markerClickInProgressRef = useRef(false);
     const updateTimeRef = useRef(null);
     const elevationHistoryRef = useRef({});
 
@@ -394,9 +445,10 @@ const MapLibreOverviewMapRenderer = ({handleSetTrackingOnBackend}) => {
                 };
 
                 if (selectedSatelliteId === noradId) {
+                    const recentSatData = store.getState().overviewSatTrack.satelliteData;
                     dispatch(
                         setSatelliteData({
-                            ...satelliteData,
+                            ...recentSatData,
                             position: {
                                 lat,
                                 lon,
@@ -466,11 +518,11 @@ const MapLibreOverviewMapRenderer = ({handleSetTrackingOnBackend}) => {
             }
         });
 
-        const terminatorLine = createTerminatorLine().reverse();
-        const daySidePolygon = [...terminatorLine];
-        if (daySidePolygon.length > 0) {
-            daySidePolygon.push(daySidePolygon[daySidePolygon.length - 1]);
-        }
+        const rawTerminator = createTerminatorLine().reverse();
+        const {
+            line: terminatorLine,
+            polygon: daySidePolygon,
+        } = projectTerminatorForMapLibre(rawTerminator);
         const [sunPos, moonPos] = getSunMoonCoords();
 
         setOverlayData({
@@ -489,7 +541,6 @@ const MapLibreOverviewMapRenderer = ({handleSetTrackingOnBackend}) => {
         dispatch,
         location,
         orbitProjectionDuration,
-        satelliteData,
         selectedSatelliteId,
         selectedSatellites,
         showSatelliteCoverage,
@@ -714,6 +765,10 @@ const MapLibreOverviewMapRenderer = ({handleSetTrackingOnBackend}) => {
                     onZoomEnd={(event) => handleSetMapZoomLevel(event?.viewState?.zoom ?? mapZoomLevel)}
                     onClick={(event) => {
                         const target = event.originalEvent?.target;
+                        if (markerClickInProgressRef.current || isMapLibreOverlayTarget(target)) {
+                            markerClickInProgressRef.current = false;
+                            return;
+                        }
                         if (controlsBoxRef.current?.contains(target) || arrowControlsRef.current?.contains(target)) {
                             return;
                         }
@@ -867,13 +922,38 @@ const MapLibreOverviewMapRenderer = ({handleSetTrackingOnBackend}) => {
 
                         return (
                             <React.Fragment key={`overview-maplibre-marker-${marker.noradId}`}>
+                                {marker.isTracked ? (
+                                    <Marker
+                                        longitude={marker.lon}
+                                        latitude={marker.lat}
+                                        anchor="center"
+                                        style={{pointerEvents: 'none'}}
+                                    >
+                                        <div
+                                            style={{
+                                                width: 30,
+                                                height: 30,
+                                                border: `2px solid ${theme.palette.error.main}`,
+                                                opacity: 0.8,
+                                                boxSizing: 'border-box',
+                                                pointerEvents: 'none',
+                                            }}
+                                        />
+                                    </Marker>
+                                ) : null}
                                 <Marker
                                     longitude={marker.lon}
                                     latitude={marker.lat}
                                     anchor="center"
                                     onClick={(event) => {
+                                        markerClickInProgressRef.current = true;
+                                        event.preventDefault?.();
                                         event.originalEvent?.stopPropagation();
+                                        event.originalEvent?.preventDefault?.();
                                         dispatch(setSelectedSatelliteId(marker.noradId));
+                                        setTimeout(() => {
+                                            markerClickInProgressRef.current = false;
+                                        }, 0);
                                     }}
                                 >
                                     <div
