@@ -32,7 +32,7 @@ from typing import Any, Dict, Optional, cast
 import crud
 import crud.celestialvectors as crud_celestial_vectors
 from celestial.bodycatalog import get_celestial_body
-from celestial.horizons import fetch_celestial_vectors
+from celestial.scene import request_tracker_mission_vectors_refresh
 from common.constants import RigStates, RotatorStates, TrackerCommandScopes, TrackerCommandStatus
 from db import AsyncSessionLocal
 from orbits import CentralBody, OrbitServiceError, build_satellite_ephemeris_payload
@@ -103,7 +103,6 @@ class TrackerManager:
         dbsession,
         *,
         tracking_state: Dict[str, Any],
-        map_settings: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
         command = str(tracking_state.get("command") or "").strip()
         if not command:
@@ -122,30 +121,10 @@ class TrackerManager:
             if isinstance(cached_payload, dict):
                 payload = dict(cached_payload)
 
+        # Tracker mission updates are cache-consumer only. Fresh Horizons pulls are
+        # delegated to scene-managed refresh routines to keep one fetch policy owner.
         if payload is None:
-            duration_minutes_raw = (map_settings or {}).get("orbitProjectionDuration", 240)
-            try:
-                duration_minutes = max(60, int(duration_minutes_raw))
-            except (TypeError, ValueError):
-                duration_minutes = 240
-            future_hours = max(1, min(24 * 30, int(duration_minutes / 60)))
-            past_hours = max(1, min(24, int(max(1, future_hours / 4))))
-            try:
-                payload = await asyncio.to_thread(
-                    fetch_celestial_vectors,
-                    command,
-                    datetime.now(timezone.utc),
-                    past_hours,
-                    future_hours,
-                    60,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "_build_mission_ephemeris_payload: failed loading vectors for command '%s': %s",
-                    command,
-                    exc,
-                )
-                return None
+            return None
         if not isinstance(payload, dict):
             return None
 
@@ -598,14 +577,23 @@ class TrackerManager:
                 mission_payload = await self._build_mission_ephemeris_payload(
                     dbsession,
                     tracking_state=tracking_state,
-                    map_settings=map_settings,
                 )
                 if mission_payload:
                     self._send_to_tracker(TRACKER_MSG_SET_SATELLITE_EPHEMERIS, mission_payload)
                 else:
+                    mission_command = str(tracking_state.get("command") or "").strip()
+                    refresh_reason = "skipped"
+                    if mission_command:
+                        refresh_result = await request_tracker_mission_vectors_refresh(
+                            command=mission_command,
+                            logger=logger,
+                        )
+                        refresh_reason = str(refresh_result.get("reason") or "unknown")
                     logger.warning(
-                        "_sync_tracker_context: no mission ephemeris payload available for tracker '%s'",
+                        "_sync_tracker_context: no mission ephemeris payload for tracker '%s' (command='%s' refresh=%s)",
                         self.tracker_id,
+                        mission_command or "unknown",
+                        refresh_reason,
                     )
                 # Mission tracking currently drives only rotator control, not rig doppler/tuning.
                 self._send_to_tracker(TRACKER_MSG_SET_TRANSMITTERS, {"items": []})

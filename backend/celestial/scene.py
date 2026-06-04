@@ -96,6 +96,10 @@ class CacheEntry:
 _computed_cache: Dict[str, CacheEntry] = {}
 _computed_cache_lock = threading.Lock()
 _scheduled_sync_lock = asyncio.Lock()
+_tracker_refresh_lock = asyncio.Lock()
+_tracker_refresh_tasks: Dict[str, asyncio.Task] = {}
+_tracker_refresh_last_request_monotonic: Dict[str, float] = {}
+TRACKER_REFRESH_DEBOUNCE_SECONDS = 60
 
 
 def _target_key_from_parts(
@@ -2441,6 +2445,132 @@ async def build_celestial_tracks(
                 "visibility_definition": "visible == elevation_deg > 0",
             },
         },
+    }
+
+
+def _clear_tracker_refresh_task(task: asyncio.Task, target_key: str) -> None:
+    try:
+        _tracker_refresh_tasks.pop(target_key, None)
+    except Exception:
+        pass
+    try:
+        task.result()
+    except Exception:
+        # The caller already emits context-aware logs for refresh failures.
+        pass
+
+
+async def _refresh_tracker_mission_vectors(
+    *,
+    target_key: str,
+    command: str,
+    logger: Any,
+) -> None:
+    await _ensure_scene_targets_registered(
+        [
+            {
+                "target_type": "mission",
+                "target_key": target_key,
+                "name": command,
+                "command": command,
+                "horizons_command": command,
+                "always_in_scene": False,
+            }
+        ],
+        logger,
+    )
+
+    epoch = datetime.now(timezone.utc)
+    snapshot = await _get_vectors_snapshot(
+        target_key=target_key,
+        command=command,
+        epoch=epoch,
+        past_hours=CANONICAL_WINDOW_HOURS,
+        future_hours=CANONICAL_WINDOW_HOURS,
+        step_minutes=CANONICAL_WINDOW_STEP_MINUTES,
+        observer_location=None,
+        force_refresh=False,
+        logger=logger,
+        allow_network_fetch=True,
+    )
+    payload = snapshot.get("payload")
+    if isinstance(payload, dict):
+        logger.info(
+            "Tracker mission vectors refresh completed for '%s' (cache=%s stale=%s)",
+            command,
+            snapshot.get("cache"),
+            bool(snapshot.get("stale")),
+        )
+        return
+
+    logger.warning(
+        "Tracker mission vectors refresh failed for '%s' (cache=%s error=%s)",
+        command,
+        snapshot.get("cache"),
+        snapshot.get("error"),
+    )
+
+
+async def request_tracker_mission_vectors_refresh(
+    *,
+    command: str,
+    logger: Any,
+    debounce_seconds: int = TRACKER_REFRESH_DEBOUNCE_SECONDS,
+) -> Dict[str, Any]:
+    """
+    Schedule a non-blocking mission vectors refresh for tracker cache misses.
+
+    This keeps tracker runtime cache-only while allowing scene-managed refreshes
+    to fill snapshots in the background.
+    """
+    normalized_command = str(command or "").strip()
+    if not normalized_command:
+        return {"success": False, "scheduled": False, "error": "command is required"}
+    target_key = _target_key_from_parts("mission", command=normalized_command)
+    if not target_key:
+        return {"success": False, "scheduled": False, "error": "target_key is required"}
+
+    async with _tracker_refresh_lock:
+        current_task = _tracker_refresh_tasks.get(target_key)
+        if current_task and not current_task.done():
+            return {
+                "success": True,
+                "scheduled": False,
+                "target_key": target_key,
+                "reason": "already-running",
+            }
+
+        now_monotonic = time.monotonic()
+        debounce_window = max(5, int(debounce_seconds))
+        last_request = _tracker_refresh_last_request_monotonic.get(target_key)
+        if last_request and (now_monotonic - last_request) < debounce_window:
+            return {
+                "success": True,
+                "scheduled": False,
+                "target_key": target_key,
+                "reason": "debounced",
+            }
+
+        _tracker_refresh_last_request_monotonic[target_key] = now_monotonic
+        task = asyncio.create_task(
+            _refresh_tracker_mission_vectors(
+                target_key=target_key,
+                command=normalized_command,
+                logger=logger,
+            )
+        )
+        _tracker_refresh_tasks[target_key] = task
+
+        def _on_tracker_refresh_done(completed: asyncio.Task, key: str = target_key) -> None:
+            _clear_tracker_refresh_task(completed, key)
+
+        task.add_done_callback(_on_tracker_refresh_done)
+
+    return {
+        "success": True,
+        "scheduled": True,
+        "target_key": target_key,
+        "reason": "scheduled",
     }
 
 
