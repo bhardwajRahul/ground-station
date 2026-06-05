@@ -32,7 +32,6 @@ from typing import Any, Dict, Optional, cast
 import crud
 import crud.celestialvectors as crud_celestial_vectors
 from celestial.bodycatalog import get_celestial_body
-from celestial.scene import request_tracker_mission_vectors_refresh
 from common.constants import RigStates, RotatorStates, TrackerCommandScopes, TrackerCommandStatus
 from db import AsyncSessionLocal
 from orbits import CentralBody, OrbitServiceError, build_satellite_ephemeris_payload
@@ -98,6 +97,25 @@ class TrackerManager:
             return "body"
         return "satellite"
 
+    @staticmethod
+    async def _load_cached_vector_payload(
+        dbsession,
+        *,
+        target_key: str,
+    ) -> Optional[Dict[str, Any]]:
+        cached = await crud_celestial_vectors.fetch_latest_celestial_vector_snapshot_for_target(
+            dbsession,
+            target_id=target_key,
+            valid_only=True,
+            as_of=datetime.now(timezone.utc),
+        )
+        if not cached.get("success") or not isinstance(cached.get("data"), dict):
+            return None
+        cached_payload = (cached["data"] or {}).get("payload")
+        if not isinstance(cached_payload, dict):
+            return None
+        return dict(cached_payload)
+
     async def _build_mission_ephemeris_payload(
         self,
         dbsession,
@@ -108,24 +126,16 @@ class TrackerManager:
         if not command:
             return None
 
-        payload: Optional[Dict[str, Any]] = None
         target_key = f"mission:{command}"
-        cached = await crud_celestial_vectors.fetch_latest_celestial_vector_snapshot_for_target(
+        payload = await self._load_cached_vector_payload(
             dbsession,
-            target_id=target_key,
-            valid_only=False,
-            as_of=datetime.now(timezone.utc),
+            target_key=target_key,
         )
-        if cached.get("success") and isinstance(cached.get("data"), dict):
-            cached_payload = (cached["data"] or {}).get("payload")
-            if isinstance(cached_payload, dict):
-                payload = dict(cached_payload)
-
-        # Tracker mission updates are cache-consumer only. Fresh Horizons pulls are
-        # delegated to scene-managed refresh routines to keep one fetch policy owner.
-        if payload is None:
-            return None
-        if not isinstance(payload, dict):
+        earth_payload = await self._load_cached_vector_payload(
+            dbsession,
+            target_key="body:earth",
+        )
+        if payload is None or earth_payload is None:
             return None
 
         return {
@@ -135,8 +145,48 @@ class TrackerManager:
             "position_xyz_au": payload.get("position_xyz_au"),
             "orbit_samples_xyz_au": payload.get("orbit_samples_xyz_au") or [],
             "orbit_sample_times_utc": payload.get("orbit_sample_times_utc") or [],
+            "earth_position_xyz_au": earth_payload.get("position_xyz_au"),
+            "earth_orbit_samples_xyz_au": earth_payload.get("orbit_samples_xyz_au") or [],
+            "earth_orbit_sample_times_utc": earth_payload.get("orbit_sample_times_utc") or [],
             "source": payload.get("source", "horizons"),
             "fetched_at_utc": payload.get("fetched_at_utc"),
+        }
+
+    async def _build_body_ephemeris_payload(
+        self,
+        dbsession,
+        *,
+        tracking_state: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        body_id = str(tracking_state.get("body_id") or "").strip().lower()
+        if not body_id:
+            return None
+        body_payload = await self._load_cached_vector_payload(
+            dbsession,
+            target_key=f"body:{body_id}",
+        )
+        earth_payload = await self._load_cached_vector_payload(
+            dbsession,
+            target_key="body:earth",
+        )
+        if body_payload is None or earth_payload is None:
+            return None
+        body = get_celestial_body(body_id) or {}
+        body_name = (
+            str(tracking_state.get("target_name") or body.get("name") or body_id).strip() or body_id
+        )
+        return {
+            "target_type": "body",
+            "body_id": body_id,
+            "name": body_name,
+            "position_xyz_au": body_payload.get("position_xyz_au"),
+            "orbit_samples_xyz_au": body_payload.get("orbit_samples_xyz_au") or [],
+            "orbit_sample_times_utc": body_payload.get("orbit_sample_times_utc") or [],
+            "earth_position_xyz_au": earth_payload.get("position_xyz_au"),
+            "earth_orbit_samples_xyz_au": earth_payload.get("orbit_samples_xyz_au") or [],
+            "earth_orbit_sample_times_utc": earth_payload.get("orbit_sample_times_utc") or [],
+            "source": body_payload.get("source", "horizons"),
+            "fetched_at_utc": body_payload.get("fetched_at_utc"),
         }
 
     async def _ensure_tracking_state(self) -> Optional[Dict[str, Any]]:
@@ -582,33 +632,26 @@ class TrackerManager:
                     self._send_to_tracker(TRACKER_MSG_SET_SATELLITE_EPHEMERIS, mission_payload)
                 else:
                     mission_command = str(tracking_state.get("command") or "").strip()
-                    refresh_reason = "skipped"
-                    if mission_command:
-                        refresh_result = await request_tracker_mission_vectors_refresh(
-                            command=mission_command,
-                            logger=logger,
-                        )
-                        refresh_reason = str(refresh_result.get("reason") or "unknown")
                     logger.warning(
-                        "_sync_tracker_context: no mission ephemeris payload for tracker '%s' (command='%s' refresh=%s)",
+                        "_sync_tracker_context: no mission ephemeris payload for tracker '%s' (command='%s')",
                         self.tracker_id,
                         mission_command or "unknown",
-                        refresh_reason,
                     )
                 # Mission tracking currently drives only rotator control, not rig doppler/tuning.
                 self._send_to_tracker(TRACKER_MSG_SET_TRANSMITTERS, {"items": []})
             elif target_type == "body":
-                body_id = str(tracking_state.get("body_id") or "").strip().lower()
-                if body_id:
-                    body = get_celestial_body(body_id) or {}
-                    body_name = str(body.get("name") or body_id).strip() or body_id
-                    self._send_to_tracker(
-                        TRACKER_MSG_SET_SATELLITE_EPHEMERIS,
-                        {
-                            "target_type": "body",
-                            "body_id": body_id,
-                            "name": body_name,
-                        },
+                body_payload = await self._build_body_ephemeris_payload(
+                    dbsession,
+                    tracking_state=tracking_state,
+                )
+                if body_payload:
+                    self._send_to_tracker(TRACKER_MSG_SET_SATELLITE_EPHEMERIS, body_payload)
+                else:
+                    body_id = str(tracking_state.get("body_id") or "").strip().lower()
+                    logger.warning(
+                        "_sync_tracker_context: no body ephemeris payload for tracker '%s' (body_id='%s')",
+                        self.tracker_id,
+                        body_id or "unknown",
                     )
                 self._send_to_tracker(TRACKER_MSG_SET_TRANSMITTERS, {"items": []})
 

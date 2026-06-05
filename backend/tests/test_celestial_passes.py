@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from celestial import scene
 from celestial.scene import _build_pass_events_from_samples
 
 
@@ -90,3 +91,121 @@ def test_build_pass_events_densifies_sparse_curve_segments():
     assert len(curve) > 4
     assert curve[0]["elevation"] == 0.0
     assert curve[-1]["elevation"] == 0.0
+
+
+def test_extract_row_observer_samples_prefers_supplied_earth_orbit_samples(monkeypatch):
+    """Observer sampling should use provided Earth Horizons samples before local ephemeris fallback."""
+    start = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+    row = {
+        "target_type": "body",
+        "target_key": "body:moon",
+        "body_id": "moon",
+        "orbit_samples_xyz_au": [
+            [0.999, 0.001, 0.0],
+            [0.999, 0.002, 0.0],
+        ],
+        "orbit_sample_times_utc": [
+            start.isoformat(),
+            (start + timedelta(minutes=30)).isoformat(),
+        ],
+    }
+
+    earth_orbit_samples = [
+        (start, [0.998, 0.0, 0.0]),
+        (start + timedelta(minutes=30), [0.998, 0.0005, 0.0]),
+    ]
+
+    def _unexpected_earth_fallback(_body_id, _sample_time):
+        raise AssertionError(
+            "Local Earth ephemeris fallback should not run when Horizons samples exist"
+        )
+
+    monkeypatch.setattr(
+        scene,
+        "compute_body_position_heliocentric_au",
+        _unexpected_earth_fallback,
+        raising=False,
+    )
+
+    samples = scene._extract_row_observer_samples(
+        row=row,
+        epoch=start,
+        past_hours=0,
+        future_hours=1,
+        step_minutes=30,
+        observer_location={"lat": 40.0, "lon": 22.0},
+        earth_position_xyz_au=None,
+        earth_orbit_samples=earth_orbit_samples,
+        logger=type("_DummyLogger", (), {"debug": lambda *_args, **_kwargs: None})(),
+    )
+
+    assert len(samples) == 2
+    assert all("el_deg" in sample and "az_deg" in sample for sample in samples)
+
+
+def test_extract_row_observer_samples_requires_horizons_target_samples_for_bodies():
+    """Body rows without Horizons orbit samples should not fall back to local ephemeris."""
+    start = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+    row = {
+        "target_type": "body",
+        "target_key": "body:moon",
+        "body_id": "moon",
+        "orbit_samples_xyz_au": [],
+        "orbit_sample_times_utc": [],
+    }
+
+    samples = scene._extract_row_observer_samples(
+        row=row,
+        epoch=start,
+        past_hours=0,
+        future_hours=1,
+        step_minutes=30,
+        observer_location={"lat": 40.0, "lon": 22.0},
+        earth_position_xyz_au=None,
+        earth_orbit_samples=[],
+        logger=type("_DummyLogger", (), {"debug": lambda *_args, **_kwargs: None})(),
+    )
+
+    assert samples == []
+
+
+def test_extract_row_observer_samples_does_not_call_local_earth_fallback(monkeypatch):
+    """Observer sampling should skip rows when Earth Horizons vectors are unavailable."""
+    start = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
+    row = {
+        "target_type": "mission",
+        "target_key": "mission:Voyager 1",
+        "command": "Voyager 1",
+        "orbit_samples_xyz_au": [
+            [0.999, 0.001, 0.0],
+            [0.999, 0.002, 0.0],
+        ],
+        "orbit_sample_times_utc": [
+            start.isoformat(),
+            (start + timedelta(minutes=30)).isoformat(),
+        ],
+    }
+
+    def _unexpected_earth_fallback(_body_id, _sample_time):
+        raise AssertionError("Local Earth ephemeris fallback should not be called")
+
+    monkeypatch.setattr(
+        scene,
+        "compute_body_position_heliocentric_au",
+        _unexpected_earth_fallback,
+        raising=False,
+    )
+
+    samples = scene._extract_row_observer_samples(
+        row=row,
+        epoch=start,
+        past_hours=0,
+        future_hours=1,
+        step_minutes=30,
+        observer_location={"lat": 40.0, "lon": 22.0},
+        earth_position_xyz_au=None,
+        earth_orbit_samples=[],
+        logger=type("_DummyLogger", (), {"debug": lambda *_args, **_kwargs: None})(),
+    )
+
+    assert samples == []

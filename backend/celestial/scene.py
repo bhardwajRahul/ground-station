@@ -24,7 +24,6 @@ from celestial.asteroidzones import get_static_asteroid_zones
 from celestial.bodycatalog import list_celestial_bodies
 from celestial.horizons import fetch_celestial_vectors
 from celestial.observermath import compute_observer_sky_position
-from celestial.solarsystem import compute_body_position_heliocentric_au
 from common.arguments import arguments
 from db import AsyncSessionLocal
 
@@ -40,15 +39,8 @@ def _config_int(name: str, default: int, minimum: int) -> int:
 # Celestial cache policy is fixed by code, not by app config.
 CACHE_TTL_SECONDS = 120
 VECTOR_DB_TTL_SECONDS = 2 * 60 * 60
-CANONICAL_WINDOW_DB_TTL_SECONDS = 3 * 24 * 60 * 60
 VECTOR_EPOCH_BUCKET_MINUTES = 60
 COMPUTED_EPOCH_BUCKET_SECONDS = 60
-SKY_MOTION_ACCURACY_TARGET_DEG = 0.25
-SKY_MOTION_SAFETY_FACTOR = 0.5
-SKY_MOTION_DYNAMIC_TTL_MIN_SECONDS = 2 * 60
-SKY_MOTION_DYNAMIC_TTL_MAX_SECONDS = 6 * 60 * 60
-CANONICAL_WINDOW_HOURS = 24 * 180
-CANONICAL_WINDOW_STEP_MINUTES = 180
 SCHEDULED_SYNC_PAST_HOURS = _config_int("celestial_sync_past_hours", 1, 0)
 SCHEDULED_SYNC_FUTURE_HOURS = 24
 SCHEDULED_SYNC_STEP_MINUTES = 60
@@ -96,10 +88,6 @@ class CacheEntry:
 _computed_cache: Dict[str, CacheEntry] = {}
 _computed_cache_lock = threading.Lock()
 _scheduled_sync_lock = asyncio.Lock()
-_tracker_refresh_lock = asyncio.Lock()
-_tracker_refresh_tasks: Dict[str, asyncio.Task] = {}
-_tracker_refresh_last_request_monotonic: Dict[str, float] = {}
-TRACKER_REFRESH_DEBOUNCE_SECONDS = 60
 
 
 def _target_key_from_parts(
@@ -409,28 +397,6 @@ def _bucket_epoch(epoch: datetime, bucket_seconds: int) -> datetime:
     return datetime.fromtimestamp(bucketed, tz=timezone.utc)
 
 
-def _coerce_utc_datetime(value: Any) -> Optional[datetime]:
-    parsed: Optional[datetime]
-    if isinstance(value, datetime):
-        parsed = value
-    else:
-        parsed = _parse_iso_utc(value)
-    if not parsed:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
-def _cache_row_is_expired(row: Optional[Dict[str, Any]]) -> bool:
-    if not isinstance(row, dict):
-        return False
-    expires_at = _coerce_utc_datetime(row.get("expires_at"))
-    if not expires_at:
-        return False
-    return expires_at < datetime.now(timezone.utc)
-
-
 def _extract_orbit_samples(
     payload: Dict[str, Any],
     *,
@@ -506,118 +472,6 @@ def _interpolate_position_from_samples(
     ]
 
 
-def _slice_payload_to_projection_window(
-    *,
-    payload: Dict[str, Any],
-    epoch: datetime,
-    requested_past_hours: int,
-    requested_future_hours: int,
-    requested_step_minutes: int,
-    source_past_hours: int,
-    source_future_hours: int,
-) -> Optional[Dict[str, Any]]:
-    samples = _extract_orbit_samples(
-        payload,
-        epoch_fallback=epoch,
-        past_hours=source_past_hours,
-        future_hours=source_future_hours,
-    )
-    if len(samples) < 2:
-        return None
-
-    ordered = sorted(samples, key=lambda item: item[0])
-    requested_start = epoch - timedelta(hours=int(requested_past_hours))
-    requested_end = epoch + timedelta(hours=int(requested_future_hours))
-    if ordered[0][0] > requested_start or ordered[-1][0] < requested_end:
-        return None
-
-    sampled_times = _build_window_timestamps(
-        epoch=epoch,
-        past_hours=requested_past_hours,
-        future_hours=requested_future_hours,
-        step_minutes=requested_step_minutes,
-    )
-    sampled_positions: List[List[float]] = []
-    sampled_time_strings: List[str] = []
-    for sample_time in sampled_times:
-        interpolated = _interpolate_position_from_samples(ordered, sample_time)
-        if not interpolated:
-            continue
-        sampled_positions.append(interpolated)
-        sampled_time_strings.append(sample_time.astimezone(timezone.utc).isoformat())
-
-    if len(sampled_positions) < 2:
-        return None
-
-    sliced_payload = dict(payload)
-    sliced_payload["orbit_samples_xyz_au"] = sampled_positions
-    sliced_payload["orbit_sample_times_utc"] = sampled_time_strings
-    sliced_payload["position_xyz_au"] = _interpolate_position_from_samples(
-        ordered, epoch
-    ) or payload.get("position_xyz_au")
-    sliced_payload["orbit_sampling"] = {
-        "past_hours": int(requested_past_hours),
-        "future_hours": int(requested_future_hours),
-        "step_minutes": int(requested_step_minutes),
-    }
-    return sliced_payload
-
-
-def _slice_cached_row_to_requested_projection(
-    *,
-    cached_row: Optional[Dict[str, Any]],
-    epoch: datetime,
-    requested_past_hours: int,
-    requested_future_hours: int,
-    requested_step_minutes: int,
-) -> Optional[Dict[str, Any]]:
-    if not isinstance(cached_row, dict):
-        return None
-    payload = cached_row.get("payload")
-    if not isinstance(payload, dict):
-        return None
-    try:
-        source_past_hours = int(cached_row.get("past_hours", requested_past_hours))
-        source_future_hours = int(cached_row.get("future_hours", requested_future_hours))
-    except (TypeError, ValueError):
-        source_past_hours = int(requested_past_hours)
-        source_future_hours = int(requested_future_hours)
-
-    return _slice_payload_to_projection_window(
-        payload=dict(payload),
-        epoch=epoch,
-        requested_past_hours=requested_past_hours,
-        requested_future_hours=requested_future_hours,
-        requested_step_minutes=requested_step_minutes,
-        source_past_hours=source_past_hours,
-        source_future_hours=source_future_hours,
-    )
-
-
-def _resolve_fetch_projection_window(
-    *,
-    past_hours: int,
-    future_hours: int,
-    step_minutes: int,
-) -> Tuple[int, int, int]:
-    if int(past_hours) <= CANONICAL_WINDOW_HOURS and int(future_hours) <= CANONICAL_WINDOW_HOURS:
-        return CANONICAL_WINDOW_HOURS, CANONICAL_WINDOW_HOURS, CANONICAL_WINDOW_STEP_MINUTES
-    return int(past_hours), int(future_hours), int(step_minutes)
-
-
-def _resolve_db_ttl_seconds(
-    *,
-    fetch_past_hours: int,
-    fetch_future_hours: int,
-) -> int:
-    if (
-        int(fetch_past_hours) >= CANONICAL_WINDOW_HOURS
-        and int(fetch_future_hours) >= CANONICAL_WINDOW_HOURS
-    ):
-        return CANONICAL_WINDOW_DB_TTL_SECONDS
-    return VECTOR_DB_TTL_SECONDS
-
-
 def _interpolate_position_xyz_au_at_epoch(
     *,
     payload: Dict[str, Any],
@@ -662,188 +516,6 @@ def _interpolate_position_xyz_au_at_epoch(
     return [float(last_pos[0]), float(last_pos[1]), float(last_pos[2])]
 
 
-def _select_nearest_motion_samples(
-    samples: List[Tuple[datetime, List[float]]],
-    *,
-    epoch: datetime,
-) -> Optional[Tuple[Tuple[datetime, List[float]], Tuple[datetime, List[float]]]]:
-    ordered = sorted(samples, key=lambda item: item[0])
-    if len(ordered) < 2:
-        return None
-
-    next_index: Optional[int] = None
-    for idx, (sample_time, _) in enumerate(ordered):
-        if sample_time >= epoch:
-            next_index = idx
-            break
-
-    if next_index is None:
-        pair = (ordered[-2], ordered[-1])
-    elif next_index == 0:
-        pair = (ordered[0], ordered[1])
-    else:
-        pair = (ordered[next_index - 1], ordered[next_index])
-
-    first_time, _ = pair[0]
-    second_time, _ = pair[1]
-    if first_time == second_time:
-        return None
-    return pair
-
-
-def _horizon_unit_vector_from_az_el(*, az_deg: float, el_deg: float) -> Tuple[float, float, float]:
-    az_rad = math.radians(az_deg)
-    el_rad = math.radians(el_deg)
-    cos_el = math.cos(el_rad)
-    return (
-        cos_el * math.cos(az_rad),
-        cos_el * math.sin(az_rad),
-        math.sin(el_rad),
-    )
-
-
-def _angular_separation_deg_from_az_el(
-    *,
-    az1_deg: float,
-    el1_deg: float,
-    az2_deg: float,
-    el2_deg: float,
-) -> float:
-    v1 = _horizon_unit_vector_from_az_el(az_deg=az1_deg, el_deg=el1_deg)
-    v2 = _horizon_unit_vector_from_az_el(az_deg=az2_deg, el_deg=el2_deg)
-    dot = max(-1.0, min(1.0, (v1[0] * v2[0]) + (v1[1] * v2[1]) + (v1[2] * v2[2])))
-    return math.degrees(math.acos(dot))
-
-
-def _estimate_apparent_sky_motion_deg_per_min(
-    *,
-    payload: Dict[str, Any],
-    epoch: datetime,
-    past_hours: int,
-    future_hours: int,
-    observer_location: Optional[Dict[str, Any]],
-) -> Optional[float]:
-    if not observer_location:
-        return None
-    try:
-        observer_lat_deg = float(observer_location["lat"])
-        observer_lon_deg = float(observer_location["lon"])
-    except (TypeError, ValueError, KeyError):
-        return None
-
-    samples = _extract_orbit_samples(
-        payload,
-        epoch_fallback=epoch,
-        past_hours=past_hours,
-        future_hours=future_hours,
-    )
-    pair = _select_nearest_motion_samples(samples, epoch=epoch)
-    if not pair:
-        return None
-
-    (time_a, position_a), (time_b, position_b) = pair
-    delta_minutes = abs((time_b - time_a).total_seconds()) / 60.0
-    if delta_minutes <= 1e-6:
-        return None
-
-    try:
-        earth_a = compute_body_position_heliocentric_au("earth", time_a)
-        earth_b = compute_body_position_heliocentric_au("earth", time_b)
-    except Exception:
-        return None
-
-    try:
-        observer_view_a = compute_observer_sky_position(
-            target_heliocentric_xyz_au=position_a,
-            earth_heliocentric_xyz_au=earth_a,
-            epoch=time_a,
-            observer_lat_deg=observer_lat_deg,
-            observer_lon_deg=observer_lon_deg,
-        )
-        observer_view_b = compute_observer_sky_position(
-            target_heliocentric_xyz_au=position_b,
-            earth_heliocentric_xyz_au=earth_b,
-            epoch=time_b,
-            observer_lat_deg=observer_lat_deg,
-            observer_lon_deg=observer_lon_deg,
-        )
-        sky_a = observer_view_a.get("sky_position")
-        sky_b = observer_view_b.get("sky_position")
-        if not isinstance(sky_a, dict) or not isinstance(sky_b, dict):
-            return None
-        az_a = float(sky_a["az_deg"])
-        el_a = float(sky_a["el_deg"])
-        az_b = float(sky_b["az_deg"])
-        el_b = float(sky_b["el_deg"])
-    except Exception:
-        return None
-
-    if not all(math.isfinite(value) for value in (az_a, el_a, az_b, el_b)):
-        return None
-
-    separation_deg = _angular_separation_deg_from_az_el(
-        az1_deg=az_a,
-        el1_deg=el_a,
-        az2_deg=az_b,
-        el2_deg=el_b,
-    )
-    if not math.isfinite(separation_deg):
-        return None
-
-    return max(0.0, separation_deg / delta_minutes)
-
-
-def _compute_dynamic_cache_max_age_seconds(apparent_sky_motion_deg_per_min: float) -> int:
-    if apparent_sky_motion_deg_per_min <= 1e-9:
-        return SKY_MOTION_DYNAMIC_TTL_MAX_SECONDS
-    max_age_minutes = (
-        SKY_MOTION_SAFETY_FACTOR * SKY_MOTION_ACCURACY_TARGET_DEG
-    ) / apparent_sky_motion_deg_per_min
-    max_age_seconds = int(max_age_minutes * 60.0)
-    return max(
-        SKY_MOTION_DYNAMIC_TTL_MIN_SECONDS,
-        min(SKY_MOTION_DYNAMIC_TTL_MAX_SECONDS, max_age_seconds),
-    )
-
-
-def _evaluate_dynamic_vectors_cache_policy(
-    *,
-    payload: Dict[str, Any],
-    requested_epoch: datetime,
-    cached_epoch_bucket_utc: datetime,
-    observer_location: Optional[Dict[str, Any]],
-    past_hours: int,
-    future_hours: int,
-) -> Dict[str, Any]:
-    age_seconds = abs((requested_epoch - cached_epoch_bucket_utc).total_seconds())
-    apparent_motion = _estimate_apparent_sky_motion_deg_per_min(
-        payload=payload,
-        epoch=requested_epoch,
-        past_hours=past_hours,
-        future_hours=future_hours,
-        observer_location=observer_location,
-    )
-    if apparent_motion is None:
-        return {
-            "allowed": False,
-            "reason": "motion-unavailable",
-            "age_seconds": round(age_seconds, 3),
-            "max_age_seconds": None,
-            "apparent_sky_motion_deg_per_min": None,
-            "accuracy_target_deg": SKY_MOTION_ACCURACY_TARGET_DEG,
-        }
-
-    max_age_seconds = _compute_dynamic_cache_max_age_seconds(apparent_motion)
-    return {
-        "allowed": age_seconds <= max_age_seconds,
-        "reason": "ok" if age_seconds <= max_age_seconds else "too-old",
-        "age_seconds": round(age_seconds, 3),
-        "max_age_seconds": int(max_age_seconds),
-        "apparent_sky_motion_deg_per_min": round(apparent_motion, 6),
-        "accuracy_target_deg": SKY_MOTION_ACCURACY_TARGET_DEG,
-    }
-
-
 def _extract_earth_position_xyz_au(planets: List[Dict[str, Any]]) -> Optional[List[float]]:
     for body in planets:
         if str(body.get("id") or "").lower() == "earth":
@@ -854,6 +526,93 @@ def _extract_earth_position_xyz_au(planets: List[Dict[str, Any]]) -> Optional[Li
                 except (TypeError, ValueError):
                     return None
     return None
+
+
+def _extract_earth_orbit_samples(
+    rows: List[Dict[str, Any]],
+    *,
+    epoch: datetime,
+    past_hours: int,
+    future_hours: int,
+) -> List[Tuple[datetime, List[float]]]:
+    """Extract Earth heliocentric orbit samples from scene rows when available."""
+    for row in rows:
+        if str(row.get("id") or "").strip().lower() != "earth":
+            continue
+        samples = _extract_orbit_samples(
+            row,
+            epoch_fallback=epoch,
+            past_hours=past_hours,
+            future_hours=future_hours,
+        )
+        if samples:
+            return samples
+        break
+    return []
+
+
+async def _load_earth_observer_vectors(
+    *,
+    epoch: datetime,
+    past_hours: int,
+    future_hours: int,
+    step_minutes: int,
+    observer_location: Optional[Dict[str, Any]],
+    force_refresh: bool,
+    allow_network_fetch: bool,
+    logger: Any,
+) -> Tuple[Optional[List[float]], List[Tuple[datetime, List[float]]]]:
+    """
+    Load Earth vectors using the same Horizons snapshot pipeline as targets.
+
+    Using Earth vectors from the same source avoids observer-angle drift caused by
+    mixing Horizons target vectors with low-precision Earth ephemerides.
+    """
+    earth_snapshot = await _get_vectors_snapshot(
+        target_key=_target_key_from_parts("body", body_id="earth"),
+        command=str(BODY_HORIZONS_COMMANDS.get("earth") or "399"),
+        epoch=epoch,
+        past_hours=past_hours,
+        future_hours=future_hours,
+        step_minutes=step_minutes,
+        observer_location=observer_location,
+        force_refresh=force_refresh,
+        logger=logger,
+        allow_network_fetch=allow_network_fetch,
+    )
+    payload = earth_snapshot.get("payload")
+    if isinstance(payload, dict):
+        earth_samples = _extract_orbit_samples(
+            payload,
+            epoch_fallback=epoch,
+            past_hours=past_hours,
+            future_hours=future_hours,
+        )
+        position_obj = payload.get("position_xyz_au")
+        if isinstance(position_obj, list) and len(position_obj) >= 3:
+            try:
+                return (
+                    [float(position_obj[0]), float(position_obj[1]), float(position_obj[2])],
+                    earth_samples,
+                )
+            except (TypeError, ValueError):
+                pass
+        interpolated = _interpolate_position_from_samples(earth_samples, epoch)
+        if interpolated:
+            return interpolated, earth_samples
+        logger.warning(
+            "Earth Horizons payload is missing usable observer vectors (cache=%s)",
+            earth_snapshot.get("cache"),
+        )
+    else:
+        logger.warning(
+            "Earth Horizons vectors unavailable for observer calculations (cache=%s error=%s)",
+            earth_snapshot.get("cache"),
+            earth_snapshot.get("error"),
+        )
+
+    # Never fall back to low-precision Earth vectors for observer pass calculations.
+    return None, []
 
 
 def _build_body_snapshot_by_id(planets: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
@@ -921,21 +680,16 @@ async def _build_horizons_solar_system_bodies(
         payload = snapshot.get("payload")
         if not isinstance(payload, dict):
             missing_count += 1
-            fallback_position = [0.0, 0.0, 0.0]
-            fallback_velocity = [0.0, 0.0, 0.0]
-            try:
-                fallback_position = compute_body_position_heliocentric_au(body_id, epoch)
-            except Exception:
-                fallback_position = [0.0, 0.0, 0.0]
-            # Keep a renderable fallback row even when Horizons is unavailable.
+            # Keep a renderable row even when Horizons is unavailable without
+            # falling back to offline ephemeris approximations.
             planets.append(
                 {
                     "id": body_id,
                     "name": str(target.get("name") or body_id),
                     "body_type": target.get("body_class") or "body",
                     "parent_id": target.get("parent_body_id"),
-                    "position_xyz_au": fallback_position,
-                    "velocity_xyz_au_per_day": fallback_velocity,
+                    "position_xyz_au": [0.0, 0.0, 0.0],
+                    "velocity_xyz_au_per_day": [0.0, 0.0, 0.0],
                     "orbit_samples_xyz_au": [],
                     "source": "horizons",
                     "cache": snapshot.get("cache"),
@@ -1371,6 +1125,7 @@ def _extract_row_observer_samples(
     step_minutes: int,
     observer_location: Optional[Dict[str, Any]],
     earth_position_xyz_au: Optional[List[float]],
+    earth_orbit_samples: Optional[List[Tuple[datetime, List[float]]]],
     logger: Any,
 ) -> List[Dict[str, Any]]:
     if not observer_location:
@@ -1382,8 +1137,8 @@ def _extract_row_observer_samples(
     except (TypeError, ValueError, KeyError):
         return []
 
-    target_type = str(row.get("target_type") or "mission").strip().lower()
     samples: List[Dict[str, Any]] = []
+    earth_samples = earth_orbit_samples or []
 
     positions_obj = row.get("orbit_samples_xyz_au")
     positions: List[List[float]] = []
@@ -1398,47 +1153,8 @@ def _extract_row_observer_samples(
             positions.append(position)
 
     if len(positions) < 2:
-        # Fallback path for body rows when no Horizons sample curve is available.
-        if target_type != "body":
-            return []
-        body_id = str(row.get("body_id") or row.get("command") or "").strip().lower()
-        if not body_id:
-            return []
-        for sample_time in _build_window_timestamps(
-            epoch=epoch,
-            past_hours=past_hours,
-            future_hours=future_hours,
-            step_minutes=step_minutes,
-        ):
-            try:
-                target_position = compute_body_position_heliocentric_au(body_id, sample_time)
-                earth_position_for_body = compute_body_position_heliocentric_au(
-                    "earth", sample_time
-                )
-                observer_view = compute_observer_sky_position(
-                    target_heliocentric_xyz_au=target_position,
-                    earth_heliocentric_xyz_au=earth_position_for_body,
-                    epoch=sample_time,
-                    observer_lat_deg=observer_lat_deg,
-                    observer_lon_deg=observer_lon_deg,
-                )
-                sky_position = observer_view.get("sky_position")
-                if not isinstance(sky_position, dict):
-                    continue
-                az_obj = sky_position.get("az_deg")
-                el_obj = sky_position.get("el_deg")
-                if not isinstance(az_obj, (int, float, str)) or not isinstance(
-                    el_obj, (int, float, str)
-                ):
-                    continue
-                az_deg = float(az_obj)
-                el_deg = float(el_obj)
-                if not math.isfinite(az_deg) or not math.isfinite(el_deg):
-                    continue
-                samples.append({"time": sample_time, "az_deg": az_deg, "el_deg": el_deg})
-            except Exception:
-                continue
-        return samples
+        # Require Horizons orbit samples for observer pass generation.
+        return []
 
     raw_times_obj = row.get("orbit_sample_times_utc")
     sample_times: List[datetime] = []
@@ -1460,10 +1176,11 @@ def _extract_row_observer_samples(
 
     for index, target_position in enumerate(positions):
         sample_time = sample_times[index]
-        earth_position_for_sample: Optional[List[float]] = None
-        try:
-            earth_position_for_sample = compute_body_position_heliocentric_au("earth", sample_time)
-        except Exception:
+        earth_position_for_sample = _interpolate_position_from_samples(
+            earth_samples,
+            sample_time,
+        )
+        if not earth_position_for_sample:
             if earth_position_xyz_au and len(earth_position_xyz_au) >= 3:
                 earth_position_for_sample = [
                     float(earth_position_xyz_au[0]),
@@ -1514,6 +1231,7 @@ def _build_celestial_passes(
     step_minutes: int,
     observer_location: Optional[Dict[str, Any]],
     earth_position_xyz_au: Optional[List[float]],
+    earth_orbit_samples: Optional[List[Tuple[datetime, List[float]]]] = None,
     logger: Any,
 ) -> List[Dict[str, Any]]:
     passes: List[Dict[str, Any]] = []
@@ -1526,6 +1244,7 @@ def _build_celestial_passes(
             step_minutes=step_minutes,
             observer_location=observer_location,
             earth_position_xyz_au=earth_position_xyz_au,
+            earth_orbit_samples=earth_orbit_samples,
             logger=logger,
         )
         if len(samples) < 2:
@@ -1570,64 +1289,6 @@ async def _load_vectors_from_db(
         return None
     row = result.get("data")
     return row if isinstance(row, dict) else None
-
-
-async def _load_latest_vectors_from_db(
-    target_key: str,
-    past_hours: int,
-    future_hours: int,
-    step_minutes: int,
-    frame: str = DEFAULT_FRAME,
-    center: str = DEFAULT_CENTER,
-    valid_only: bool = False,
-) -> Optional[Dict[str, Any]]:
-    async with AsyncSessionLocal() as dbsession:
-        result = await crud_celestial_vectors.fetch_latest_celestial_vector_snapshot(
-            dbsession,
-            target_id=target_key,
-            past_hours=past_hours,
-            future_hours=future_hours,
-            step_minutes=step_minutes,
-            frame=frame,
-            center=center,
-            valid_only=valid_only,
-            as_of=datetime.now(timezone.utc),
-        )
-    if not result.get("success"):
-        return None
-    row = result.get("data")
-    return row if isinstance(row, dict) else None
-
-
-async def _load_latest_vectors_for_target_from_db(
-    target_key: str,
-    valid_only: bool = False,
-) -> Optional[Dict[str, Any]]:
-    async with AsyncSessionLocal() as dbsession:
-        result = await crud_celestial_vectors.fetch_latest_celestial_vector_snapshot_for_target(
-            dbsession,
-            target_id=target_key,
-            valid_only=valid_only,
-            as_of=datetime.now(timezone.utc),
-        )
-    if not result.get("success"):
-        return None
-    row = result.get("data")
-    return row if isinstance(row, dict) else None
-
-
-async def _load_latest_vectors_for_command_from_db(
-    command: str,
-    valid_only: bool = False,
-) -> Optional[Dict[str, Any]]:
-    """Mission compatibility helper used by cache policy tests and mission callers."""
-    mission_target_key = _target_key_from_parts("mission", command=command)
-    if not mission_target_key:
-        return None
-    return await _load_latest_vectors_for_target_from_db(
-        target_key=mission_target_key,
-        valid_only=valid_only,
-    )
 
 
 async def _store_vectors_in_db(
@@ -1696,19 +1357,7 @@ async def _get_vectors_snapshot(
         }
 
     epoch_bucket_utc = _bucket_epoch(epoch, VECTOR_EPOCH_BUCKET_MINUTES * 60)
-    fetch_past_hours, fetch_future_hours, fetch_step_minutes = _resolve_fetch_projection_window(
-        past_hours=past_hours,
-        future_hours=future_hours,
-        step_minutes=step_minutes,
-    )
-    fetched_payload_ttl_seconds = _resolve_db_ttl_seconds(
-        fetch_past_hours=fetch_past_hours,
-        fetch_future_hours=fetch_future_hours,
-    )
-
-    # Cache-only callers still query DB even when force_refresh=True.
-    if (not force_refresh) or (not allow_network_fetch):
-        valid_only = not force_refresh and allow_network_fetch
+    if not force_refresh:
         cached = await _load_vectors_from_db(
             target_key=normalized_target_key,
             epoch_bucket_utc=epoch_bucket_utc,
@@ -1717,99 +1366,14 @@ async def _get_vectors_snapshot(
             step_minutes=step_minutes,
             frame=DEFAULT_FRAME,
             center=DEFAULT_CENTER,
-            valid_only=valid_only,
+            valid_only=True,
         )
         if cached and isinstance(cached.get("payload"), dict):
             return {
                 "payload": dict(cached["payload"]),
-                "cache": "db-hit" if allow_network_fetch else "db-cache-only-hit",
-                "stale": False if valid_only else _cache_row_is_expired(cached),
+                "cache": "db-hit",
+                "stale": False,
                 "error": None,
-            }
-
-        latest = await _load_latest_vectors_from_db(
-            target_key=normalized_target_key,
-            past_hours=past_hours,
-            future_hours=future_hours,
-            step_minutes=step_minutes,
-            frame=DEFAULT_FRAME,
-            center=DEFAULT_CENTER,
-            valid_only=False,
-        )
-        if latest and isinstance(latest.get("payload"), dict):
-            if not allow_network_fetch:
-                return {
-                    "payload": dict(latest["payload"]),
-                    "cache": "db-cache-only-latest-hit",
-                    "stale": _cache_row_is_expired(latest),
-                    "error": None,
-                }
-            cached_bucket = _coerce_utc_datetime(latest.get("epoch_bucket_utc"))
-            if cached_bucket:
-                policy = _evaluate_dynamic_vectors_cache_policy(
-                    payload=dict(latest["payload"]),
-                    requested_epoch=epoch,
-                    cached_epoch_bucket_utc=cached_bucket,
-                    observer_location=observer_location,
-                    past_hours=past_hours,
-                    future_hours=future_hours,
-                )
-                if policy.get("allowed"):
-                    return {
-                        "payload": dict(latest["payload"]),
-                        "cache": "db-dynamic-hit",
-                        "stale": False,
-                        "error": None,
-                        "cache_policy": policy,
-                    }
-
-        # Reuse any broader cached window for this target by slicing it to the
-        # requested past/future projection. This avoids a network fetch when a
-        # compatible long-range cache row already exists.
-        latest_for_target = await _load_latest_vectors_for_target_from_db(
-            target_key=normalized_target_key,
-            valid_only=valid_only,
-        )
-        sliced_payload = _slice_cached_row_to_requested_projection(
-            cached_row=latest_for_target,
-            epoch=epoch,
-            requested_past_hours=past_hours,
-            requested_future_hours=future_hours,
-            requested_step_minutes=step_minutes,
-        )
-        if sliced_payload:
-            return {
-                "payload": sliced_payload,
-                "cache": "db-window-hit" if allow_network_fetch else "db-cache-only-window-hit",
-                "stale": False if valid_only else _cache_row_is_expired(latest_for_target),
-                "error": None,
-            }
-
-        # Fall back to any latest payload for this command when projection-specific cache is empty.
-        if not allow_network_fetch:
-            latest_for_command: Optional[Dict[str, Any]] = None
-            if normalized_target_key.startswith("mission:"):
-                latest_for_command = await _load_latest_vectors_for_command_from_db(
-                    command=command,
-                    valid_only=False,
-                )
-            else:
-                latest_for_command = await _load_latest_vectors_for_target_from_db(
-                    target_key=normalized_target_key,
-                    valid_only=False,
-                )
-            if latest_for_command and isinstance(latest_for_command.get("payload"), dict):
-                return {
-                    "payload": dict(latest_for_command["payload"]),
-                    "cache": "db-cache-only-command-hit",
-                    "stale": _cache_row_is_expired(latest_for_command),
-                    "error": None,
-                }
-            return {
-                "payload": None,
-                "cache": "cache-only-miss",
-                "stale": True,
-                "error": f"No cached vectors available for target '{normalized_target_key}'",
             }
 
     if not allow_network_fetch:
@@ -1825,130 +1389,33 @@ async def _get_vectors_snapshot(
             fetch_celestial_vectors,
             command,
             epoch,
-            fetch_past_hours,
-            fetch_future_hours,
-            fetch_step_minutes,
+            past_hours,
+            future_hours,
+            step_minutes,
         )
-        await _store_vectors_in_db(
-            target_key=normalized_target_key,
-            epoch_bucket_utc=epoch_bucket_utc,
-            past_hours=fetch_past_hours,
-            future_hours=fetch_future_hours,
-            step_minutes=fetch_step_minutes,
-            payload=fetched,
-            source="horizons",
-            frame=DEFAULT_FRAME,
-            center=DEFAULT_CENTER,
-            error=None,
-            ttl_seconds=fetched_payload_ttl_seconds,
-        )
-        requested_payload = _slice_payload_to_projection_window(
-            payload=dict(fetched),
-            epoch=epoch,
-            requested_past_hours=past_hours,
-            requested_future_hours=future_hours,
-            requested_step_minutes=step_minutes,
-            source_past_hours=fetch_past_hours,
-            source_future_hours=fetch_future_hours,
-        )
-        if requested_payload:
-            cache_label = (
-                "db-miss-window"
-                if (
-                    fetch_past_hours != past_hours
-                    or fetch_future_hours != future_hours
-                    or fetch_step_minutes != step_minutes
-                )
-                else "db-miss"
-            )
-            return {
-                "payload": requested_payload,
-                "cache": cache_label,
-                "stale": False,
-                "error": None,
-            }
-        return {"payload": fetched, "cache": "db-miss", "stale": False, "error": None}
     except Exception as exc:
-        fetch_error: Exception = exc
+        logger.warning(f"Horizons fetch failed for celestial '{command}': {exc}")
+        return {
+            "payload": None,
+            "cache": "miss",
+            "stale": True,
+            "error": str(exc),
+        }
 
-        logger.warning(f"Horizons fetch failed for celestial '{command}': {fetch_error}")
-        fallback = await _load_vectors_from_db(
-            target_key=normalized_target_key,
-            epoch_bucket_utc=epoch_bucket_utc,
-            past_hours=past_hours,
-            future_hours=future_hours,
-            step_minutes=step_minutes,
-            frame=DEFAULT_FRAME,
-            center=DEFAULT_CENTER,
-            valid_only=False,
-        )
-        if fallback and isinstance(fallback.get("payload"), dict):
-            return {
-                "payload": dict(fallback["payload"]),
-                "cache": "db-stale",
-                "stale": True,
-                "error": str(fetch_error),
-            }
-
-        # If the exact epoch bucket misses, degrade gracefully to the latest persisted
-        # vectors for this projection before returning a hard miss.
-        latest_fallback = await _load_latest_vectors_from_db(
-            target_key=normalized_target_key,
-            past_hours=past_hours,
-            future_hours=future_hours,
-            step_minutes=step_minutes,
-            frame=DEFAULT_FRAME,
-            center=DEFAULT_CENTER,
-            valid_only=False,
-        )
-        if latest_fallback and isinstance(latest_fallback.get("payload"), dict):
-            return {
-                "payload": dict(latest_fallback["payload"]),
-                "cache": "db-stale-latest",
-                "stale": True,
-                "error": str(fetch_error),
-            }
-
-        latest_window_fallback = await _load_latest_vectors_for_target_from_db(
-            target_key=normalized_target_key,
-            valid_only=False,
-        )
-        sliced_window_fallback = _slice_cached_row_to_requested_projection(
-            cached_row=latest_window_fallback,
-            epoch=epoch,
-            requested_past_hours=past_hours,
-            requested_future_hours=future_hours,
-            requested_step_minutes=step_minutes,
-        )
-        if sliced_window_fallback:
-            return {
-                "payload": sliced_window_fallback,
-                "cache": "db-stale-window",
-                "stale": True,
-                "error": str(fetch_error),
-            }
-
-        latest_for_command_fallback: Optional[Dict[str, Any]] = None
-        if normalized_target_key.startswith("mission:"):
-            latest_for_command_fallback = await _load_latest_vectors_for_command_from_db(
-                command=command,
-                valid_only=False,
-            )
-        else:
-            latest_for_command_fallback = await _load_latest_vectors_for_target_from_db(
-                target_key=normalized_target_key,
-                valid_only=False,
-            )
-        if latest_for_command_fallback and isinstance(
-            latest_for_command_fallback.get("payload"), dict
-        ):
-            return {
-                "payload": dict(latest_for_command_fallback["payload"]),
-                "cache": "db-stale-command",
-                "stale": True,
-                "error": str(fetch_error),
-            }
-        return {"payload": None, "cache": "miss", "stale": True, "error": str(fetch_error)}
+    await _store_vectors_in_db(
+        target_key=normalized_target_key,
+        epoch_bucket_utc=epoch_bucket_utc,
+        past_hours=past_hours,
+        future_hours=future_hours,
+        step_minutes=step_minutes,
+        payload=fetched,
+        source="horizons",
+        frame=DEFAULT_FRAME,
+        center=DEFAULT_CENTER,
+        error=None,
+        ttl_seconds=VECTOR_DB_TTL_SECONDS,
+    )
+    return {"payload": fetched, "cache": "db-miss", "stale": False, "error": None}
 
 
 async def _fetch_celestial_with_cache(
@@ -2137,7 +1604,6 @@ async def _fetch_celestial_with_cache(
             )
             cached_payload["name"] = name
             cached_payload["color"] = color
-            # Preserve stale state propagated from DB/network fallback snapshots.
             cached_payload["stale"] = bool(cached_payload.get("stale"))
             cached_payload["cache"] = "computed-hit"
             rows.append(cached_payload)
@@ -2171,8 +1637,6 @@ async def _fetch_celestial_with_cache(
             row_payload["cache"] = snapshot.get("cache")
             if snapshot.get("error"):
                 row_payload["error"] = snapshot.get("error")
-            if isinstance(snapshot.get("cache_policy"), dict):
-                row_payload["cache_policy"] = dict(snapshot["cache_policy"])
             # Keep "current" vectors fresh between periodic Horizons syncs.
             interpolated_position = _interpolate_position_xyz_au_at_epoch(
                 payload=row_payload,
@@ -2247,6 +1711,12 @@ async def build_celestial_scene(
         logger=logger,
     )
     earth_position_xyz_au = _extract_earth_position_xyz_au(planets)
+    earth_orbit_samples = _extract_earth_orbit_samples(
+        planets,
+        epoch=epoch,
+        past_hours=past_hours,
+        future_hours=future_hours,
+    )
     body_snapshot_by_id = _build_body_snapshot_by_id(planets)
     asteroid_zones, asteroid_resonance_gaps, asteroid_meta = get_static_asteroid_zones()
     celestial = await _fetch_celestial_with_cache(
@@ -2271,6 +1741,7 @@ async def build_celestial_scene(
         step_minutes=step_minutes,
         observer_location=observer_location,
         earth_position_xyz_au=earth_position_xyz_au,
+        earth_orbit_samples=earth_orbit_samples,
         logger=logger,
     )
 
@@ -2295,13 +1766,6 @@ async def build_celestial_scene(
                 "asteroid_zones": asteroid_meta,
                 "cache_ttl_seconds": CACHE_TTL_SECONDS,
                 "vector_db_ttl_seconds": VECTOR_DB_TTL_SECONDS,
-                "vector_dynamic_validity": {
-                    "mode": "sky-motion",
-                    "accuracy_target_deg": SKY_MOTION_ACCURACY_TARGET_DEG,
-                    "safety_factor": SKY_MOTION_SAFETY_FACTOR,
-                    "min_age_seconds": SKY_MOTION_DYNAMIC_TTL_MIN_SECONDS,
-                    "max_age_seconds": SKY_MOTION_DYNAMIC_TTL_MAX_SECONDS,
-                },
                 "projection": {
                     "past_hours": past_hours,
                     "future_hours": future_hours,
@@ -2378,11 +1842,16 @@ async def build_celestial_tracks(
     past_hours, future_hours, step_minutes = _parse_projection_options(data)
     observer_location = await _load_observer_location()
     await _ensure_scene_targets_registered(targets, logger)
-    earth_position_xyz_au: Optional[List[float]] = None
-    try:
-        earth_position_xyz_au = compute_body_position_heliocentric_au("earth", epoch)
-    except Exception:
-        earth_position_xyz_au = None
+    earth_position_xyz_au, earth_orbit_samples = await _load_earth_observer_vectors(
+        epoch=epoch,
+        past_hours=past_hours,
+        future_hours=future_hours,
+        step_minutes=step_minutes,
+        observer_location=observer_location,
+        force_refresh=force_refresh,
+        allow_network_fetch=allow_network_fetch,
+        logger=logger,
+    )
     body_snapshot_by_id: Dict[str, Dict[str, Any]] = {}
     celestial = await _fetch_celestial_with_cache(
         targets,
@@ -2406,6 +1875,7 @@ async def build_celestial_tracks(
         step_minutes=step_minutes,
         observer_location=observer_location,
         earth_position_xyz_au=earth_position_xyz_au,
+        earth_orbit_samples=earth_orbit_samples,
         logger=logger,
     )
 
@@ -2425,13 +1895,6 @@ async def build_celestial_tracks(
                 "celestial_source": "horizons",
                 "cache_ttl_seconds": CACHE_TTL_SECONDS,
                 "vector_db_ttl_seconds": VECTOR_DB_TTL_SECONDS,
-                "vector_dynamic_validity": {
-                    "mode": "sky-motion",
-                    "accuracy_target_deg": SKY_MOTION_ACCURACY_TARGET_DEG,
-                    "safety_factor": SKY_MOTION_SAFETY_FACTOR,
-                    "min_age_seconds": SKY_MOTION_DYNAMIC_TTL_MIN_SECONDS,
-                    "max_age_seconds": SKY_MOTION_DYNAMIC_TTL_MAX_SECONDS,
-                },
                 "projection": {
                     "past_hours": past_hours,
                     "future_hours": future_hours,
@@ -2445,132 +1908,6 @@ async def build_celestial_tracks(
                 "visibility_definition": "visible == elevation_deg > 0",
             },
         },
-    }
-
-
-def _clear_tracker_refresh_task(task: asyncio.Task, target_key: str) -> None:
-    try:
-        _tracker_refresh_tasks.pop(target_key, None)
-    except Exception:
-        pass
-    try:
-        task.result()
-    except Exception:
-        # The caller already emits context-aware logs for refresh failures.
-        pass
-
-
-async def _refresh_tracker_mission_vectors(
-    *,
-    target_key: str,
-    command: str,
-    logger: Any,
-) -> None:
-    await _ensure_scene_targets_registered(
-        [
-            {
-                "target_type": "mission",
-                "target_key": target_key,
-                "name": command,
-                "command": command,
-                "horizons_command": command,
-                "always_in_scene": False,
-            }
-        ],
-        logger,
-    )
-
-    epoch = datetime.now(timezone.utc)
-    snapshot = await _get_vectors_snapshot(
-        target_key=target_key,
-        command=command,
-        epoch=epoch,
-        past_hours=CANONICAL_WINDOW_HOURS,
-        future_hours=CANONICAL_WINDOW_HOURS,
-        step_minutes=CANONICAL_WINDOW_STEP_MINUTES,
-        observer_location=None,
-        force_refresh=False,
-        logger=logger,
-        allow_network_fetch=True,
-    )
-    payload = snapshot.get("payload")
-    if isinstance(payload, dict):
-        logger.info(
-            "Tracker mission vectors refresh completed for '%s' (cache=%s stale=%s)",
-            command,
-            snapshot.get("cache"),
-            bool(snapshot.get("stale")),
-        )
-        return
-
-    logger.warning(
-        "Tracker mission vectors refresh failed for '%s' (cache=%s error=%s)",
-        command,
-        snapshot.get("cache"),
-        snapshot.get("error"),
-    )
-
-
-async def request_tracker_mission_vectors_refresh(
-    *,
-    command: str,
-    logger: Any,
-    debounce_seconds: int = TRACKER_REFRESH_DEBOUNCE_SECONDS,
-) -> Dict[str, Any]:
-    """
-    Schedule a non-blocking mission vectors refresh for tracker cache misses.
-
-    This keeps tracker runtime cache-only while allowing scene-managed refreshes
-    to fill snapshots in the background.
-    """
-    normalized_command = str(command or "").strip()
-    if not normalized_command:
-        return {"success": False, "scheduled": False, "error": "command is required"}
-    target_key = _target_key_from_parts("mission", command=normalized_command)
-    if not target_key:
-        return {"success": False, "scheduled": False, "error": "target_key is required"}
-
-    async with _tracker_refresh_lock:
-        current_task = _tracker_refresh_tasks.get(target_key)
-        if current_task and not current_task.done():
-            return {
-                "success": True,
-                "scheduled": False,
-                "target_key": target_key,
-                "reason": "already-running",
-            }
-
-        now_monotonic = time.monotonic()
-        debounce_window = max(5, int(debounce_seconds))
-        last_request = _tracker_refresh_last_request_monotonic.get(target_key)
-        if last_request and (now_monotonic - last_request) < debounce_window:
-            return {
-                "success": True,
-                "scheduled": False,
-                "target_key": target_key,
-                "reason": "debounced",
-            }
-
-        _tracker_refresh_last_request_monotonic[target_key] = now_monotonic
-        task = asyncio.create_task(
-            _refresh_tracker_mission_vectors(
-                target_key=target_key,
-                command=normalized_command,
-                logger=logger,
-            )
-        )
-        _tracker_refresh_tasks[target_key] = task
-
-        def _on_tracker_refresh_done(completed: asyncio.Task, key: str = target_key) -> None:
-            _clear_tracker_refresh_task(completed, key)
-
-        task.add_done_callback(_on_tracker_refresh_done)
-
-    return {
-        "success": True,
-        "scheduled": True,
-        "target_key": target_key,
-        "reason": "scheduled",
     }
 
 

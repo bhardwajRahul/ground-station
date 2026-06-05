@@ -24,7 +24,6 @@ from typing import Any, Dict, List, Optional
 import psutil
 
 from celestial.observermath import compute_observer_sky_position
-from celestial.solarsystem import compute_body_position_heliocentric_au
 from common.arguments import arguments as args
 from common.constants import DictKeys, SocketEvents
 from orbits import CentralBody, OrbitServiceError, get_propagation_input
@@ -264,10 +263,15 @@ class SatelliteTracker:
         return parsed.astimezone(timezone.utc)
 
     @classmethod
-    def _interpolate_mission_position(
-        cls, payload: Dict[str, Any], epoch: datetime
+    def _interpolate_orbit_position(
+        cls,
+        payload: Dict[str, Any],
+        *,
+        samples_key: str,
+        times_key: str,
+        epoch: datetime,
     ) -> Optional[List[float]]:
-        raw_positions = payload.get("orbit_samples_xyz_au")
+        raw_positions = payload.get(samples_key)
         if not isinstance(raw_positions, list) or not raw_positions:
             return None
 
@@ -285,7 +289,7 @@ class SatelliteTracker:
         if len(positions) == 1:
             return positions[0]
 
-        raw_times = payload.get("orbit_sample_times_utc")
+        raw_times = payload.get(times_key)
         if not isinstance(raw_times, list) or len(raw_times) != len(positions):
             return None
         time_position_pairs: List[tuple[datetime, List[float]]] = []
@@ -322,6 +326,37 @@ class SatelliteTracker:
                 float(left_pos[2]) + ((float(right_pos[2]) - float(left_pos[2])) * ratio),
             ]
         return [float(last_pos[0]), float(last_pos[1]), float(last_pos[2])]
+
+    @classmethod
+    def _interpolate_mission_position(
+        cls, payload: Dict[str, Any], epoch: datetime
+    ) -> Optional[List[float]]:
+        return cls._interpolate_orbit_position(
+            payload,
+            samples_key="orbit_samples_xyz_au",
+            times_key="orbit_sample_times_utc",
+            epoch=epoch,
+        )
+
+    @classmethod
+    def _interpolate_earth_position(
+        cls, payload: Dict[str, Any], epoch: datetime
+    ) -> Optional[List[float]]:
+        return cls._interpolate_orbit_position(
+            payload,
+            samples_key="earth_orbit_samples_xyz_au",
+            times_key="earth_orbit_sample_times_utc",
+            epoch=epoch,
+        )
+
+    @staticmethod
+    def _parse_position_vector(value: Any) -> Optional[List[float]]:
+        if not isinstance(value, list) or len(value) < 3:
+            return None
+        try:
+            return [float(value[0]), float(value[1]), float(value[2])]
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _build_non_satellite_data(
@@ -417,10 +452,11 @@ class SatelliteTracker:
                 "satellite_tles": satellite_tles,
             }
 
-        try:
-            earth_position = compute_body_position_heliocentric_au("earth", now_epoch)
-        except Exception as e:
-            logger.warning("Failed computing earth heliocentric position: %s", e)
+        earth_position = self._interpolate_earth_position(input_payload, now_epoch)
+        if not earth_position:
+            earth_position = self._parse_position_vector(input_payload.get("earth_position_xyz_au"))
+        if not earth_position:
+            logger.warning("Missing earth ephemeris in tracker worker context")
             return None
 
         if target_type == "mission":
@@ -433,16 +469,7 @@ class SatelliteTracker:
 
             position_xyz_au = self._interpolate_mission_position(input_payload, now_epoch)
             if not position_xyz_au:
-                raw_position = input_payload.get("position_xyz_au")
-                if isinstance(raw_position, list) and len(raw_position) >= 3:
-                    try:
-                        position_xyz_au = [
-                            float(raw_position[0]),
-                            float(raw_position[1]),
-                            float(raw_position[2]),
-                        ]
-                    except (TypeError, ValueError):
-                        position_xyz_au = None
+                position_xyz_au = self._parse_position_vector(input_payload.get("position_xyz_au"))
             if not position_xyz_au:
                 logger.warning(
                     "Mission target '%s' has no position samples available in worker context",
@@ -487,10 +514,13 @@ class SatelliteTracker:
         if not body_id:
             logger.warning("Body target is missing body_id")
             return None
-        try:
-            body_position = compute_body_position_heliocentric_au(body_id, now_epoch)
-        except Exception as e:
-            logger.warning("Failed computing body '%s' position: %s", body_id, e)
+        body_position = self._interpolate_mission_position(input_payload, now_epoch)
+        if not body_position:
+            body_position = self._parse_position_vector(input_payload.get("position_xyz_au"))
+        if not body_position:
+            logger.warning(
+                "Body target '%s' has no position samples available in worker context", body_id
+            )
             return None
 
         observer_view = compute_observer_sky_position(
