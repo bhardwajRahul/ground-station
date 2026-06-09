@@ -66,6 +66,35 @@ export const completeLocationWizardIfVisible = async (page, { waitForMs = 5000 }
   await nextButton.click();
 
   const finishButton = wizardDialog.getByRole('button', { name: /save and continue|save location/i }).first();
+  let finishVisible = await finishButton.isVisible().catch(() => false);
+  if (!finishVisible) {
+    // Newer flows include a restore step before identity/coordinates/review.
+    // If we are still on coordinates after the previous click, satisfy location
+    // requirements and advance one more step to reach review.
+    const nextStillVisible = await nextButton.isVisible().catch(() => false);
+    if (nextStillVisible) {
+      if (!(await nextButton.isEnabled())) {
+        const mapCanvas = wizardDialog.locator('.maplibregl-canvas').first();
+        await mapCanvas.waitFor({ state: 'visible' });
+        const box = await mapCanvas.boundingBox();
+        if (box) {
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        } else {
+          await mapCanvas.click();
+        }
+        await page.waitForTimeout(600);
+      }
+      if (!(await nextButton.isEnabled())) {
+        throw new Error('Location wizard did not enable Next for review step.');
+      }
+      await nextButton.click();
+      finishVisible = await finishButton.isVisible().catch(() => false);
+    }
+  }
+
+  if (!finishVisible) {
+    throw new Error('Location wizard finish button did not appear.');
+  }
   await finishButton.waitFor({ state: 'visible', timeout: 10000 });
   if (!(await finishButton.isEnabled())) {
     throw new Error('Location wizard finish button is disabled.');

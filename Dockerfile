@@ -397,7 +397,14 @@ RUN git clone --depth=1 https://github.com/gnss-sdr/gnss-sdr.git && \
     cd gnss-sdr && \
     git fetch --depth=1 origin ${GNSS_SDR_COMMIT} && \
     git checkout ${GNSS_SDR_COMMIT} && \
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="/usr/local;/opt/volk" && \
+    cmake -S . -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_PREFIX_PATH="/usr/local;/opt/volk" \
+    -DENABLE_UNIT_TESTING=OFF \
+    -DENABLE_UNIT_TESTING_EXTRA=OFF \
+    -DENABLE_SYSTEM_TESTING=OFF \
+    -DENABLE_SYSTEM_TESTING_EXTRA=OFF \
+    -DENABLE_INSTALL_TESTS=OFF && \
     cmake --build build --parallel $(nproc) && \
     sudo cmake --install build && \
     sudo ldconfig
