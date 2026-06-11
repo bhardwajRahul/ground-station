@@ -453,10 +453,12 @@ const CelestialMainLayout = () => {
     const trackedCount = combinedScene?.celestial?.length || 0;
     const hasSolarScene = (planetsCount + moonsCount) > 0;
     const solarLoading = Boolean(celestialState?.solarLoading);
-    const isSolarInitialLoad = solarLoading && !hasSolarScene;
-    const isSolarRefreshing = solarLoading && hasSolarScene;
-    const isPlanetariumInitialLoad = Boolean(celestialState?.tracksLoading) && viewMode === VIEW_MODE_PLANETARIUM && trackedCount === 0;
-    const isPlanetariumRefreshing = Boolean(celestialState?.tracksLoading) && viewMode === VIEW_MODE_PLANETARIUM && trackedCount > 0;
+    const tracksLoading = Boolean(celestialState?.tracksLoading);
+    const solarSystemLoading = solarLoading || tracksLoading;
+    const isSolarInitialLoad = solarSystemLoading && viewMode === VIEW_MODE_SOLAR_SYSTEM && !hasSolarScene;
+    const isSolarRefreshing = solarSystemLoading && viewMode === VIEW_MODE_SOLAR_SYSTEM && hasSolarScene;
+    const isPlanetariumInitialLoad = tracksLoading && viewMode === VIEW_MODE_PLANETARIUM && trackedCount === 0;
+    const isPlanetariumRefreshing = tracksLoading && viewMode === VIEW_MODE_PLANETARIUM && trackedCount > 0;
     const selectedInfoTargetKey = React.useMemo(() => {
         const focusedKey = String(focusTargetKey || '').trim();
         if (focusedKey) {
@@ -476,14 +478,19 @@ const CelestialMainLayout = () => {
     );
     const tracksProgress = celestialState?.tracksProgress || null;
     const tracksProgressText = React.useMemo(() => {
-        if (!celestialState?.tracksLoading) return '';
+        if (!tracksLoading) return '';
         const current = Number(tracksProgress?.current);
         const total = Number(tracksProgress?.total);
         if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
             return `${Math.max(0, Math.min(current, total))}/${total}`;
         }
         return 'Loading...';
-    }, [celestialState?.tracksLoading, tracksProgress?.current, tracksProgress?.total]);
+    }, [tracksLoading, tracksProgress?.current, tracksProgress?.total]);
+    const solarToolbarLoadingText = React.useMemo(() => {
+        if (!solarSystemLoading || viewMode !== VIEW_MODE_SOLAR_SYSTEM) return '';
+        if (tracksLoading) return tracksProgressText;
+        return 'Loading...';
+    }, [solarSystemLoading, tracksLoading, tracksProgressText, viewMode]);
 
     const updateProjectionSetting = React.useCallback((updates) => {
         if (!socket) return;
@@ -566,8 +573,8 @@ const CelestialMainLayout = () => {
                         onZoomReset={() => setResetZoomSignal((value) => value + 1)}
                         onCenterSun={() => setCenterSunSignal((value) => value + 1)}
                         onRefresh={handleRefreshCelestial}
-                        loading={celestialState.tracksLoading}
-                        loadingText={tracksProgressText}
+                        loading={solarSystemLoading}
+                        loadingText={solarToolbarLoadingText}
                         disabled={!socket}
                         onToggleFullscreen={handleToggleSolarSystemFullscreen}
                         fullscreen={solarSystemFullscreen}
@@ -610,7 +617,7 @@ const CelestialMainLayout = () => {
                                 />
                             )}
 
-                            {(isSolarInitialLoad && viewMode === VIEW_MODE_SOLAR_SYSTEM) || isPlanetariumInitialLoad ? (
+                            {isSolarInitialLoad || isPlanetariumInitialLoad ? (
                                 <Box
                                     sx={{
                                         position: 'absolute',
