@@ -24,10 +24,12 @@ import {
     Button,
     Card,
     CardContent,
+    Checkbox,
     CircularProgress,
     Dialog,
     DialogContent,
     DialogTitle,
+    FormControlLabel,
     Stack,
     TextField,
     Typography,
@@ -216,6 +218,7 @@ export function LoginScreen() {
 
     const [username, setUsername] = React.useState('');
     const [password, setPassword] = React.useState('');
+    const [keepSessionActive, setKeepSessionActive] = React.useState(false);
     const [localError, setLocalError] = React.useState('');
 
     const handleSubmit = async (event) => {
@@ -231,6 +234,7 @@ export function LoginScreen() {
             loginUser({
                 username: username.trim(),
                 password,
+                keepSessionActive,
             })
         );
     };
@@ -269,6 +273,19 @@ export function LoginScreen() {
                                     autoComplete="current-password"
                                     required
                                 />
+                                <FormControlLabel
+                                    control={(
+                                        <Checkbox
+                                            size="small"
+                                            checked={keepSessionActive}
+                                            onChange={(event) => setKeepSessionActive(event.target.checked)}
+                                        />
+                                    )}
+                                    label="Keep session alive"
+                                />
+                                <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+                                    Unchecked sessions expire after 15 days.
+                                </Typography>
                                 <Button type="submit" variant="contained" disabled={loadingAction}>
                                     {loadingAction ? 'Signing in...' : 'Sign In'}
                                 </Button>

@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from passlib.context import CryptContext
-from sqlalchemy import and_, delete, func, select, text, update
+from sqlalchemy import and_, delete, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 
 from db import AsyncSessionLocal
@@ -35,7 +35,8 @@ from db.models import AuthSessions, UserRole, Users
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _username_regex = re.compile(r"^[a-zA-Z0-9._-]{3,64}$")
 
-_session_ttl_days = 30
+_session_ttl_default_days = 15
+_session_ttl_keep_active_days = 365
 _max_failed_logins = 5
 _lock_minutes = 10
 _setup_cache_ttl_seconds = 3.0
@@ -173,6 +174,19 @@ def extract_socket_token(auth_payload: Any) -> Optional[str]:
     return value or None
 
 
+def coerce_keep_session_active(value: Any) -> bool:
+    """Normalize login payload values into a strict boolean flag."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off", ""}:
+            return False
+    return False
+
+
 def extract_bearer_token(authorization_header: Optional[str]) -> Optional[str]:
     if not authorization_header:
         return None
@@ -237,18 +251,24 @@ def _set_setup_cache(value: bool) -> None:
     _setup_cache["expires_at"] = time.monotonic() + _setup_cache_ttl_seconds
 
 
+def _resolve_session_ttl_days(keep_session_active: bool) -> int:
+    return _session_ttl_keep_active_days if keep_session_active else _session_ttl_default_days
+
+
 async def _create_session(
     session: Any,
     user_id: uuid.UUID,
     client_ip: Optional[str] = None,
     user_agent: Optional[str] = None,
+    session_ttl_days: Optional[int] = None,
 ) -> tuple[str, AuthSessions]:
     now = _utcnow()
+    ttl_days = max(int(session_ttl_days or _session_ttl_default_days), 1)
     raw_token = secrets.token_urlsafe(48)
     session_row = AuthSessions(
         user_id=user_id,
         token_hash=_hash_token(raw_token),
-        expires_at=now + timedelta(days=_session_ttl_days),
+        expires_at=now + timedelta(days=ttl_days),
         last_seen_at=now,
         created_ip=client_ip,
         created_user_agent=user_agent,
@@ -333,6 +353,7 @@ async def login(
     password: str,
     client_ip: Optional[str] = None,
     user_agent: Optional[str] = None,
+    keep_session_active: bool = False,
 ) -> Dict[str, Any]:
     if await is_setup_required():
         return {"success": False, "error": "Setup is required before login."}
@@ -374,6 +395,8 @@ async def login(
             user_row.id,
             client_ip=client_ip,
             user_agent=user_agent,
+            # Keep-auth checkbox extends token TTL to one year; otherwise 15 days.
+            session_ttl_days=_resolve_session_ttl_days(keep_session_active),
         )
         await session.commit()
         return {"success": True, "token": token, "user": _serialize_user(user_row)}
@@ -440,6 +463,33 @@ async def logout(token: Optional[str], reason: str = "logout") -> None:
             )
         )
         await session.commit()
+
+
+async def trim_inactive_auth_sessions(keep_last: int = 300) -> Dict[str, Any]:
+    """
+    Keep a bounded history of inactive auth sessions.
+
+    Inactive sessions are revoked or expired rows. Active sessions are never deleted.
+    """
+    keep_count = max(int(keep_last), 0)
+    now = _utcnow()
+
+    async with AsyncSessionLocal() as session:
+        # Select stale/inactive sessions ordered newest -> oldest, then keep only the newest N.
+        # Anything after that offset is safe to delete without impacting active logins.
+        stale_ids_stmt = (
+            select(AuthSessions.id)
+            .where(or_(AuthSessions.revoked_at.isnot(None), AuthSessions.expires_at <= now))
+            .order_by(AuthSessions.updated_at.desc(), AuthSessions.created_at.desc())
+            .offset(keep_count)
+        )
+        stale_ids = list((await session.execute(stale_ids_stmt)).scalars().all())
+        if not stale_ids:
+            return {"success": True, "deleted": 0, "kept": keep_count}
+
+        await session.execute(delete(AuthSessions).where(AuthSessions.id.in_(stale_ids)))
+        await session.commit()
+        return {"success": True, "deleted": len(stale_ids), "kept": keep_count}
 
 
 async def list_users() -> Dict[str, Any]:

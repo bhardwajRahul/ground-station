@@ -62,12 +62,16 @@ export const loadAuthStatus = createAsyncThunk(
 
 export const loginUser = createAsyncThunk(
     'auth/login',
-    async ({ username, password }, { rejectWithValue }) => {
+    async ({ username, password, keepSessionActive = false }, { rejectWithValue }) => {
         try {
             const response = await fetch(`${AUTH_API_BASE}/login`, {
                 method: 'POST',
                 headers: buildHeaders(null, true),
-                body: JSON.stringify({ username, password }),
+                body: JSON.stringify({
+                    username,
+                    password,
+                    keep_session_active: Boolean(keepSessionActive),
+                }),
             });
             if (!response.ok) {
                 return rejectWithValue(await parseErrorMessage(response, 'Login failed.'));

@@ -83,6 +83,18 @@ async def lifespan(fastapiapp: FastAPI):
     runtimestate.background_task_manager = background_task_manager
     logger.info("BackgroundTaskManager initialized")
 
+    # Trim stale auth-session history at startup. Active sessions are excluded by policy.
+    try:
+        trim_result = await authsvc.trim_inactive_auth_sessions(keep_last=300)
+        logger.info(
+            "Auth session history trim complete: deleted=%s, keep_last=%s",
+            trim_result.get("deleted"),
+            trim_result.get("kept"),
+        )
+    except Exception:
+        # Startup should continue even if retention cleanup fails.
+        logger.exception("Auth session history trim failed at startup")
+
     # Start audio broadcaster
     audio_broadcaster.start()
     shutdown.audio_broadcaster = audio_broadcaster
@@ -318,11 +330,15 @@ async def auth_login(request: Request):
     payload = await request.json()
     username = str(payload.get("username") or "")
     password = str(payload.get("password") or "")
+    keep_session_active = authsvc.coerce_keep_session_active(
+        payload.get("keep_session_active", payload.get("keepSessionActive"))
+    )
     result = await authsvc.login(
         username=username,
         password=password,
         client_ip=_client_ip_from_request(request),
         user_agent=request.headers.get("user-agent"),
+        keep_session_active=keep_session_active,
     )
     if not result.get("success"):
         raise HTTPException(status_code=401, detail=str(result.get("error") or "Login failed."))
