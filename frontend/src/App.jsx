@@ -115,7 +115,8 @@ export default function App() {
 
     const appRuntimeEnabled = !authState.setupRequired && authState.authenticated;
     const dashboardRuntimeReady =
-        Boolean(dashboardRuntimeState?.connected) && !Boolean(dashboardRuntimeState?.initialDataLoading);
+        (dashboardRuntimeState?.connected ?? false) &&
+        !(dashboardRuntimeState?.initialDataLoading ?? false);
 
     useSocketEventHandlers(socket, appRuntimeEnabled);
     usePassFetching(socket, appRuntimeEnabled);
