@@ -19,6 +19,14 @@
 
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 
+const normalizeTaskStatus = (status) => {
+    const normalized = String(status || '').toLowerCase();
+    if (['running', 'completed', 'failed', 'stopped'].includes(normalized)) {
+        return normalized;
+    }
+    return 'completed';
+};
+
 export const stopBackgroundTask = createAsyncThunk(
     'backgroundTasks/stopBackgroundTask',
     async ({ socket, task_id, timeout = 5.0 }, { rejectWithValue }) => {
@@ -143,6 +151,104 @@ const tasksSlice = createSlice({
             }
         },
 
+        reconcileTaskSnapshot: (state, action) => {
+            const incomingTasks = Array.isArray(action.payload?.tasks)
+                ? action.payload.tasks
+                : Array.isArray(action.payload)
+                    ? action.payload
+                    : [];
+            const incomingById = {};
+            const incomingRunningIds = new Set();
+
+            incomingTasks.forEach((task) => {
+                if (!task || !task.task_id) return;
+                const normalizedStatus = normalizeTaskStatus(task.status);
+                const normalizedTask = {
+                    ...task,
+                    status: normalizedStatus,
+                };
+                incomingById[task.task_id] = normalizedTask;
+                if (normalizedStatus === 'running') {
+                    incomingRunningIds.add(task.task_id);
+                }
+            });
+
+            // Rehydrate all running tasks from backend so reconnects can restore visibility.
+            Object.values(incomingById).forEach((incomingTask) => {
+                const existingTask = state.tasks[incomingTask.task_id];
+                const shouldHydrate = incomingTask.status === 'running' || Boolean(existingTask);
+                if (!shouldHydrate) return;
+
+                state.tasks[incomingTask.task_id] = {
+                    task_id: incomingTask.task_id,
+                    name: incomingTask.name || existingTask?.name || incomingTask.task_id,
+                    command: incomingTask.command || existingTask?.command || '',
+                    args: incomingTask.args || existingTask?.args || [],
+                    pid: incomingTask.pid ?? existingTask?.pid ?? null,
+                    start_time: incomingTask.start_time ?? existingTask?.start_time ?? Date.now() / 1000,
+                    status: incomingTask.status,
+                    output_lines: existingTask?.output_lines || [],
+                    progress: incomingTask.progress ?? existingTask?.progress ?? 0,
+                    end_time: incomingTask.end_time ?? existingTask?.end_time ?? null,
+                    return_code: incomingTask.return_code ?? existingTask?.return_code ?? null,
+                    duration: incomingTask.duration ?? existingTask?.duration,
+                    error: existingTask?.error,
+                };
+            });
+
+            // If a previously running task is no longer reported as running by backend,
+            // force it out of running state to avoid stale stop controls in the UI.
+            state.runningTaskIds.forEach((task_id) => {
+                if (incomingRunningIds.has(task_id)) return;
+
+                const incomingTask = incomingById[task_id];
+                if (incomingTask && state.tasks[task_id]) {
+                    state.tasks[task_id] = {
+                        ...state.tasks[task_id],
+                        ...incomingTask,
+                        status: incomingTask.status,
+                        output_lines: state.tasks[task_id].output_lines || [],
+                        progress: incomingTask.progress ?? state.tasks[task_id].progress ?? 100,
+                    };
+                    return;
+                }
+
+                if (state.tasks[task_id]) {
+                    state.tasks[task_id].status = 'completed';
+                    state.tasks[task_id].end_time = state.tasks[task_id].end_time ?? Date.now() / 1000;
+                    state.tasks[task_id].progress = state.tasks[task_id].progress ?? 100;
+                }
+            });
+
+            const runningTaskIds = [];
+            const completedTaskIds = [];
+
+            Object.entries(state.tasks).forEach(([task_id, task]) => {
+                if (!task) return;
+                task.status = normalizeTaskStatus(task.status);
+                if (task.status === 'running') {
+                    runningTaskIds.push(task_id);
+                } else {
+                    completedTaskIds.push(task_id);
+                }
+            });
+
+            completedTaskIds.sort((a, b) => {
+                const aTime = Number(state.tasks[a]?.end_time || state.tasks[a]?.start_time || 0);
+                const bTime = Number(state.tasks[b]?.end_time || state.tasks[b]?.start_time || 0);
+                return bTime - aTime;
+            });
+
+            if (completedTaskIds.length > 20) {
+                completedTaskIds.slice(20).forEach((task_id) => {
+                    delete state.tasks[task_id];
+                });
+            }
+
+            state.runningTaskIds = runningTaskIds;
+            state.completedTaskIds = completedTaskIds.slice(0, 20);
+        },
+
         setTaskList: (state, action) => {
             const { tasks } = action.payload;
             // Merge incoming task list with existing tasks
@@ -176,6 +282,7 @@ export const {
     taskCompleted,
     taskStopped,
     taskError,
+    reconcileTaskSnapshot,
     setTaskList,
     clearCompletedTasks,
     removeTask,

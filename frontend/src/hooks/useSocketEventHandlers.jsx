@@ -103,6 +103,7 @@ import {
     taskCompleted,
     taskStopped,
     taskError,
+    reconcileTaskSnapshot,
     setTaskList,
 } from '../components/tasks/tasks-slice.jsx';
 import {
@@ -170,13 +171,23 @@ export const useSocketEventHandlers = (socket, enabled = true) => {
                 store.dispatch(cleanupStaleDecoders());
             }, 1000);
 
-            // Request current background tasks list (in case tasks started before we connected)
-            socket.emit("api.call", {
-  cmd: "background-task.list",
-  data: {
-    filter: 'all'
-  }
-});
+            // Reconcile task state after reconnect so missed completion events
+            // (during setup/login socket turnover) cannot leave stale running tasks.
+            try {
+                const taskListReply = await socket.emitWithAck("api.call", {
+                    cmd: "background-task.list",
+                    data: {
+                        only_running: false,
+                    },
+                });
+                if (taskListReply?.success) {
+                    dispatch(reconcileTaskSnapshot({ tasks: taskListReply.tasks || [] }));
+                } else {
+                    console.warn('Failed to fetch background task snapshot:', taskListReply?.error);
+                }
+            } catch (error) {
+                console.warn('Error fetching background task snapshot:', error);
+            }
 
             // toast.success(
             //     <ToastMessage
