@@ -1084,18 +1084,27 @@ const SolarSystemCanvas = ({
             const boxHeight = 16;
 
             const horizontalBias = sideHint === 'past' ? -1 : 1;
+            // Keep endpoint time labels noticeably farther from path endpoints.
+            const primaryOffsetX = 28;
+            const secondaryOffsetX = 34;
+            const primaryOffsetY = 24;
+            const alternateOffsetY = 28;
             const candidates = [
                 {
-                    centerX: anchorX + horizontalBias * 18,
-                    centerY: anchorY - 16,
+                    centerX: anchorX + horizontalBias * primaryOffsetX,
+                    centerY: anchorY - primaryOffsetY,
                 },
                 {
-                    centerX: anchorX + horizontalBias * 20,
-                    centerY: anchorY + 16,
+                    centerX: anchorX + horizontalBias * secondaryOffsetX,
+                    centerY: anchorY + primaryOffsetY,
                 },
                 {
-                    centerX: anchorX - horizontalBias * 18,
-                    centerY: anchorY - 16,
+                    centerX: anchorX - horizontalBias * primaryOffsetX,
+                    centerY: anchorY - alternateOffsetY,
+                },
+                {
+                    centerX: anchorX + horizontalBias * (secondaryOffsetX + 6),
+                    centerY: anchorY - 6,
                 },
             ];
 
@@ -1439,18 +1448,6 @@ const SolarSystemCanvas = ({
                     drawArrowHead(ctx, endPrevX, endPrevY, endX, endY, orbitStrokeColor);
                 }
 
-                // Mark the oldest endpoint of the past segment when timestamped samples are available.
-                if (pastEndIndex >= 1) {
-                    const [oldestX, oldestY] = toScreen(samples[0]);
-                    const [nextX, nextY] = toScreen(samples[1]);
-                    const dx = nextX - oldestX;
-                    const dy = nextY - oldestY;
-                    const length = Math.hypot(dx, dy);
-                    if (length > 0.001) {
-                        // Keep the tip on the past endpoint while orienting the arrow forward in time.
-                        drawArrowHead(ctx, oldestX - dx, oldestY - dy, oldestX, oldestY, orbitStrokeColor);
-                    }
-                }
             });
         }
 
@@ -1516,25 +1513,8 @@ const SolarSystemCanvas = ({
             drawOrbitSegment(futureSegmentStartIndex, lastSampleIndex, [3, 4]);
             ctx.setLineDash([]);
 
-            // Direction arrows at both endpoints in forward time direction.
+            // Direction arrow at the latest endpoint in forward time direction.
             if (samples.length >= 2) {
-                const [startX, startY] = toScreen(samples[0]);
-                const [startNextX, startNextY] = toScreen(samples[1]);
-                const startDx = startNextX - startX;
-                const startDy = startNextY - startY;
-                const startLen = Math.hypot(startDx, startDy);
-                if (startLen > 0.001) {
-                    // Keep the tip on the past endpoint while orienting the arrow forward in time.
-                    drawArrowHead(
-                        ctx,
-                        startX - startDx,
-                        startY - startDy,
-                        startX,
-                        startY,
-                        trackedStrokeColor,
-                    );
-                }
-
                 const lastIndex = samples.length - 1;
                 const [endPrevX, endPrevY] = toScreen(samples[lastIndex - 1]);
                 const [endX, endY] = toScreen(samples[lastIndex]);
