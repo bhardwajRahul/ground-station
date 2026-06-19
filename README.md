@@ -6,7 +6,6 @@
 **Ground Station is a full-featured, open-source software solution for satellite tracking and radio communication.** Designed for amateur radio operators, satellite enthusiasts, and researchers, it provides
 a comprehensive and easy-to-use platform for monitoring spacecraft, controlling radio equipment, and receiving
 live radio signals from satellites.
-This project was built with the help of Claude Code and Codex.
 
 ## Screenshots
 
