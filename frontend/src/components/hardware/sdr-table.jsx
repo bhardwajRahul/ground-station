@@ -229,8 +229,9 @@ const normalizeAntennaLabels = (labels) => {
         const cleanEntries = {};
         Object.entries(directionLabels).forEach(([internalName, userLabel]) => {
             const key = String(internalName || '').trim();
-            const value = String(userLabel || '');
-            if (!key || !value.trim()) return;
+            const value = String(userLabel ?? '');
+            if (!key) return;
+            // Keep empty labels so we can persist the full known port map.
             cleanEntries[key] = value.slice(0, MAX_ANTENNA_LABEL_LENGTH);
         });
 
@@ -612,14 +613,9 @@ export default function SDRsPage() {
         const normalizedLabels = normalizeAntennaLabels(formValues.antenna_labels);
         const nextLabels = { ...normalizedLabels };
         const directionLabels = { ...(nextLabels[direction] || {}) };
-        // Keep user spacing while editing; only use trimmed text to detect empty labels.
+        // Keep user spacing while editing.
         const label = String(rawLabel || '').slice(0, MAX_ANTENNA_LABEL_LENGTH);
-
-        if (!label.trim()) {
-            delete directionLabels[portName];
-        } else {
-            directionLabels[portName] = label;
-        }
+        directionLabels[portName] = label;
 
         if (Object.keys(directionLabels).length === 0) {
             delete nextLabels[direction];
@@ -634,7 +630,35 @@ export default function SDRsPage() {
     };
 
     const getPersistedAntennaLabels = () => {
-        return normalizeAntennaLabels(formValues.antenna_labels);
+        const normalizedLabels = normalizeAntennaLabels(formValues.antenna_labels);
+        const visiblePorts = getVisibleAntennaInfo();
+        const persisted = { ...normalizedLabels };
+
+        ['rx', 'tx'].forEach((direction) => {
+            const nextDirectionLabels = { ...(persisted[direction] || {}) };
+            const ports = Array.isArray(visiblePorts?.[direction]) ? visiblePorts[direction] : [];
+
+            ports.forEach((portNameRaw) => {
+                const portName = String(portNameRaw || '').trim();
+                if (!portName) return;
+                if (!(portName in nextDirectionLabels)) {
+                    nextDirectionLabels[portName] = '';
+                } else {
+                    nextDirectionLabels[portName] = String(nextDirectionLabels[portName] ?? '').slice(
+                        0,
+                        MAX_ANTENNA_LABEL_LENGTH
+                    );
+                }
+            });
+
+            if (Object.keys(nextDirectionLabels).length > 0) {
+                persisted[direction] = nextDirectionLabels;
+            } else {
+                delete persisted[direction];
+            }
+        });
+
+        return persisted;
     };
 
     const handleChange = (e) => {

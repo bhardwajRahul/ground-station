@@ -50,7 +50,7 @@ def _normalize_antenna_labels(value: object) -> dict:
     """
     Normalize persisted user antenna labels.
 
-    Stored shape:
+    Stored shape (empty labels are allowed and preserved):
       {
         "rx": {"<internal_port_name>": "<user_label>"},
         "tx": {"<internal_port_name>": "<user_label>"}
@@ -68,9 +68,11 @@ def _normalize_antenna_labels(value: object) -> dict:
         cleaned_labels = {}
         for internal_name, user_label in direction_labels.items():
             port_name = str(internal_name).strip()
-            label = str(user_label).strip()
-            if not port_name or not label:
+            if not port_name:
                 continue
+
+            # Keep empty labels so the persisted payload can represent all known ports.
+            label = "" if user_label is None else str(user_label)
             cleaned_labels[port_name] = label[:MAX_ANTENNA_LABEL_LENGTH]
 
         if cleaned_labels:
