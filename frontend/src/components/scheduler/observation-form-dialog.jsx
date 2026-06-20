@@ -274,6 +274,32 @@ const ObservationFormDialog = () => {
     const [transmitterMenuAnchor, setTransmitterMenuAnchor] = useState(null);
     const sdrParamsForSelected = formData.sdr.id ? sdrParameters?.[formData.sdr.id] : null;
     const biasTSupported = Boolean(sdrParamsForSelected?.has_bias_t || sdrParamsForSelected?.capabilities?.bias_t?.supported);
+    const selectedSdrRecord = useMemo(
+        () => sdrs.find((sdr) => String(sdr?.id) === String(formData.sdr.id)),
+        [sdrs, formData.sdr.id]
+    );
+    const selectedSdrRxAntennaLabels = useMemo(() => {
+        const rawLabels = selectedSdrRecord?.antenna_labels;
+        const rxLabels =
+            rawLabels && typeof rawLabels === 'object' && rawLabels.rx && typeof rawLabels.rx === 'object'
+                ? rawLabels.rx
+                : {};
+
+        const normalized = {};
+        Object.entries(rxLabels).forEach(([portName, userLabel]) => {
+            const key = String(portName || '').trim();
+            const value = String(userLabel || '').trim();
+            if (!key || !value) return;
+            normalized[key] = value;
+        });
+        return normalized;
+    }, [selectedSdrRecord]);
+    const formatAntennaPortOptionLabel = (port) => {
+        const key = String(port || '').trim();
+        if (!key) return String(port || '');
+        const userLabel = selectedSdrRxAntennaLabels[key];
+        return userLabel ? `${userLabel} (${key})` : key;
+    };
 
     // Determine if form should be disabled based on observation status
     const isFormDisabled = selectedObservation && 
@@ -1503,7 +1529,7 @@ const ObservationFormDialog = () => {
                                 >
                                     {sdrParameters[formData.sdr.id]?.antennas?.rx?.map((port) => (
                                         <MenuItem key={port} value={port}>
-                                            {port}
+                                            {formatAntennaPortOptionLabel(port)}
                                         </MenuItem>
                                     )) || []}
                                 </Select>
