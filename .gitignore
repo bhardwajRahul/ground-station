@@ -100,3 +100,6 @@ backend/data/
 /frontend/e2e/.auth/
 /backend/images/satellites/full2/
 /backend/images/satellites/wip/
+
+# Temporary files
+tmp/
