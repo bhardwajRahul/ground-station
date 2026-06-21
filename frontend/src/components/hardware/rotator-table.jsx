@@ -28,6 +28,7 @@ import {
     Button,
     Checkbox,
     FormControlLabel,
+    IconButton,
     InputAdornment,
     MenuItem,
     TextField,
@@ -40,6 +41,7 @@ import Dialog from "@mui/material/Dialog";
 import DialogContent from "@mui/material/DialogContent";
 import DialogActions from "@mui/material/DialogActions";
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import { alpha } from '@mui/material/styles';
 import {useSocket} from "../common/socket.jsx";
 import { toast } from '../../utils/toast-with-timestamp.jsx';
@@ -201,6 +203,29 @@ export default function AntennaRotatorTable() {
             flex: 1,
             minWidth: 110,
             valueFormatter: (value) => formatDegrees(value)
+        },
+        {
+            field: 'row_actions',
+            headerName: '',
+            width: 56,
+            sortable: false,
+            filterable: false,
+            disableColumnMenu: true,
+            align: 'center',
+            headerAlign: 'center',
+            renderCell: (params) => (
+                <IconButton
+                    size="small"
+                    aria-label={t('rotator.edit')}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        dispatch(setFormValues(params.row));
+                        dispatch(setOpenAddDialog(true));
+                    }}
+                >
+                    <EditOutlinedIcon fontSize="small" />
+                </IconButton>
+            ),
         },
     ];
 

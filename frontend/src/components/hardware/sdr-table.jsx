@@ -28,6 +28,7 @@ import {
     Button,
     Chip,
     CircularProgress,
+    Divider,
     FormControl,
     IconButton,
     InputAdornment,
@@ -74,6 +75,7 @@ import PendingActionsIcon from '@mui/icons-material/PendingActions';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CancelIcon from '@mui/icons-material/Cancel';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import {toRowSelectionModel, toSelectedIds} from '../../utils/datagrid-selection.js';
 import SelectionActionBar from './selection-action-bar.jsx';
 
@@ -495,6 +497,32 @@ export default function SDRsPage() {
         },
         {
             field: 'serial', headerName: t('sdr.serial'), flex: 1, minWidth: 150
+        },
+        {
+            field: 'row_actions',
+            headerName: '',
+            width: 56,
+            sortable: false,
+            filterable: false,
+            disableColumnMenu: true,
+            align: 'center',
+            headerAlign: 'center',
+            renderCell: (params) => (
+                <IconButton
+                    size="small"
+                    aria-label={t('sdr.edit')}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        dispatch(setFormValues({
+                            ...params.row,
+                            antenna_labels: normalizeAntennaLabels(params.row.antenna_labels),
+                        }));
+                        dispatch(setOpenAddDialog(true));
+                    }}
+                >
+                    <EditOutlinedIcon fontSize="small" />
+                </IconButton>
+            ),
         },
     ];
 
@@ -1590,46 +1618,58 @@ export default function SDRsPage() {
                 variant="outlined"
                 sx={{
                     mb: 2,
-                    p: { xs: 1.75, md: 2 },
                     borderRadius: 2,
                     borderColor: 'divider',
-                    backgroundColor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'grey.50',
+                    overflow: 'hidden',
                 }}
             >
-                <Stack
-                    direction={{ xs: 'column', sm: 'row' }}
-                    spacing={1.5}
-                    justifyContent="space-between"
-                    alignItems={{ xs: 'stretch', sm: 'center' }}
+                {/* Card Header */}
+                <Box
+                    sx={{
+                        px: { xs: 2, md: 2.5 },
+                        py: 1.75,
+                        borderBottom: '1px solid',
+                        borderColor: 'divider',
+                        backgroundColor: (theme) =>
+                            theme.palette.mode === 'dark'
+                                ? alpha(theme.palette.primary.main, 0.07)
+                                : alpha(theme.palette.primary.main, 0.04),
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: 1.5,
+                    }}
                 >
-                    <Stack direction="row" spacing={1.25} alignItems="center">
+                    <Stack direction="row" spacing={1.5} alignItems="center">
                         <Box
                             sx={{
-                                width: 28,
-                                height: 28,
-                                borderRadius: 1,
+                                width: 36,
+                                height: 36,
+                                borderRadius: 1.5,
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 color: 'primary.main',
                                 backgroundColor: (theme) =>
                                     theme.palette.mode === 'dark'
-                                        ? alpha(theme.palette.primary.main, 0.18)
-                                        : alpha(theme.palette.primary.main, 0.10),
+                                        ? alpha(theme.palette.primary.main, 0.22)
+                                        : alpha(theme.palette.primary.main, 0.12),
+                                flexShrink: 0,
                             }}
                         >
-                            <DnsIcon sx={{ fontSize: 17 }} />
+                            <DnsIcon sx={{ fontSize: 20 }} />
                         </Box>
                         <Box>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                            {t('sdr.soapy_discovery_title', 'SoapySDR Discovery')}
-                        </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                            {t(
-                                'sdr.soapy_discovery_subtitle',
-                                'Discover SoapySDR servers and monitor discovery task status.'
-                            )}
-                        </Typography>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 700, lineHeight: 1.3 }}>
+                                {t('sdr.soapy_discovery_title', 'SoapySDR Discovery')}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4 }}>
+                                {t(
+                                    'sdr.soapy_discovery_subtitle',
+                                    'Discover SoapySDR servers and monitor discovery task status.'
+                                )}
+                            </Typography>
                         </Box>
                     </Stack>
                     <Button
@@ -1639,126 +1679,88 @@ export default function SDRsPage() {
                         startIcon={<RefreshIcon fontSize="small" />}
                         disabled={discovering || isSoapyServerDiscoveryRunning || loading}
                         onClick={handleStartSoapyDiscovery}
+                        sx={{ flexShrink: 0 }}
                     >
                         {(discovering || isSoapyServerDiscoveryRunning)
                             ? t('sdr.discovering_servers', 'Discovering...')
                             : t('sdr.discover_servers', 'Discover SoapySDR Servers')}
                     </Button>
-                </Stack>
+                </Box>
 
-                <Stack spacing={1.25} sx={{ mt: 1.5 }}>
-                    <Box
-                        sx={{
-                            p: 1.25,
-                            borderRadius: 1.25,
-                            border: (theme) => `1px solid ${theme.palette.divider}`,
-                            backgroundColor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'grey.50',
-                        }}
-                    >
-                    <Box
-                        sx={{
-                            mb: 0.75,
-                            display: 'flex',
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                            gap: 1,
-                        }}
-                    >
+                {/* Card Body */}
+                <Box sx={{ px: { xs: 2, md: 2.5 }, pt: 1.75, pb: 2 }}>
+
+                    {/* Status row */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.75 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500, flexShrink: 0 }}>
+                            {t('sdr.discovery_status_label', 'Status')}
+                        </Typography>
                         {activeSoapyDiscoveryTask ? (
-                            <Typography variant="caption" color="text.secondary">
-                                {`${t('sdr.duration', 'Duration')}: ${formatTaskDuration(discoveryTaskDurationMs)}`}
-                            </Typography>
-                        ) : null}
-                        <Box sx={{ ml: 'auto' }}>
-                            {activeSoapyDiscoveryTask ? (
-                                activeSoapyDiscoveryTask.status === 'running' ? (
-                                    <Chip
-                                        size="small"
-                                        color="info"
-                                        icon={<PendingActionsIcon />}
-                                        label={t('sdr.task_running', 'Running')}
-                                    />
-                                ) : activeSoapyDiscoveryTask.status === 'completed' ? (
-                                    <Chip
-                                        size="small"
-                                        color="success"
-                                        icon={<CheckCircleOutlineIcon />}
-                                        label={t('sdr.task_completed', 'Completed')}
-                                    />
-                                ) : activeSoapyDiscoveryTask.status === 'failed' ? (
-                                    <Chip
-                                        size="small"
-                                        color="error"
-                                        icon={<ErrorOutlineIcon />}
-                                        label={t('sdr.task_failed', 'Failed')}
-                                    />
-                                ) : (
-                                    <Chip
-                                        size="small"
-                                        color="warning"
-                                        icon={<CancelIcon />}
-                                        label={t('sdr.task_stopped', 'Stopped')}
-                                    />
-                                )
+                            activeSoapyDiscoveryTask.status === 'running' ? (
+                                <Chip size="small" color="info" icon={<PendingActionsIcon />} label={t('sdr.task_running', 'Running')} />
+                            ) : activeSoapyDiscoveryTask.status === 'completed' ? (
+                                <Chip size="small" color="success" icon={<CheckCircleOutlineIcon />} label={t('sdr.task_completed', 'Completed')} />
+                            ) : activeSoapyDiscoveryTask.status === 'failed' ? (
+                                <Chip size="small" color="error" icon={<ErrorOutlineIcon />} label={t('sdr.task_failed', 'Failed')} />
                             ) : (
-                                <Chip size="small" variant="outlined" label={t('sdr.task_idle', 'Idle')} />
-                            )}
-                        </Box>
+                                <Chip size="small" color="warning" icon={<CancelIcon />} label={t('sdr.task_stopped', 'Stopped')} />
+                            )
+                        ) : (
+                            <Chip size="small" variant="outlined" label={t('sdr.task_idle', 'Idle')} />
+                        )}
+                        {activeSoapyDiscoveryTask && (
+                            <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace', ml: 'auto' }}>
+                                {formatTaskDuration(discoveryTaskDurationMs)}
+                            </Typography>
+                        )}
                     </Box>
 
+                    {/* Progress bar */}
+                    {activeSoapyDiscoveryTask?.status === 'running' && (
+                        activeSoapyDiscoveryTask.progress !== undefined && activeSoapyDiscoveryTask.progress !== null ? (
+                            <LinearProgress variant="determinate" value={activeSoapyDiscoveryTask.progress} sx={{ height: 3, borderRadius: 999, mb: 0.75 }} />
+                        ) : (
+                            <LinearProgress sx={{ height: 3, borderRadius: 999, mb: 0.75 }} />
+                        )
+                    )}
+
+                    {/* Last output or idle hint */}
                     {activeSoapyDiscoveryTask ? (
-                        <Box>
-                            {activeSoapyDiscoveryTask.status === 'running' ? (
-                                activeSoapyDiscoveryTask.progress !== undefined && activeSoapyDiscoveryTask.progress !== null ? (
-                                    <LinearProgress
-                                        variant="determinate"
-                                        value={activeSoapyDiscoveryTask.progress}
-                                        sx={{ height: 6, borderRadius: 999, mb: 1 }}
-                                    />
-                                ) : (
-                                    <LinearProgress sx={{ height: 6, borderRadius: 999, mb: 1 }} />
-                                )
-                            ) : null}
-                            {discoveryTaskLastOutput ? (
+                        discoveryTaskLastOutput ? (
+                            <Stack direction="row" spacing={0.75} alignItems="baseline" sx={{ mb: 0.5 }}>
+                                <Typography variant="caption" color="text.disabled" sx={{ fontWeight: 600, flexShrink: 0 }}>
+                                    {t('sdr.last_output_label', 'Output:')}
+                                </Typography>
                                 <Typography
                                     variant="caption"
                                     color="text.secondary"
-                                    sx={{
-                                        display: 'block',
-                                        fontFamily: 'monospace',
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap',
-                                    }}
+                                    sx={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}
                                     title={discoveryTaskLastOutput}
                                 >
                                     {discoveryTaskLastOutput}
                                 </Typography>
-                            ) : null}
-                        </Box>
+                            </Stack>
+                        ) : null
                     ) : (
-                        <Typography variant="body2" color="text.secondary">
-                            {t(
-                                'sdr.discovery_not_started',
-                                'No discovery task has run yet in this session.'
-                            )}
+                        <Typography variant="caption" color="text.disabled" sx={{ mb: 0.5, display: 'block' }}>
+                            {t('sdr.discovery_not_started', 'No discovery task has run yet in this session.')}
                         </Typography>
                     )}
-                    </Box>
 
-                    <Box
-                        sx={{
-                            p: 1.25,
-                            borderRadius: 1.25,
-                            border: (theme) => `1px solid ${theme.palette.divider}`,
-                            backgroundColor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'grey.50',
-                        }}
-                    >
-                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, mb: 1 }}>
-                        {t('sdr.discovered_servers')}
-                    </Typography>
+                    <Divider sx={{ my: 1.75 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                                {t('sdr.discovered_servers')}
+                            </Typography>
+                            {hasDiscoveredSoapyServers && (
+                                <Chip size="small" color="primary" variant="outlined" label={soapyServerEntries.length} sx={{ height: 18, fontSize: '0.7rem', minWidth: 28 }} />
+                            )}
+                        </Box>
+                    </Divider>
+
+                    {/* Server list */}
                     {hasDiscoveredSoapyServers ? (
-                        <Stack spacing={0.75}>
+                        <Stack spacing={0} divider={<Divider />}>
                             {soapyServerEntries.map(([key, server]) => {
                                 const name = toDisplayServerName(server?.name || key);
                                 const ip = server?.ip || '-';
@@ -1768,49 +1770,39 @@ export default function SDRsPage() {
                                     <Box
                                         key={key}
                                         sx={{
-                                            px: 1.1,
-                                            py: 0.85,
-                                            borderRadius: 1,
-                                            border: (theme) => `1px solid ${theme.palette.divider}`,
-                                            backgroundColor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'grey.50',
+                                            py: 0.9,
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'space-between',
-                                            gap: 1.25,
+                                            gap: 1.5,
                                         }}
                                     >
-                                        <Typography
-                                            variant="body2"
-                                            sx={{
-                                                fontWeight: 500,
-                                                minWidth: 0,
-                                                fontFamily: 'monospace',
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap',
-                                            }}
-                                        >
-                                            {`${ip}:${port} (${name})`}
-                                        </Typography>
+                                        <Box sx={{ minWidth: 0 }}>
+                                            <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap>
+                                                {name}
+                                            </Typography>
+                                            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }} noWrap>
+                                                {`${ip}:${port}`}
+                                            </Typography>
+                                        </Box>
                                         <Chip
                                             size="small"
+                                            color={sdrCount > 0 ? 'primary' : 'default'}
                                             variant="outlined"
                                             label={t('sdr.server_device_count', '{{count}} SDR(s)', { count: sdrCount })}
+                                            sx={{ flexShrink: 0 }}
                                         />
                                     </Box>
                                 );
                             })}
                         </Stack>
                     ) : (
-                        <Typography variant="body2" color="text.secondary">
-                            {t(
-                                'sdr.no_discovered_servers_hint',
-                                'No SoapySDR servers discovered yet. Run discovery to populate this list.'
-                            )}
+                        <Typography variant="caption" color="text.disabled">
+                            {t('sdr.no_discovered_servers_hint', 'No SoapySDR servers discovered yet. Run discovery to populate this list.')}
                         </Typography>
                     )}
-                    </Box>
-                </Stack>
+
+                </Box>
             </Paper>
             <Box component="form" sx={{mt: 2}}>
                 <Box sx={{width: '100%'}}>

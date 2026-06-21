@@ -26,6 +26,7 @@ import {
     Button,
     FormControl,
     FormHelperText,
+    IconButton,
     InputLabel,
     MenuItem,
     Select,
@@ -58,6 +59,7 @@ import SelectionActionBar from './selection-action-bar.jsx';
 import { useLocation, useNavigate } from 'react-router-dom';
 import RigEditDialog from './rig-edit-dialog.jsx';
 import { DEFAULT_RIG, validateRigForm } from './rig-edit-logic.js';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 
 
 export default function RigTable() {
@@ -119,6 +121,29 @@ export default function RigTable() {
             headerName: t('rig.retune_interval_ms'),
             flex: 1,
             minWidth: 140,
+        },
+        {
+            field: 'row_actions',
+            headerName: '',
+            width: 56,
+            sortable: false,
+            filterable: false,
+            disableColumnMenu: true,
+            align: 'center',
+            headerAlign: 'center',
+            renderCell: (params) => (
+                <IconButton
+                    size="small"
+                    aria-label={t('rig.edit')}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        dispatch(setFormValues(params.row));
+                        dispatch(setOpenAddDialog(true));
+                    }}
+                >
+                    <EditOutlinedIcon fontSize="small" />
+                </IconButton>
+            ),
         },
     ];
 
