@@ -118,6 +118,24 @@ const SdrAccordion = ({
 
         return [...typedGroups, otherGroup].filter((group) => group.items.length > 0);
     }, [sdrs, t]);
+    const sdrMenuItems = React.useMemo(() => {
+        const items = [];
+        sdrOptionsByGroup.forEach((group) => {
+            items.push(
+                <ListSubheader key={`header-${group.key}`}>
+                    {group.label}
+                </ListSubheader>
+            );
+            group.items.forEach((sdr) => {
+                items.push(
+                    <MenuItem value={String(sdr.id)} key={String(sdr.id)}>
+                        {sdr.name} ({sdr.type})
+                    </MenuItem>
+                );
+            });
+        });
+        return items;
+    }, [sdrOptionsByGroup]);
 
     const selectedSdrRecord = React.useMemo(
         () => sdrs.find((sdr) => String(sdr?.id) === String(selectedSDRId)),
@@ -283,23 +301,14 @@ const SdrAccordion = ({
                             <InputLabel htmlFor="sdr-select">{t('sdr.sdr_label')}</InputLabel>
                             <Select
                                 id="sdr-select"
-                                value={sdrs.length > 0 ? selectedSDRId : "none"}
+                                value={sdrs.length > 0 ? String(selectedSDRId ?? "none") : "none"}
                                 onChange={onSDRChange}
                                 size="small"
                                 label={t('sdr.sdr_label')}>
                                 <MenuItem value="none" disabled={isStreaming}>
                                     {t('sdr.no_sdr_selected')}
                                 </MenuItem>
-                                {sdrOptionsByGroup.map((group) => (
-                                    <React.Fragment key={`group-${group.key}`}>
-                                        <ListSubheader>{group.label}</ListSubheader>
-                                        {group.items.map((sdr) => (
-                                            <MenuItem value={sdr.id} key={sdr.id}>
-                                                {sdr.name} ({sdr.type})
-                                            </MenuItem>
-                                        ))}
-                                    </React.Fragment>
-                                ))}
+                                {sdrMenuItems}
                             </Select>
                         </FormControl>
 
