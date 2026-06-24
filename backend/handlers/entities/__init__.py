@@ -33,7 +33,6 @@ from . import (
     preferences,
     satellites,
     sdr,
-    sessions,
     setup,
     systeminfo,
     tracking,
@@ -57,7 +56,6 @@ __all__ = [
     "sdr",
     "vfo",
     "systeminfo",
-    "sessions",
     "celestial",
     "control",
 ]

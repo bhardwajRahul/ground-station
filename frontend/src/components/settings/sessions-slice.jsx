@@ -8,46 +8,23 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 // Async thunks to query backend via unified Socket.IO api.call
 export const fetchRuntimeSnapshot = createAsyncThunk(
     'sessions/fetchRuntimeSnapshot',
-    async ({ socket, sdr_id = null, session_id = null }, { rejectWithValue }) => {
-        return new Promise((resolve, reject) => {
-            const payload = {};
-            if (sdr_id) payload.sdr_id = sdr_id;
-            if (session_id) payload.session_id = session_id;
-
-            socket.emit("api.call", {
-  cmd: 'fetch_runtime_snapshot',
-  data: payload
-}, response => {
-  if (response && response.success) {
-    resolve(response.data || {
-      sessions: {},
-      sdrs: {}
-    });
-  } else {
-    reject(rejectWithValue(response?.error || 'Failed to fetch runtime snapshot'));
-  }
-});
-        });
+    async ({ socket, sdr_id = null, session_id = null }) => {
+        // Session runtime introspection is intentionally disabled on the backend.
+        // Keep this thunk as a no-op so legacy callers do not emit removed commands.
+        void socket;
+        void sdr_id;
+        void session_id;
+        return { sessions: {}, sdrs: {} };
     }
 );
 
 export const fetchSessionView = createAsyncThunk(
     'sessions/fetchSessionView',
-    async ({ socket, session_id }, { rejectWithValue }) => {
-        return new Promise((resolve, reject) => {
-            socket.emit("api.call", {
-  cmd: 'fetch_session_view',
-  data: {
-    session_id
-  }
-}, response => {
-  if (response && response.success) {
-    resolve(response.data || null);
-  } else {
-    reject(rejectWithValue(response?.error || 'Failed to fetch session view'));
-  }
-});
-        });
+    async ({ socket, session_id }) => {
+        // Session view introspection is intentionally disabled on the backend.
+        void socket;
+        void session_id;
+        return null;
     }
 );
 

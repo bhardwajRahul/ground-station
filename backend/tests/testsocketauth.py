@@ -96,6 +96,50 @@ async def test_api_call_reauthenticates_each_request(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_session_snapshot_commands_are_not_registered(monkeypatch):
+    sio = _FakeSio()
+    sockethandlers.register_socketio_handlers(sio)
+    connect = sio.handlers["connect"]
+    api_call = sio.handlers["api.call"]
+
+    async def _is_setup_required(force_refresh: bool = False):
+        del force_refresh
+        return False
+
+    async def _authenticate_token(token: str | None):
+        assert token == "token-snapshot"
+        return {"username": "admin", "role": "admin"}
+
+    monkeypatch.setattr(sockethandlers.authsvc, "is_setup_required", _is_setup_required)
+    monkeypatch.setattr(sockethandlers.authsvc, "authenticate_token", _authenticate_token)
+
+    connect_reply = await connect(
+        "sid-snapshot",
+        {"REMOTE_ADDR": "127.0.0.1"},
+        {"token": "token-snapshot"},
+    )
+    assert connect_reply is not False
+
+    runtime_reply = await api_call("sid-snapshot", {"cmd": "fetch_runtime_snapshot", "data": None})
+    session_reply = await api_call(
+        "sid-snapshot",
+        {"cmd": "fetch_session_view", "data": {"session_id": "sid-snapshot"}},
+    )
+
+    # Session introspection commands are intentionally disabled to remove this attack surface.
+    assert runtime_reply == {
+        "success": False,
+        "data": None,
+        "error": "Unknown command: fetch_runtime_snapshot",
+    }
+    assert session_reply == {
+        "success": False,
+        "data": None,
+        "error": "Unknown command: fetch_session_view",
+    }
+
+
+@pytest.mark.asyncio
 async def test_connect_persists_authenticated_owner_metadata(monkeypatch):
     sio = _FakeSio()
     sockethandlers.register_socketio_handlers(sio)

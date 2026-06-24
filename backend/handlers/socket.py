@@ -17,7 +17,6 @@ from handlers.entities import (
     satellites,
     scheduler,
     sdr,
-    sessions,
     setup,
     systeminfo,
     tracking,
@@ -45,7 +44,6 @@ def _register_all_handlers():
     tracking.register_handlers(handler_registry)
     vfo.register_handlers(handler_registry)
     systeminfo.register_handlers(handler_registry)
-    sessions.register_handlers(handler_registry)
     scheduler.register_handlers(handler_registry)
     decoderconfig.register_handlers(handler_registry)
     celestial.register_handlers(handler_registry)
@@ -116,12 +114,12 @@ def register_socketio_handlers(sio):
 
         SESSIONS[sid] = environ
 
-        # Keep session-owner identity in tracker metadata so runtime snapshots can expose it.
+        # Keep session owner identity in tracker metadata for runtime auditing/diagnostics.
         auth_user_id = str((auth_context or {}).get("user_id") or "").strip() or None
         auth_username = str((auth_context or {}).get("username") or "").strip() or None
         auth_role = str((auth_context or {}).get("role") or "").strip() or None
 
-        # Persist client metadata into SessionTracker so snapshots can include it.
+        # Persist client metadata in SessionTracker for operational diagnostics.
         try:
             session_tracker.set_session_metadata(
                 sid,

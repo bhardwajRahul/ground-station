@@ -34,7 +34,6 @@ from pipeline.orchestration.processmanager import process_manager
 from server import runtimestate, shutdown
 from server.firsttime import first_time_initialization, run_initial_sync
 from server.scheduler import run_initial_observation_generation, start_scheduler, stop_scheduler
-from server.sessionsnapshot import start_session_runtime_emitter
 from server.spapaths import is_static_asset_request, resolve_static_asset_path
 from server.systeminfo import start_system_info_emitter
 from server.version import get_full_version_info, get_update_check
@@ -192,9 +191,6 @@ async def lifespan(fastapiapp: FastAPI):
 
     # Start live system-info emitter task (registers into background_tasks)
     start_system_info_emitter(sio, background_tasks)
-
-    # Start session runtime snapshot emitter task (registers into background_tasks)
-    start_session_runtime_emitter(sio, background_tasks)
 
     try:
         yield

@@ -87,7 +87,6 @@ import {
 } from '../components/decoders/decoders-slice.jsx';
 import { updateMetrics } from '../components/performance/performance-slice.jsx';
 import { setSystemInfo } from '../components/settings/system-info-slice.jsx';
-import { setRuntimeSnapshot } from '../components/settings/sessions-slice.jsx';
 import { loadAuthStatus } from '../components/auth/auth-slice.jsx';
 import { fetchSatelliteGroups } from '../components/earthview/earthview-slice.jsx';
 import { addTranscription } from '../components/waterfall/transcription-slice.jsx';
@@ -232,15 +231,6 @@ export const useSocketEventHandlers = (socket, enabled = true) => {
                 store.dispatch(setSystemInfo(payload));
             } catch (e) {
                 console.error('Failed to update system info from socket:', e);
-            }
-        });
-
-        // Session runtime snapshot stream
-        socket.on('session-runtime-snapshot', (snapshot) => {
-            try {
-                store.dispatch(setRuntimeSnapshot(snapshot));
-            } catch (e) {
-                console.error('Failed to update session runtime snapshot from socket:', e);
             }
         });
 
@@ -929,7 +919,6 @@ export const useSocketEventHandlers = (socket, enabled = true) => {
             socket.off('error');
             socket.off('disconnect');
             socket.off('system-info');
-            socket.off('session-runtime-snapshot');
             socket.off("sat-sync-events");
             socket.off("satellite-tracking");
             socket.off("ui-tracker-state");
