@@ -139,6 +139,20 @@ const TransmittersTable = ({ satelliteData, inDialog = false, actionsPortalTarge
         openTransmitterForEdit(singleRowId);
     };
 
+    const openTransmitterForDuplicate = (rowId) => {
+        const transmitter = rows.find(row => row.id === rowId);
+        if (!transmitter) return;
+        // Keep the selected values, but open the modal in "new" mode so a new record is created.
+        setEditingTransmitter(transmitter);
+        setIsNewTransmitter(true);
+        setEditModalOpen(true);
+    };
+
+    const handleDuplicateClick = () => {
+        const singleRowId = selected[0];
+        openTransmitterForDuplicate(singleRowId);
+    };
+
     const handleDeleteClick = () => {
         setDeleteConfirmOpen(true);
     };
@@ -384,6 +398,9 @@ const TransmittersTable = ({ satelliteData, inDialog = false, actionsPortalTarge
                                 <Button variant="contained" size="small" disabled={selected.length !== 1} onClick={handleEditClick}>
                                     {t('satellite_info.transmitters.edit')}
                                 </Button>
+                                <Button variant="contained" size="small" disabled={selected.length !== 1} onClick={handleDuplicateClick}>
+                                    {t('satellite_info.transmitters.duplicate')}
+                                </Button>
                                 <Button
                                     variant="contained"
                                     size="small"
@@ -403,6 +420,9 @@ const TransmittersTable = ({ satelliteData, inDialog = false, actionsPortalTarge
                                 </Button>
                                 <Button variant="contained" disabled={selected.length !== 1} onClick={handleEditClick}>
                                     {t('satellite_info.transmitters.edit')}
+                                </Button>
+                                <Button variant="contained" disabled={selected.length !== 1} onClick={handleDuplicateClick}>
+                                    {t('satellite_info.transmitters.duplicate')}
                                 </Button>
                                 <Button variant="contained" color="error" disabled={selected.length < 1}
                                         onClick={handleDeleteClick}>
