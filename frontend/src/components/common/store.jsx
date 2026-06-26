@@ -278,7 +278,7 @@ const celestialMonitoredPersistConfig = {
             return originalState;
         }
         const inboundDefaultsVersion = Number(inboundState.tableDefaultsVersion || 0);
-        const shouldApplyLatestDefaults = inboundDefaultsVersion < 2;
+        const shouldApplyLatestDefaults = inboundDefaultsVersion < 4;
         // Apply monitored-table defaults once when loading older persisted payloads.
         // After this migration, user customizations continue to persist normally.
         return {

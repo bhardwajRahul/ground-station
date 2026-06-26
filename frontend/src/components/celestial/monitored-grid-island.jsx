@@ -20,6 +20,9 @@ import {
 } from '@mui/material';
 import { useDispatch, useSelector } from 'react-redux';
 import {
+    MONITORED_TABLE_DEFAULT_COLUMN_VISIBILITY,
+    MONITORED_TABLE_DEFAULT_PAGE_SIZE,
+    MONITORED_TABLE_DEFAULT_SORT_MODEL,
     setSelectedMonitoredIds,
     setMonitoredTableColumnVisibility,
     setMonitoredTablePageSize,
@@ -128,6 +131,13 @@ const formatNumeric = (value, digits = 3) => {
     return Number(value).toFixed(digits);
 };
 
+const formatNumericUpTo = (value, maxDigits = 3) => {
+    if (!Number.isFinite(value)) return '-';
+    return Number(value)
+        .toFixed(maxDigits)
+        .replace(/\.?0+$/, '');
+};
+
 const formatLastRefresh = (value, timezone, locale) => {
     if (!value) return 'Never';
     const parsed = new Date(value);
@@ -183,6 +193,11 @@ const SettingsDialog = ({ open, onClose }) => {
     const dispatch = useDispatch();
     const columnVisibility = useSelector((state) => state.celestialMonitored.tableColumnVisibility);
     const tablePageSize = useSelector((state) => state.celestialMonitored.tablePageSize);
+    const handleResetValues = useCallback(() => {
+        dispatch(setMonitoredTableColumnVisibility({ ...MONITORED_TABLE_DEFAULT_COLUMN_VISIBILITY }));
+        dispatch(setMonitoredTablePageSize(MONITORED_TABLE_DEFAULT_PAGE_SIZE));
+        dispatch(setMonitoredTableSortModel([...MONITORED_TABLE_DEFAULT_SORT_MODEL]));
+    }, [dispatch]);
 
     const columns = [
         { name: 'displayName', label: 'Name', category: 'identity', alwaysVisible: true },
@@ -190,7 +205,6 @@ const SettingsDialog = ({ open, onClose }) => {
         { name: 'command', label: 'Target ID', category: 'identity' },
         { name: 'source', label: 'Source', category: 'identity' },
         { name: 'sourceMode', label: 'Source Mode', category: 'identity' },
-        { name: 'enabled', label: 'Enabled', category: 'state' },
         { name: 'elevationDeg', label: 'Elevation (deg)', category: 'state' },
         { name: 'azimuthDeg', label: 'Azimuth (deg)', category: 'state' },
         { name: 'distanceFromSunAu', label: 'Distance from Sun (AU)', category: 'metrics' },
@@ -274,6 +288,9 @@ const SettingsDialog = ({ open, onClose }) => {
                 ))}
             </DialogContent>
             <DialogActions sx={DIALOG_ACTIONS_SX}>
+                <Button onClick={handleResetValues} variant="outlined" color="warning">
+                    Reset Values
+                </Button>
                 <Button onClick={onClose} variant="outlined" sx={DIALOG_CANCEL_BUTTON_SX}>
                     Close
                 </Button>
@@ -450,16 +467,9 @@ const MonitoredCelestialGridIsland = ({
             { field: 'source', headerName: 'Source', minWidth: 110, flex: 0.7 },
             { field: 'sourceMode', headerName: 'Source Mode', minWidth: 120, flex: 0.8 },
             {
-                field: 'enabled',
-                headerName: 'Enabled',
-                minWidth: 90,
-                align: 'center',
-                headerAlign: 'center',
-                valueGetter: (value) => (value ? 'Yes' : 'No'),
-            },
-            {
                 field: 'elevationDeg',
-                minWidth: 130,
+                width: 80,
+                minWidth: 80,
                 headerName: 'Elevation (deg)',
                 type: 'number',
                 align: 'center',
@@ -468,7 +478,8 @@ const MonitoredCelestialGridIsland = ({
             },
             {
                 field: 'azimuthDeg',
-                minWidth: 125,
+                width: 90,
+                minWidth: 90,
                 headerName: 'Azimuth (deg)',
                 align: 'center',
                 headerAlign: 'center',
@@ -477,22 +488,25 @@ const MonitoredCelestialGridIsland = ({
             {
                 field: 'distanceFromSunAu',
                 headerName: 'Distance from Sun (AU)',
-                minWidth: 165,
-                valueGetter: (value) => formatNumeric(value, 4),
+                width: 90,
+                minWidth: 90,
+                valueGetter: (value) => formatNumericUpTo(value, 3),
             },
             {
                 field: 'speedKmS',
                 headerName: 'Speed (km/s)',
-                minWidth: 120,
+                width: 90,
+                minWidth: 90,
                 valueGetter: (value) => formatNumeric(value, 3),
             },
             {
                 field: 'lightTimeMinutes',
                 headerName: 'Light Time (min)',
-                minWidth: 130,
+                width: 90,
+                minWidth: 90,
                 valueGetter: (value) => formatNumeric(value, 2),
             },
-            { field: 'lastRefreshAge', headerName: 'Refresh Age', minWidth: 100 },
+            { field: 'lastRefreshAge', headerName: 'Refresh Age', width: 70, minWidth: 70 },
             { field: 'projectionSpan', headerName: 'Projection Span', minWidth: 150 },
             { field: 'cacheStatus', headerName: 'Cache', minWidth: 90 },
             { field: 'stale', headerName: 'Stale', minWidth: 80 },

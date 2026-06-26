@@ -14,6 +14,29 @@ const normalizeMonitoredEntry = (entry) => ({
     lastError: entry?.last_error ?? entry?.lastError ?? null,
 });
 
+export const MONITORED_TABLE_DEFAULT_COLUMN_VISIBILITY = {
+    displayName: true,
+    targetType: true,
+    color: false,
+    command: false,
+    source: false,
+    sourceMode: false,
+    elevationDeg: true,
+    azimuthDeg: true,
+    distanceFromSunAu: true,
+    speedKmS: true,
+    lightTimeMinutes: false,
+    lastRefreshAt: false,
+    lastRefreshAge: true,
+    projectionSpan: false,
+    cacheStatus: false,
+    stale: false,
+    sampleCount: false,
+    lastError: false,
+};
+export const MONITORED_TABLE_DEFAULT_PAGE_SIZE = 10;
+export const MONITORED_TABLE_DEFAULT_SORT_MODEL = [{ field: 'elevationDeg', sort: 'desc' }];
+
 export const fetchMonitoredCelestial = createAsyncThunk(
     'celestialMonitored/fetchMonitoredCelestial',
     async ({ socket }, { rejectWithValue }) => {
@@ -165,30 +188,10 @@ const monitoredSlice = createSlice({
         saveLoading: false,
         error: null,
         openGridSettingsDialog: false,
-        tableDefaultsVersion: 2,
-        tableColumnVisibility: {
-            displayName: true,
-            targetType: true,
-            color: false,
-            command: false,
-            source: false,
-            sourceMode: false,
-            enabled: true,
-            elevationDeg: true,
-            azimuthDeg: false,
-            distanceFromSunAu: false,
-            speedKmS: true,
-            lightTimeMinutes: false,
-            lastRefreshAt: false,
-            lastRefreshAge: false,
-            projectionSpan: false,
-            cacheStatus: false,
-            stale: false,
-            sampleCount: false,
-            lastError: false,
-        },
-        tablePageSize: 10,
-        tableSortModel: [{ field: 'elevationDeg', sort: 'desc' }],
+        tableDefaultsVersion: 4,
+        tableColumnVisibility: { ...MONITORED_TABLE_DEFAULT_COLUMN_VISIBILITY },
+        tablePageSize: MONITORED_TABLE_DEFAULT_PAGE_SIZE,
+        tableSortModel: [...MONITORED_TABLE_DEFAULT_SORT_MODEL],
     },
     reducers: {
         openAddDialog: (state) => {

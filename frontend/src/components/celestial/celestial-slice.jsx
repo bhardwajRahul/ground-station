@@ -19,6 +19,28 @@
 
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
+export const CELESTIAL_PASSES_DEFAULT_COLUMN_VISIBILITY = {
+    status: true,
+    name: true,
+    targetType: true,
+    peakElevationDeg: true,
+    progress: true,
+    duration: true,
+    eventStart: true,
+    eventEnd: true,
+    startAzimuthDeg: false,
+    endAzimuthDeg: false,
+    peakAzimuthDeg: false,
+    cacheStatus: true,
+    stale: true,
+    source: false,
+};
+export const CELESTIAL_PASSES_DEFAULT_PAGE_SIZE = 10;
+export const CELESTIAL_PASSES_DEFAULT_SORT_MODEL = [
+    { field: 'status', sort: 'asc' },
+    { field: 'eventStart', sort: 'asc' },
+];
+
 export const fetchCelestialScene = createAsyncThunk(
     'celestial/fetchScene',
     async ({ socket, payload = {} }, { rejectWithValue }) => {
@@ -158,25 +180,9 @@ const celestialSlice = createSlice({
         celestialTracks: null,
         tracksProgress: null,
         mapSettings: null,
-        passesTableColumnVisibility: {
-            status: true,
-            name: true,
-            targetType: true,
-            peakElevationDeg: true,
-            progress: true,
-            duration: true,
-            eventStart: true,
-            eventEnd: true,
-            startAzimuthDeg: false,
-            endAzimuthDeg: false,
-            peakAzimuthDeg: false,
-            cacheStatus: true,
-            stale: true,
-            source: false,
-            targetId: false,
-        },
-        passesTablePageSize: 10,
-        passesTableSortModel: [{ field: 'status', sort: 'asc' }, { field: 'eventStart', sort: 'asc' }],
+        passesTableColumnVisibility: { ...CELESTIAL_PASSES_DEFAULT_COLUMN_VISIBILITY },
+        passesTablePageSize: CELESTIAL_PASSES_DEFAULT_PAGE_SIZE,
+        passesTableSortModel: [...CELESTIAL_PASSES_DEFAULT_SORT_MODEL],
         solarLoading: false,
         tracksLoading: false,
         error: null,

@@ -32,6 +32,9 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import { useDispatch, useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import {
+    CELESTIAL_PASSES_DEFAULT_COLUMN_VISIBILITY,
+    CELESTIAL_PASSES_DEFAULT_PAGE_SIZE,
+    CELESTIAL_PASSES_DEFAULT_SORT_MODEL,
     setCelestialPassesTableColumnVisibility,
     setCelestialPassesTablePageSize,
     setCelestialPassesTableSortModel,
@@ -237,6 +240,11 @@ const PassesTableSettingsDialog = ({ open, onClose }) => {
     const dispatch = useDispatch();
     const columnVisibility = useSelector((state) => state.celestial?.passesTableColumnVisibility || {});
     const pageSize = useSelector((state) => state.celestial?.passesTablePageSize || 10);
+    const handleResetValues = useCallback(() => {
+        dispatch(setCelestialPassesTableColumnVisibility({ ...CELESTIAL_PASSES_DEFAULT_COLUMN_VISIBILITY }));
+        dispatch(setCelestialPassesTablePageSize(CELESTIAL_PASSES_DEFAULT_PAGE_SIZE));
+        dispatch(setCelestialPassesTableSortModel([...CELESTIAL_PASSES_DEFAULT_SORT_MODEL]));
+    }, [dispatch]);
 
     const columns = [
         { name: 'status', label: 'Status', category: 'basic', alwaysVisible: true },
@@ -253,7 +261,6 @@ const PassesTableSettingsDialog = ({ open, onClose }) => {
         { name: 'cacheStatus', label: 'Cache', category: 'source' },
         { name: 'stale', label: 'Stale', category: 'source' },
         { name: 'source', label: 'Source', category: 'source' },
-        { name: 'targetId', label: 'Target ID', category: 'source' },
     ];
 
     const categories = {
@@ -324,6 +331,9 @@ const PassesTableSettingsDialog = ({ open, onClose }) => {
                 ))}
             </DialogContent>
             <DialogActions>
+                <Button onClick={handleResetValues} variant="outlined" color="warning">
+                    Reset Values
+                </Button>
                 <Button onClick={onClose} variant="contained">
                     Close
                 </Button>
@@ -372,10 +382,6 @@ const CelestialPasses = ({
             name: pass.name || '-',
             targetType: String(pass.target_type || 'mission').toLowerCase() === 'body' ? 'Body' : 'Mission',
             targetKey: pass.target_key || '',
-            targetId:
-                String(pass.target_type || 'mission').toLowerCase() === 'body'
-                    ? (pass.body_id || '-')
-                    : (pass.command || '-'),
             peakElevationDeg: Number(pass.peak_elevation_deg),
             eventStart: pass.event_start,
             eventEnd: pass.event_end,
@@ -426,7 +432,8 @@ const CelestialPasses = ({
         {
             field: 'status',
             headerName: 'Status',
-            minWidth: 165,
+            width: 150,
+            minWidth: 150,
             align: 'center',
             headerAlign: 'center',
             cellClassName: 'passes-cell-status',
@@ -473,7 +480,8 @@ const CelestialPasses = ({
         {
             field: 'peakElevationDeg',
             headerName: 'Peak Elevation',
-            minWidth: 125,
+            width: 90,
+            minWidth: 90,
             valueFormatter: (value) => formatAngle(value),
             cellClassName: (params) => {
                 const value = Number(params?.value);
@@ -528,13 +536,12 @@ const CelestialPasses = ({
                 </Box>
             ),
         },
-        { field: 'startAzimuthDeg', headerName: 'Start Azimuth', minWidth: 120, valueFormatter: (value) => formatAngle(value) },
-        { field: 'endAzimuthDeg', headerName: 'End Azimuth', minWidth: 120, valueFormatter: (value) => formatAngle(value) },
+        { field: 'startAzimuthDeg', headerName: 'Start Azimuth', width: 90, minWidth: 90, valueFormatter: (value) => formatAngle(value) },
+        { field: 'endAzimuthDeg', headerName: 'End Azimuth', width: 90, minWidth: 90, valueFormatter: (value) => formatAngle(value) },
         { field: 'peakAzimuthDeg', headerName: 'Peak Azimuth', minWidth: 120, valueFormatter: (value) => formatAngle(value) },
-        { field: 'cacheStatus', headerName: 'Cache', minWidth: 90 },
-        { field: 'stale', headerName: 'Stale', minWidth: 80 },
-        { field: 'source', headerName: 'Source', minWidth: 130 },
-        { field: 'targetId', headerName: 'Target ID', minWidth: 180 },
+        { field: 'cacheStatus', headerName: 'Cache', width: 90, minWidth: 90 },
+        { field: 'stale', headerName: 'Stale', width: 80, minWidth: 80 },
+        { field: 'source', headerName: 'Source', width: 110, minWidth: 110 },
     ], [nowMs, timezone, locale, targetNumberByTargetKey]);
 
     const handleQuickPreset = useCallback((preset) => {
