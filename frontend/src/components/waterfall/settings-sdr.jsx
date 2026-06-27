@@ -343,8 +343,8 @@ const SdrAccordion = ({
                                     label={t('sdr.playback_recording', { defaultValue: 'IQ Recording' })}
                                     onChange={(e) => onPlaybackRecordingChange?.(e.target.value)}
                                 >
-                                    <MenuItem value="none">
-                                        {t('sdr.select_playback_recording', { defaultValue: 'Select recording' })}
+                                    <MenuItem value="none" disabled={isStreaming}>
+                                        {t('sdr.no_playback_recording_selected', { defaultValue: '[no recording selected]' })}
                                     </MenuItem>
                                     {playbackRecordingsLoading && playbackRecordingOptions.length === 0 && (
                                         <MenuItem value="loading" disabled>
