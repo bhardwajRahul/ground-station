@@ -45,7 +45,7 @@ import {
 } from '../target/celestial-target-utils.js';
 
 export const gridLayoutStoreName = 'celestial-layouts';
-const LAYOUT_SCHEMA_VERSION = 6;
+const LAYOUT_SCHEMA_VERSION = 7;
 const SHARED_RESIZE_HANDLES = ['s', 'sw', 'w', 'se', 'nw', 'ne', 'e'];
 const DEFAULT_PAST_HOURS = 0;
 const DEFAULT_FUTURE_HOURS = 24;
@@ -229,39 +229,39 @@ function ensureRequiredLayoutItems(layouts) {
 
 const defaultLayouts = {
     lg: [
-        { i: 'solar-system', x: 0, y: 0, w: 5, h: 13, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'monitored-celestial', x: 5, y: 0, w: 5, h: 13, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-info', x: 10, y: 0, w: 2, h: 13, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-timeline', x: 0, y: 13, w: 12, h: 6, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-passes', x: 0, y: 19, w: 12, h: 7, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'solar-system', x: 0, y: 0, w: 19, h: 29, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'monitored-celestial', x: 19, y: 0, w: 21, h: 29, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-info', x: 40, y: 0, w: 8, h: 29, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-timeline', x: 0, y: 29, w: 48, h: 11, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-passes', x: 0, y: 40, w: 48, h: 15, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
     ],
     md: [
-        { i: 'solar-system', x: 0, y: 0, w: 7, h: 15, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'monitored-celestial', x: 0, y: 15, w: 10, h: 8, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-info', x: 7, y: 0, w: 3, h: 15, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-timeline', x: 0, y: 30, w: 10, h: 6, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-passes', x: 0, y: 23, w: 10, h: 7, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'solar-system', x: 0, y: 0, w: 28, h: 27, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'monitored-celestial', x: 0, y: 27, w: 40, h: 20, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-info', x: 28, y: 0, w: 12, h: 27, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-timeline', x: 0, y: 47, w: 40, h: 12, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-passes', x: 0, y: 59, w: 40, h: 18, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
     ],
     sm: [
-        { i: 'solar-system', x: 0, y: 0, w: 5, h: 13, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'monitored-celestial', x: 1, y: 13, w: 5, h: 13, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-info', x: 4, y: 26, w: 2, h: 13, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-timeline', x: 0, y: 39, w: 6, h: 6, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-passes', x: 0, y: 45, w: 6, h: 7, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'solar-system', x: 0, y: 0, w: 15, h: 26, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'monitored-celestial', x: 0, y: 26, w: 24, h: 18, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-info', x: 15, y: 0, w: 9, h: 26, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-timeline', x: 0, y: 44, w: 24, h: 12, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-passes', x: 0, y: 56, w: 24, h: 17, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
     ],
     xs: [
-        { i: 'solar-system', x: 0, y: 0, w: 2, h: 18, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'monitored-celestial', x: 0, y: 18, w: 2, h: 9, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-info', x: 0, y: 41, w: 2, h: 8, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-timeline', x: 0, y: 35, w: 2, h: 6, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-passes', x: 0, y: 27, w: 2, h: 8, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'solar-system', x: 0, y: 0, w: 5, h: 28, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'monitored-celestial', x: 0, y: 28, w: 8, h: 23, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-info', x: 5, y: 0, w: 3, h: 28, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-timeline', x: 0, y: 51, w: 8, h: 11, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-passes', x: 0, y: 62, w: 8, h: 17, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
     ],
     xxs: [
-        { i: 'solar-system', x: 0, y: 0, w: 2, h: 18, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'monitored-celestial', x: 0, y: 18, w: 2, h: 9, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-passes', x: 0, y: 27, w: 2, h: 8, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-timeline', x: 0, y: 35, w: 2, h: 6, resizeHandles: [...SHARED_RESIZE_HANDLES] },
-        { i: 'celestial-info', x: 0, y: 41, w: 2, h: 8, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'solar-system', x: 0, y: 0, w: 8, h: 23, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'monitored-celestial', x: 0, y: 51, w: 8, h: 18, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-info', x: 0, y: 23, w: 8, h: 28, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-timeline', x: 0, y: 69, w: 8, h: 12, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
+        { i: 'celestial-passes', x: 0, y: 81, w: 8, h: 16, moved: false, static: false, resizeHandles: [...SHARED_RESIZE_HANDLES] },
     ],
 };
 
@@ -788,8 +788,8 @@ const CelestialMainLayout = () => {
                         layouts={layouts}
                         onLayoutChange={handleLayoutsChange}
                         breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-                        cols={{ lg: 12, md: 10, sm: 6, xs: 2, xxs: 2 }}
-                        rowHeight={30}
+                        cols={{ lg: 48, md: 40, sm: 24, xs: 8, xxs: 8 }}
+                        rowHeight={8}
                         dragConfig={{ enabled: isEditing, handle: '.react-grid-draggable' }}
                         resizeConfig={{ enabled: isEditing }}
                     >

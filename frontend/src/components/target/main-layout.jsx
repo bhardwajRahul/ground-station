@@ -74,11 +74,11 @@ export const gridLayoutStoreName = 'target-sat-track-layouts';
 const LAYOUT_SCHEMA_VERSION = 3;
 const SHARED_RESIZE_HANDLES = ['s', 'sw', 'w', 'se', 'nw', 'ne', 'e'];
 const FIXED_ISLAND_HEIGHTS = {
-    lg: {'rotator-control': 13, 'rig-control': 13},
-    md: {'rotator-control': 13, 'rig-control': 13},
-    sm: {'rotator-control': 13, 'rig-control': 13},
-    xs: {'rotator-control': 13, 'rig-control': 13},
-    xxs: {'rotator-control': 13, 'rig-control': 13},
+    lg: {'rotator-control': 29, 'rig-control': 29},
+    md: {'rotator-control': 29, 'rig-control': 29},
+    sm: {'rotator-control': 29, 'rig-control': 29},
+    xs: {'rotator-control': 29, 'rig-control': 29},
+    xxs: {'rotator-control': 29, 'rig-control': 29},
 };
 
 // -------------------------------------------------
@@ -678,8 +678,8 @@ const TrackingLayout = React.memo(function TrackingLayout() {
             layouts={layouts}
             onLayoutChange={handleLayoutsChange}
             breakpoints={{lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0}}
-            cols={{lg: 12, md: 10, sm: 6, xs: 2, xxs: 2}}
-            rowHeight={30}
+            cols={{lg: 48, md: 40, sm: 24, xs: 8, xxs: 8}}
+            rowHeight={8}
             dragConfig={{enabled: gridEditable, handle: '.react-grid-draggable'}}
             resizeConfig={{enabled: gridEditable}}
         >
