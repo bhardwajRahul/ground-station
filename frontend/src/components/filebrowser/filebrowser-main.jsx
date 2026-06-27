@@ -1840,8 +1840,10 @@ export default function FileBrowserMain() {
                     <DialogContent
                         sx={{
                             bgcolor: (theme) => (theme.palette.mode === 'dark' ? 'rgba(0, 0, 0, 0.36)' : 'grey.100'),
-                            px: 3,
-                            py: 3,
+                            p: 3,
+                            '&.MuiDialogContent-root:first-of-type': {
+                                pt: 3,
+                            },
                         }}
                     >
                         {selectedItem && (
