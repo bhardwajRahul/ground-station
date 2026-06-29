@@ -99,6 +99,9 @@ import { getSmoothingConfig } from './smoothing-presets.js';
 import { toast } from '../../utils/toast-with-timestamp.jsx';
 
 const PLAYBACK_TIMELINE_UPDATE_MS = 250;
+const WATERFALL_STATUS_BAR_HEIGHT = 30;
+const WATERFALL_RIGHT_SIDEBAR_WIDTH = 64;
+const PLAYBACK_OVERLAY_SIDE_GAP = 10;
 
 function formatPlaybackTime(seconds) {
     if (!Number.isFinite(seconds) || seconds < 0) {
@@ -1035,10 +1038,11 @@ const MainWaterfallDisplay = React.memo(function MainWaterfallDisplay({
     const playbackSliderProgressPercent = playbackHasDuration
         ? (playbackSliderSeconds / playbackTimeline.totalSeconds) * 100
         : 0;
-    const playbackLabelPositionPercent = Math.min(
-        Math.max(playbackSliderProgressPercent, 8),
-        92
-    );
+    const playbackLabelPositionPercent = playbackSliderProgressPercent;
+    const playbackOverlayLeftInset =
+        (showLeftSideWaterFallAccessories ? bandscopeAxisYWidth : 0) + PLAYBACK_OVERLAY_SIDE_GAP;
+    const playbackOverlayRightInset =
+        (showRightSideWaterFallAccessories ? WATERFALL_RIGHT_SIDEBAR_WIDTH : 0) + PLAYBACK_OVERLAY_SIDE_GAP;
 
     useEffect(() => {
         if (!isPlaybackPointerDown) {
@@ -1341,14 +1345,15 @@ const MainWaterfallDisplay = React.memo(function MainWaterfallDisplay({
                 {isPlaybackStreaming && playbackHasDuration && (
                     <Box
                         sx={{
-                            px: 1.25,
-                            py: 0.65,
-                            borderTop: `1px solid ${theme.palette.border.main}`,
-                            backgroundColor: theme.palette.background.paper,
-                            position: 'relative',
+                            position: 'absolute',
+                            left: `${playbackOverlayLeftInset}px`,
+                            right: `${playbackOverlayRightInset}px`,
+                            bottom: `${WATERFALL_STATUS_BAR_HEIGHT + 6}px`,
+                            py: 0.2,
+                            zIndex: 2,
                         }}
                     >
-                        <Box sx={{ position: 'relative', px: 0.5, pb: 1.15 }}>
+                        <Box sx={{ position: 'relative', px: 0.9, pb: 1.5 }}>
                             <Slider
                                 min={0}
                                 max={playbackTimeline.totalSeconds}
@@ -1360,27 +1365,27 @@ const MainWaterfallDisplay = React.memo(function MainWaterfallDisplay({
                                 onTouchEnd={handlePlaybackPointerUp}
                                 onChange={handlePlaybackSeekChange}
                                 onChangeCommitted={handlePlaybackSeekCommit}
-                                size="small"
+                                size="medium"
                                 aria-label="Playback position"
                                 sx={{
                                     position: 'relative',
                                     zIndex: 2,
                                     color: '#ff0033',
-                                    py: 0.25,
+                                    py: 0.35,
                                     '& .MuiSlider-rail': {
-                                        height: 3,
+                                        height: 5,
                                         opacity: 1,
-                                        backgroundColor: 'rgba(255, 255, 255, 0.24)',
+                                        backgroundColor: 'rgba(255, 255, 255, 0.35)',
                                         borderRadius: 999,
                                     },
                                     '& .MuiSlider-track': {
-                                        height: 3,
+                                        height: 5,
                                         border: 'none',
                                         borderRadius: 999,
                                     },
                                     '& .MuiSlider-thumb': {
-                                        width: isPlaybackSeeking ? 12 : 10,
-                                        height: isPlaybackSeeking ? 12 : 10,
+                                        width: isPlaybackSeeking ? 16 : 14,
+                                        height: isPlaybackSeeking ? 16 : 14,
                                         zIndex: 3,
                                         borderRadius: '50%',
                                         backgroundColor: '#ff0033',
@@ -1393,30 +1398,28 @@ const MainWaterfallDisplay = React.memo(function MainWaterfallDisplay({
                                     },
                                 }}
                             />
-                            {isPlaybackPointerDown && (
-                                <Box
-                                    sx={{
-                                        position: 'absolute',
-                                        left: `${playbackLabelPositionPercent}%`,
-                                        top: '-3px',
-                                        transform: 'translate(-50%, -100%)',
-                                        pointerEvents: 'none',
-                                        zIndex: 1,
-                                        fontSize: '0.7rem',
-                                        fontFamily: 'monospace',
-                                        fontWeight: 600,
-                                        color: '#fff',
-                                        px: 0.8,
-                                        py: 0.15,
-                                        borderRadius: 1,
-                                        border: '1px solid rgba(255, 255, 255, 0.12)',
-                                        backgroundColor: 'rgba(15, 15, 15, 0.82)',
-                                        backdropFilter: 'blur(4px)',
-                                    }}
-                                >
-                                    {formatPlaybackTime(playbackSliderSeconds)} / {formatPlaybackTime(playbackTimeline.totalSeconds)}
-                                </Box>
-                            )}
+                            <Box
+                                sx={{
+                                    position: 'absolute',
+                                    left: `${playbackLabelPositionPercent}%`,
+                                    top: '-6px',
+                                    transform: 'translate(-50%, -100%)',
+                                    pointerEvents: 'none',
+                                    zIndex: 1,
+                                    fontSize: '0.76rem',
+                                    fontFamily: 'monospace',
+                                    fontWeight: 600,
+                                    color: '#fff',
+                                    px: 0.95,
+                                    py: 0.2,
+                                    borderRadius: 1,
+                                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                                    backgroundColor: 'rgba(15, 15, 15, 0.82)',
+                                    backdropFilter: 'blur(4px)',
+                                }}
+                            >
+                                {formatPlaybackTime(playbackSliderSeconds)} / {formatPlaybackTime(playbackTimeline.totalSeconds)}
+                            </Box>
                         </Box>
                     </Box>
                 )}
