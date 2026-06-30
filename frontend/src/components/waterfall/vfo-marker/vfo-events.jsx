@@ -510,6 +510,10 @@ export const useVFODragState = ({
                     return;
                 }
 
+                // Keep marker drag isolated from container-level pan handlers.
+                e.preventDefault();
+                e.stopPropagation();
+
                 const deltaX = e.clientX - lastClientXRef.current;
                 lastClientXRef.current = e.clientX;
 
