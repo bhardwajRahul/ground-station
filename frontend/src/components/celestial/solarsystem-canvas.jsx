@@ -1470,7 +1470,41 @@ const SolarSystemCanvas = ({
                 if (shouldShowBodyLabels) {
                     // Keep the Sun label clear of the larger center icon.
                     const labelAnchorX = id === 'sun' ? sx + 12 : sx;
-                    drawLabelWithAutoOffset(planet.name || id, labelAnchorX, sy, theme.palette.text.secondary);
+                    const bodyTargetKey = `body:${id}`;
+                    const bodyTargetSlotNumber = Number(targetNumberByTargetKey?.[bodyTargetKey]);
+                    const hasBodyTargetSlotNumber = Number.isFinite(bodyTargetSlotNumber) && bodyTargetSlotNumber > 0;
+                    let labelOptions;
+                    if (hasBodyTargetSlotNumber) {
+                        // Mirror tracked-marker badge geometry so body labels do not start underneath T# badges.
+                        const bodyTargetSlotLabel = `T${Math.round(bodyTargetSlotNumber)}`;
+                        const isBodySelected = hasTrackedSelection && selectedTargetKeySet.has(bodyTargetKey);
+                        const targetBadgeHeight = (isBodySelected ? 17 : 15) * TARGET_SLOT_BADGE_SCALE;
+                        const targetBadgeHorizontalPadding = 4 * TARGET_SLOT_BADGE_SCALE;
+                        const targetLabelRenderFontSize = Math.max(
+                            Math.round(11 * TARGET_SLOT_BADGE_SCALE),
+                            Math.round(targetBadgeHeight * 0.68)
+                        );
+                        const targetLabelFontFamily = theme.typography?.fontFamily || 'Arial';
+                        ctx.save();
+                        ctx.font = `900 ${targetLabelRenderFontSize}px ${targetLabelFontFamily}`;
+                        const textWidth = Math.ceil(Math.max(6, ctx.measureText(bodyTargetSlotLabel).width));
+                        ctx.restore();
+                        const badgeWidth = Math.max(
+                            Math.round(targetBadgeHeight * 1.05),
+                            textWidth + (targetBadgeHorizontalPadding * 2)
+                        );
+                        labelOptions = {
+                            offsetX: Math.max(8, Math.ceil(badgeWidth / 2) + 4),
+                            offsetY: isBodySelected ? -4 : -6,
+                        };
+                    }
+                    drawLabelWithAutoOffset(
+                        planet.name || id,
+                        labelAnchorX,
+                        sy,
+                        theme.palette.text.secondary,
+                        labelOptions
+                    );
                 }
             });
         }
