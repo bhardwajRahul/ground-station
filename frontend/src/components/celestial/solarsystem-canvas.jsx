@@ -1592,6 +1592,7 @@ const SolarSystemCanvas = ({
         }
 
         // Tracked object markers from Horizons.
+        const pendingTargetSlotBadges = [];
         if (effectiveDisplayOptions.showTrackedObjects) {
             tracked.forEach((body) => {
                 if (!hasFiniteXYZ(body.position_xyz_au)) return;
@@ -1607,6 +1608,7 @@ const SolarSystemCanvas = ({
 
                 ctx.fillStyle = isDimmed ? hexToRgba(trackedHexColor, 0.28) : trackedHexColor;
                 let markerSize = isSelected ? 8 : 6;
+                let targetSlotBadgeSpec = null;
                 // Keep the target-slot badge in the Solar System canvas slightly more compact.
                 const targetBadgeHeight = (isSelected ? 17 : 15) * TARGET_SLOT_BADGE_SCALE;
                 const targetBadgeHorizontalPadding = 4 * TARGET_SLOT_BADGE_SCALE;
@@ -1624,6 +1626,18 @@ const SolarSystemCanvas = ({
                         Math.round(targetBadgeHeight * 1.05),
                         textWidth + (targetBadgeHorizontalPadding * 2)
                     );
+                    targetSlotBadgeSpec = {
+                        sx,
+                        sy,
+                        badgeWidth,
+                        targetBadgeHeight,
+                        badgeRadius: 3 * TARGET_SLOT_BADGE_SCALE,
+                        targetSlotLabel,
+                        targetSlotBadgePalette,
+                        isDimmed,
+                        targetLabelRenderFontSize,
+                        targetLabelFontFamily,
+                    };
                     markerSize = Math.max(
                         markerSize,
                         badgeWidth + (2 * TARGET_SLOT_BADGE_SCALE),
@@ -1640,42 +1654,7 @@ const SolarSystemCanvas = ({
                         ctx.strokeRect(sx - markerSize / 2 - 1, sy - markerSize / 2 - 1, markerSize + 2, markerSize + 2);
                     }
                 }
-                if (hasTargetSlotNumber) {
-                    ctx.save();
-                    ctx.font = `900 ${targetLabelRenderFontSize}px ${targetLabelFontFamily}`;
-                    const textWidth = Math.ceil(Math.max(6, ctx.measureText(targetSlotLabel).width));
-                    const badgeWidth = Math.max(
-                        Math.round(targetBadgeHeight * 1.05),
-                        textWidth + (targetBadgeHorizontalPadding * 2)
-                    );
-                    const badgeLeft = sx - (badgeWidth / 2);
-                    const badgeTop = sy - (targetBadgeHeight / 2);
-                    const badgeRadius = 3 * TARGET_SLOT_BADGE_SCALE;
-
-                    // Apply the shared target-slot badge style so Solar System view matches Earthview/Waterfall.
-                    ctx.beginPath();
-                    ctx.roundRect(
-                        badgeLeft,
-                        badgeTop,
-                        badgeWidth,
-                        targetBadgeHeight,
-                        badgeRadius
-                    );
-                    ctx.fillStyle = targetSlotBadgePalette.background || theme.palette.warning.main;
-                    ctx.globalAlpha = isDimmed ? 0.7 : 1.0;
-                    ctx.shadowColor = targetSlotBadgePalette.shadow || 'rgba(0, 0, 0, 0.2)';
-                    ctx.shadowBlur = 3;
-                    ctx.shadowOffsetX = 0;
-                    ctx.shadowOffsetY = 1;
-                    ctx.fill();
-
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillStyle = targetSlotBadgePalette.text || theme.palette.common.black;
-                    ctx.globalAlpha = isDimmed ? 0.9 : 1.0;
-                    ctx.fillText(targetSlotLabel, sx, sy + 0.35);
-                    ctx.restore();
-                }
+                if (targetSlotBadgeSpec) pendingTargetSlotBadges.push(targetSlotBadgeSpec);
 
                 if (effectiveDisplayOptions.showTrackedLabels) {
                     if (shouldHideTrackedLabelAsDuplicate(body)) return;
@@ -1866,6 +1845,37 @@ const SolarSystemCanvas = ({
         hiddenAnchors.forEach((target, index) => {
             const offsetIndex = index - (hiddenAnchors.length - 1) / 2;
             drawOffscreenDirectionIndicator(target, offsetIndex);
+        });
+
+        // Render all target-slot badges last so they always stay topmost in the canvas stack.
+        pendingTargetSlotBadges.forEach((badge) => {
+            const badgeLeft = badge.sx - (badge.badgeWidth / 2);
+            const badgeTop = badge.sy - (badge.targetBadgeHeight / 2);
+
+            ctx.save();
+            ctx.font = `900 ${badge.targetLabelRenderFontSize}px ${badge.targetLabelFontFamily}`;
+            ctx.beginPath();
+            ctx.roundRect(
+                badgeLeft,
+                badgeTop,
+                badge.badgeWidth,
+                badge.targetBadgeHeight,
+                badge.badgeRadius
+            );
+            ctx.fillStyle = badge.targetSlotBadgePalette.background || theme.palette.warning.main;
+            ctx.globalAlpha = badge.isDimmed ? 0.7 : 1.0;
+            ctx.shadowColor = badge.targetSlotBadgePalette.shadow || 'rgba(0, 0, 0, 0.2)';
+            ctx.shadowBlur = 3;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 1;
+            ctx.fill();
+
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = badge.targetSlotBadgePalette.text || theme.palette.common.black;
+            ctx.globalAlpha = badge.isDimmed ? 0.9 : 1.0;
+            ctx.fillText(badge.targetSlotLabel, badge.sx, badge.sy + 0.35);
+            ctx.restore();
         });
     }, [
         asteroidResonanceGaps,
