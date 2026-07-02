@@ -330,7 +330,7 @@ const MapLibreSatellitePopup = React.memo(function MapLibreSatellitePopup({
     );
 });
 
-const MapLibreEarthViewMapRenderer = ({handleSetTrackingOnBackend}) => {
+const MapLibreEarthViewMapRenderer = ({handleSetTrackingOnBackend, onSatelliteMarkerContextMenu}) => {
     const {socket} = useSocket();
     const dispatch = useDispatch();
     const navigate = useNavigate();
@@ -613,6 +613,7 @@ const MapLibreEarthViewMapRenderer = ({handleSetTrackingOnBackend}) => {
                 markers.push({
                     noradId,
                     name: satellite.name,
+                    satellite,
                     lat,
                     lon,
                     altitude,
@@ -1090,6 +1091,19 @@ const MapLibreEarthViewMapRenderer = ({handleSetTrackingOnBackend}) => {
                     {overlayData.markers.map((marker) => {
                         const shouldShowPopup = showTooltip || marker.isSelected || marker.isTracked;
                         const visibleMarkerBorderColor = marker.isTracked ? theme.palette.error.main : '#e0f2fe';
+                        const handleMarkerContextMenu = (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            event.nativeEvent?.preventDefault?.();
+                            event.nativeEvent?.stopPropagation?.();
+                            if (typeof onSatelliteMarkerContextMenu !== 'function') {
+                                return;
+                            }
+                            onSatelliteMarkerContextMenu(
+                                marker.satellite || { norad_id: marker.noradId, name: marker.name },
+                                event,
+                            );
+                        };
 
                         return (
                             <React.Fragment key={`earth-view-maplibre-marker-${marker.noradId}`}>
@@ -1141,6 +1155,7 @@ const MapLibreEarthViewMapRenderer = ({handleSetTrackingOnBackend}) => {
                                                     ? `0 0 0 1px ${theme.palette.error.main}`
                                                     : '0 0 0 1px rgba(0,0,0,0.45)',
                                             }}
+                                            onContextMenu={handleMarkerContextMenu}
                                         />
                                     ) : (
                                         <div
@@ -1152,6 +1167,7 @@ const MapLibreEarthViewMapRenderer = ({handleSetTrackingOnBackend}) => {
                                                 justifyContent: 'center',
                                                 cursor: 'pointer',
                                             }}
+                                            onContextMenu={handleMarkerContextMenu}
                                         >
                                             <div
                                                 style={{
