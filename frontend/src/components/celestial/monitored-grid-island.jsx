@@ -19,6 +19,7 @@ import {
     Typography,
 } from '@mui/material';
 import { useDispatch, useSelector } from 'react-redux';
+import { useTranslation } from 'react-i18next';
 import {
     MONITORED_TABLE_DEFAULT_COLUMN_VISIBILITY,
     MONITORED_TABLE_DEFAULT_PAGE_SIZE,
@@ -33,6 +34,12 @@ import { toRowSelectionModel, toSelectedIds } from '../../utils/datagrid-selecti
 import { useUserTimeSettings } from '../../hooks/useUserTimeSettings.jsx';
 import TargetNumberIcon from '../common/target-number-icon.jsx';
 import { buildTargetKeyFromCelestialRow } from '../target/celestial-target-utils.js';
+import CelestialContextMenu from '../target/celestialcontextmenu.jsx';
+import { useSocket } from '../common/socket.jsx';
+import { useTargetRotatorSelectionDialog } from '../target/use-target-rotator-selection-dialog.jsx';
+import { setRotator, setTrackerId, setTrackingStateInBackend } from '../target/target-slice.jsx';
+import { toast } from '../../utils/toast-with-timestamp.jsx';
+import TransmittersDialog from '../satellites/transmitters-dialog.jsx';
 
 const AU_IN_KM = 149597870.7;
 const SECONDS_PER_DAY = 86400;
@@ -189,6 +196,22 @@ const formatAngle = (value, digits = 1) => {
     return `${Number(value).toFixed(digits)}°`;
 };
 
+const buildTrackingTargetKey = (trackingState = {}) => {
+    const targetType = String(
+        trackingState?.target_type
+        || (trackingState?.command ? 'mission' : (trackingState?.body_id ? 'body' : 'satellite')),
+    ).toLowerCase();
+    if (targetType === 'body') {
+        const bodyId = String(trackingState?.body_id || '').trim().toLowerCase();
+        return bodyId ? `body:${bodyId}` : '';
+    }
+    if (targetType === 'mission') {
+        const command = String(trackingState?.command || '').trim();
+        return command ? `mission:${command}` : '';
+    }
+    return '';
+};
+
 const SettingsDialog = ({ open, onClose }) => {
     const dispatch = useDispatch();
     const columnVisibility = useSelector((state) => state.celestialMonitored.tableColumnVisibility);
@@ -306,9 +329,15 @@ const MonitoredCelestialGridIsland = ({
     onTargetSelected = null,
     targetNumberByTargetKey = {},
 }) => {
+    const { t } = useTranslation('earthview');
+    const { t: tSat } = useTranslation('satellites');
+    const { socket } = useSocket();
     const dispatch = useDispatch();
+    const { requestRotatorForTarget, dialog: rotatorSelectionDialog } = useTargetRotatorSelectionDialog();
     const { timezone, locale } = useUserTimeSettings();
     const tracks = useSelector((state) => state.celestial?.celestialTracks?.celestial || []);
+    const trackerInstances = useSelector((state) => state.trackerInstances?.instances || []);
+    const { trackingState, trackerViews } = useSelector((state) => state.targetSatTrack || {});
     const {
         selectedIds,
         tableColumnVisibility,
@@ -318,7 +347,11 @@ const MonitoredCelestialGridIsland = ({
     } = useSelector((state) => state.celestialMonitored);
     const [nowMs, setNowMs] = useState(() => Date.now());
     const [page, setPage] = useState(0);
+    const [rowContextMenu, setRowContextMenu] = useState(null);
+    const [transmittersDialogOpen, setTransmittersDialogOpen] = useState(false);
+    const [transmittersDialogData, setTransmittersDialogData] = useState(null);
     const rowSelectionModel = useMemo(() => toRowSelectionModel(selectedIds), [selectedIds]);
+    const currentlyTrackedTargetKey = useMemo(() => buildTrackingTargetKey(trackingState), [trackingState]);
 
     useEffect(() => {
         const interval = setInterval(() => setNowMs(Date.now()), 30000);
@@ -350,10 +383,20 @@ const MonitoredCelestialGridIsland = ({
                 const elevationDeg = Number.isFinite(rawElevationDeg) ? rawElevationDeg : null;
                 const azimuthDeg = Number.isFinite(rawAzimuthDeg) ? rawAzimuthDeg : null;
                 const visibility = getVisibilityState(track?.visibility?.visible, rawElevationDeg);
+                const targetIdentifier = targetType === 'body'
+                    ? String(row.bodyId || row.body_id || row.command || '').trim().toLowerCase()
+                    : String(row.command || row.mission_id || row.missionId || '').trim();
                 return {
                     ...row,
                     targetType,
                     targetKey,
+                    targetIdentifier,
+                    missionId: String(row.mission_id || row.missionId || '').trim().toLowerCase(),
+                    command: String(row.command || '').trim(),
+                    bodyId: String(row.bodyId || row.body_id || '').trim().toLowerCase(),
+                    transmitters: Array.isArray(row?.transmitters)
+                        ? row.transmitters
+                        : (Array.isArray(track?.transmitters) ? track.transmitters : []),
                     color: row.color || track.color || null,
                     source: track.source || '-',
                     sourceMode: row.sourceMode || row.source_mode || (targetType === 'body' ? 'static-body' : '-'),
@@ -528,8 +571,227 @@ const MonitoredCelestialGridIsland = ({
         [timezone, locale, targetNumberByTargetKey],
     );
 
+    const copyTextToClipboard = useCallback(async (text) => {
+        if (navigator?.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            return;
+        }
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.setAttribute('readonly', '');
+        textArea.style.position = 'absolute';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+    }, []);
+
+    const handleCloseRowContextMenu = useCallback(() => {
+        setRowContextMenu(null);
+    }, []);
+
+    const handleSuppressNativeContextMenu = useCallback((event) => {
+        event.preventDefault();
+        if (typeof event.stopPropagation === 'function') {
+            event.stopPropagation();
+        }
+        setRowContextMenu(null);
+    }, []);
+
+    // Bind context-menu directly on each row for consistent browser behavior.
+    const handleRowContextMenu = useCallback((event) => {
+        const rowId = event.currentTarget?.getAttribute?.('data-id');
+        if (!rowId) return;
+        const row = enrichedRows.find((entry) => String(entry?.id) === String(rowId));
+        if (!row) return;
+        event.preventDefault();
+        event.stopPropagation();
+        // Match earth-view UX: right-click again closes an already open menu.
+        if (rowContextMenu) {
+            setRowContextMenu(null);
+            return;
+        }
+        applyTargetSelection(row.id);
+        setRowContextMenu({
+            mouseX: event.clientX + 2,
+            mouseY: event.clientY - 6,
+            row,
+        });
+    }, [applyTargetSelection, enrichedRows, rowContextMenu]);
+
+    const handleRowMenuAction = useCallback(async (action) => {
+        const row = rowContextMenu?.row;
+        if (!row) return;
+        try {
+            if (action === 'set-target') {
+                const targetType = String(row.targetType || '').toLowerCase() === 'body' ? 'body' : 'mission';
+                const missionCommand = String(row.command || row.targetIdentifier || '').trim();
+                const missionId = String(row.missionId || '').trim().toLowerCase();
+                const bodyId = String(row.bodyId || row.targetIdentifier || '').trim().toLowerCase();
+                const isTargetable = targetType === 'body' ? Boolean(bodyId) : Boolean(missionCommand);
+                if (!socket || !isTargetable) {
+                    return;
+                }
+                const selectedAssignment = await requestRotatorForTarget(row.displayName || row.targetIdentifier || row.targetKey);
+                if (!selectedAssignment) {
+                    return;
+                }
+                const assignmentAction = String(selectedAssignment?.action || 'retarget_current_slot');
+                const isCreateNewSlot = assignmentAction === 'create_new_slot';
+                const trackerId = String(selectedAssignment?.trackerId || '');
+                const rotatorId = String(selectedAssignment?.rotatorId || 'none');
+                const assignmentRigId = String(selectedAssignment?.rigId || 'none');
+                if (!trackerId) {
+                    return;
+                }
+                const selectedTrackerInstance = trackerInstances.find(
+                    (instance) => String(instance?.tracker_id || '') === trackerId
+                );
+                const selectedTrackerView = trackerViews?.[trackerId] || {};
+                const selectedTrackerState = selectedTrackerView?.trackingState || selectedTrackerInstance?.tracking_state || {};
+                const nextRigId = isCreateNewSlot
+                    ? assignmentRigId
+                    : String(
+                        selectedTrackerView?.selectedRadioRig
+                        ?? selectedTrackerState?.rig_id
+                        ?? assignmentRigId
+                        ?? 'none'
+                    );
+                const nextRotatorId = isCreateNewSlot ? 'none' : rotatorId;
+                const nextTransmitterId = isCreateNewSlot
+                    ? 'none'
+                    : String(selectedTrackerState?.transmitter_id || 'none');
+
+                dispatch(setTrackerId(trackerId));
+                dispatch(setRotator({ value: nextRotatorId, trackerId }));
+
+                const targetPatch = targetType === 'body'
+                    ? {
+                        target_type: 'body',
+                        target_name: row.displayName || bodyId,
+                        body_id: bodyId,
+                        mission_id: null,
+                        command: null,
+                    }
+                    : {
+                        target_type: 'mission',
+                        target_name: row.displayName || missionCommand,
+                        mission_id: missionId || null,
+                        command: missionCommand,
+                        body_id: null,
+                    };
+
+                const newTrackingState = isCreateNewSlot
+                    ? {
+                        tracker_id: trackerId,
+                        ...targetPatch,
+                        norad_id: null,
+                        group_id: null,
+                        rig_id: nextRigId,
+                        rotator_id: nextRotatorId,
+                        transmitter_id: 'none',
+                        rig_state: 'disconnected',
+                        rotator_state: 'disconnected',
+                        rig_vfo: 'none',
+                        vfo1: 'uplink',
+                        vfo2: 'downlink',
+                    }
+                    : {
+                        ...selectedTrackerState,
+                        tracker_id: trackerId,
+                        ...targetPatch,
+                        norad_id: null,
+                        group_id: null,
+                        rig_id: nextRigId,
+                        rotator_id: nextRotatorId,
+                        transmitter_id: nextTransmitterId,
+                    };
+
+                await dispatch(setTrackingStateInBackend({ socket, data: newTrackingState })).unwrap();
+                return;
+            }
+            if (action === 'edit-transmitters') {
+                setTransmittersDialogData({
+                    name: row.displayName || row.targetIdentifier || row.targetKey || '',
+                    target_key: row.targetKey || '',
+                    transmitters: Array.isArray(row.transmitters) ? row.transmitters : [],
+                });
+                setTransmittersDialogOpen(true);
+                return;
+            }
+            if (action === 'copy-identifier') {
+                await copyTextToClipboard(row.targetIdentifier || '-');
+                return;
+            }
+            if (action === 'copy-target-key') {
+                await copyTextToClipboard(row.targetKey || '-');
+                return;
+            }
+            if (action === 'copy-summary') {
+                const summary = [
+                    row.displayName || '-',
+                    row.targetType === 'body'
+                        ? `Body ${row.targetIdentifier || '-'}`
+                        : `Mission ${row.targetIdentifier || '-'}`,
+                    `Source ${row.source || '-'}`,
+                    `Mode ${row.sourceMode || '-'}`,
+                ].join(' | ');
+                await copyTextToClipboard(summary);
+            }
+        } catch (error) {
+            toast.error(`${t('satellite_info.failed_tracking')}: ${error?.message || error?.error || 'Unknown error'}`);
+        } finally {
+            setRowContextMenu(null);
+        }
+    }, [
+        applyTargetSelection,
+        copyTextToClipboard,
+        dispatch,
+        requestRotatorForTarget,
+        rowContextMenu?.row,
+        socket,
+        t,
+        trackerInstances,
+        trackerViews,
+    ]);
+
+    const rowContextMenuItems = useMemo(() => {
+        const row = rowContextMenu?.row;
+        if (!row) return [];
+        const targetType = String(row.targetType || '').toLowerCase() === 'body' ? 'body' : 'mission';
+        const missionCommand = String(row.command || row.targetIdentifier || '').trim();
+        const bodyId = String(row.bodyId || row.targetIdentifier || '').trim().toLowerCase();
+        const isTargetable = targetType === 'body' ? Boolean(bodyId) : Boolean(missionCommand);
+        const isCurrentlyTargeted = Boolean(row.targetKey) && String(row.targetKey).trim() === currentlyTrackedTargetKey;
+        return [
+            {
+                key: 'set-target',
+                label: t('satellites_table.context_menu.set_as_target'),
+                disabled: !socket || !isTargetable || isCurrentlyTargeted,
+                onClick: () => handleRowMenuAction('set-target'),
+            },
+            {
+                key: 'edit-transmitters',
+                label: t('satellites_table.context_menu.edit_transmitters'),
+                disabled: !row?.targetKey,
+                onClick: () => handleRowMenuAction('edit-transmitters'),
+            },
+            { type: 'divider', key: 'divider-copy' },
+            {
+                key: 'copy-identifier',
+                label: row.targetType === 'body' ? 'Copy body ID' : 'Copy mission command',
+                onClick: () => handleRowMenuAction('copy-identifier'),
+            },
+            { key: 'copy-target-key', label: 'Copy target key', onClick: () => handleRowMenuAction('copy-target-key') },
+            { key: 'copy-summary', label: 'Copy target summary', onClick: () => handleRowMenuAction('copy-summary') },
+        ];
+    }, [currentlyTrackedTargetKey, handleRowMenuAction, rowContextMenu?.row, socket, t]);
+
     return (
-        <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <>
+            {rotatorSelectionDialog}
+            <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <Box sx={{ width: '100%', flex: 1, minHeight: 0 }}>
                 <StyledDataGrid
                     rows={enrichedRows}
@@ -556,6 +818,11 @@ const MonitoredCelestialGridIsland = ({
                         if (onRowDoubleClick) {
                             onRowDoubleClick(params?.row || null);
                         }
+                    }}
+                    slotProps={{
+                        row: {
+                            onContextMenu: handleRowContextMenu,
+                        },
                     }}
                     density="compact"
                     columnVisibilityModel={tableColumnVisibility}
@@ -600,11 +867,36 @@ const MonitoredCelestialGridIsland = ({
                     }}
                 />
             </Box>
+            <CelestialContextMenu
+                open={Boolean(rowContextMenu)}
+                onClose={handleCloseRowContextMenu}
+                onSuppressNativeContextMenu={handleSuppressNativeContextMenu}
+                anchorPosition={
+                    rowContextMenu
+                        ? { top: rowContextMenu.mouseY, left: rowContextMenu.mouseX }
+                        : undefined
+                }
+                title={rowContextMenu?.row?.displayName || '-'}
+                targetType={rowContextMenu?.row?.targetType || 'mission'}
+                targetIdentifier={rowContextMenu?.row?.targetIdentifier || '-'}
+                items={rowContextMenuItems}
+            />
+            <TransmittersDialog
+                open={transmittersDialogOpen}
+                onClose={() => setTransmittersDialogOpen(false)}
+                title={tSat('satellite_database.edit_transmitters_title', {
+                    name: transmittersDialogData?.name || rowContextMenu?.row?.displayName || '',
+                })}
+                satelliteData={transmittersDialogData}
+                variant="paper"
+                widthOffsetPx={20}
+            />
             <SettingsDialog
                 open={openGridSettingsDialog}
                 onClose={() => dispatch(setOpenGridSettingsDialog(false))}
             />
-        </Box>
+            </Box>
+        </>
     );
 };
 
