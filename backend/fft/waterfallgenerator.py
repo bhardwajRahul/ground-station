@@ -31,8 +31,8 @@ class WaterfallConfig:
 
     # Default configuration
     DEFAULT_CONFIG = {
-        "fft_size": 4096,
-        "max_height": 2500,
+        "fft_size": 16384,
+        "max_height": 6000,
         "window": "hann",
         "overlap": 0.5,
         "db_range": [-80, 0],
@@ -42,8 +42,8 @@ class WaterfallConfig:
 
     def __init__(
         self,
-        fft_size: int = 4096,
-        max_height: int = 2500,
+        fft_size: int = 16384,
+        max_height: int = 6000,
         window: str = "hann",
         overlap: float = 0.5,
         db_range: Tuple[float, float] = (-80, 0),
@@ -443,13 +443,14 @@ class WaterfallGenerator:
         # Total possible FFT frames
         total_frames = (total_samples - fft_size) // hop_size + 1
 
-        # Adaptive height based on duration
+        # Adaptive height based on duration. The higher caps preserve more
+        # temporal texture from offline recordings instead of averaging it away.
         if duration_sec < 60:  # < 1 minute
-            target_height = min(total_frames, 1200)
+            target_height = min(total_frames, 2400)
         elif duration_sec < 600:  # 1-10 minutes
-            target_height = min(total_frames, 1500)
+            target_height = min(total_frames, 4000)
         elif duration_sec < 3600:  # 10-60 minutes
-            target_height = min(total_frames, 2000)
+            target_height = min(total_frames, 6000)
         else:  # > 1 hour
             target_height = min(total_frames, self.config.max_height)
 
