@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import crud.celestialvectors as crud_celestial_vectors
 import crud.locations as crud_locations
 import crud.monitoredcelestial as crud_monitored
+import crud.preferences as crud_preferences
 from celestial.asteroidzones import get_static_asteroid_zones
 from celestial.bodycatalog import list_celestial_bodies
 from celestial.horizons import fetch_celestial_vectors
@@ -44,6 +45,8 @@ COMPUTED_EPOCH_BUCKET_SECONDS = 60
 SCHEDULED_SYNC_PAST_HOURS = _config_int("celestial_sync_past_hours", 1, 0)
 SCHEDULED_SYNC_FUTURE_HOURS = 24
 SCHEDULED_SYNC_STEP_MINUTES = 60
+CELESTIAL_MAP_SETTINGS_NAME = "celestial-map-settings"
+MAX_CELESTIAL_PROJECTION_HOURS = 4320
 MAX_SAMPLES_PER_TARGET = 1500
 DEFAULT_CELESTIAL_TARGETS: List[Dict[str, str]] = []
 CELESTIAL_PASS_HORIZON_DEG = 0.0
@@ -333,6 +336,38 @@ def _parse_projection_options(data: Optional[Dict[str, Any]]) -> Tuple[int, int,
     return past_hours, future_hours, adaptive_step_minutes
 
 
+def _coerce_projection_setting(value: Any, fallback: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(float(value))
+    except (TypeError, ValueError):
+        return int(fallback)
+    return max(int(minimum), min(parsed, int(maximum)))
+
+
+def _projection_payload_from_map_settings(settings: Dict[str, Any]) -> Dict[str, int]:
+    """Translate saved celestial UI settings into scene projection options."""
+    return {
+        "past_hours": _coerce_projection_setting(
+            settings.get("pastHours", settings.get("past_hours")),
+            SCHEDULED_SYNC_PAST_HOURS,
+            0,
+            MAX_CELESTIAL_PROJECTION_HOURS,
+        ),
+        "future_hours": _coerce_projection_setting(
+            settings.get("futureHours", settings.get("future_hours")),
+            SCHEDULED_SYNC_FUTURE_HOURS,
+            1,
+            MAX_CELESTIAL_PROJECTION_HOURS,
+        ),
+        "step_minutes": _coerce_projection_setting(
+            settings.get("stepMinutes", settings.get("step_minutes")),
+            SCHEDULED_SYNC_STEP_MINUTES,
+            1,
+            24 * 60,
+        ),
+    }
+
+
 def _parse_iso_utc(value: Any) -> Optional[datetime]:
     text = str(value or "").strip()
     if not text:
@@ -567,6 +602,76 @@ def _interpolate_position_xyz_au_at_epoch(
         ]
 
     return [float(last_pos[0]), float(last_pos[1]), float(last_pos[2])]
+
+
+def _derive_velocity_xyz_au_per_day_at_epoch(
+    *,
+    payload: Dict[str, Any],
+    epoch: datetime,
+    past_hours: int,
+    future_hours: int,
+) -> Optional[List[float]]:
+    """Estimate current velocity from adjacent cached orbit samples."""
+    samples = _extract_orbit_samples(
+        payload,
+        epoch_fallback=epoch,
+        past_hours=past_hours,
+        future_hours=future_hours,
+    )
+    if len(samples) < 2:
+        return None
+
+    ordered = sorted(samples, key=lambda item: item[0])
+    left_time, left_pos = ordered[0]
+    right_time, right_pos = ordered[1]
+
+    if epoch >= ordered[-1][0]:
+        left_time, left_pos = ordered[-2]
+        right_time, right_pos = ordered[-1]
+    else:
+        for index in range(1, len(ordered)):
+            candidate_time, _candidate_pos = ordered[index]
+            if epoch <= candidate_time:
+                left_time, left_pos = ordered[index - 1]
+                right_time, right_pos = ordered[index]
+                break
+
+    span_days = (right_time - left_time).total_seconds() / 86400.0
+    if abs(span_days) <= 1e-12:
+        return None
+
+    return [
+        (float(right_pos[0]) - float(left_pos[0])) / span_days,
+        (float(right_pos[1]) - float(left_pos[1])) / span_days,
+        (float(right_pos[2]) - float(left_pos[2])) / span_days,
+    ]
+
+
+def _refresh_payload_dynamics_at_epoch(
+    *,
+    payload: Dict[str, Any],
+    epoch: datetime,
+    past_hours: int,
+    future_hours: int,
+) -> None:
+    """Refresh current position and velocity from cached trajectory samples."""
+    interpolated_position = _interpolate_position_xyz_au_at_epoch(
+        payload=payload,
+        epoch=epoch,
+        past_hours=past_hours,
+        future_hours=future_hours,
+    )
+    if interpolated_position:
+        payload["position_xyz_au"] = interpolated_position
+
+    derived_velocity = _derive_velocity_xyz_au_per_day_at_epoch(
+        payload=payload,
+        epoch=epoch,
+        past_hours=past_hours,
+        future_hours=future_hours,
+    )
+    if derived_velocity:
+        payload["velocity_xyz_au_per_day"] = derived_velocity
 
 
 def _extract_earth_position_xyz_au(planets: List[Dict[str, Any]]) -> Optional[List[float]]:
@@ -1510,6 +1615,7 @@ async def _fetch_celestial_with_cache(
     allow_network_fetch: bool,
     logger,
     per_row_callback: Optional[Any] = None,
+    use_computed_cache: bool = True,
 ) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
     now_monotonic = time.monotonic()
@@ -1539,6 +1645,12 @@ async def _fetch_celestial_with_cache(
                 body_payload["source"] = body_payload.get("source") or "horizons"
                 body_payload["stale"] = False
                 body_payload["cache"] = body_payload.get("cache") or "scene-base-hit"
+                _refresh_payload_dynamics_at_epoch(
+                    payload=body_payload,
+                    epoch=epoch,
+                    past_hours=past_hours,
+                    future_hours=future_hours,
+                )
                 _attach_observer_view_local(
                     row=body_payload,
                     epoch=epoch,
@@ -1610,6 +1722,12 @@ async def _fetch_celestial_with_cache(
                 row_payload["cache"] = snapshot.get("cache")
                 if snapshot.get("error"):
                     row_payload["error"] = snapshot.get("error")
+                _refresh_payload_dynamics_at_epoch(
+                    payload=row_payload,
+                    epoch=epoch,
+                    past_hours=past_hours,
+                    future_hours=future_hours,
+                )
                 _attach_observer_view_local(
                     row=row_payload,
                     epoch=epoch,
@@ -1669,7 +1787,8 @@ async def _fetch_celestial_with_cache(
         with _computed_cache_lock:
             cached_entry = _computed_cache.get(cache_key)
             if (
-                cached_entry
+                use_computed_cache
+                and cached_entry
                 and not force_refresh
                 and now_monotonic - cached_entry.fetched_at_monotonic <= CACHE_TTL_SECONDS
             ):
@@ -1717,14 +1836,12 @@ async def _fetch_celestial_with_cache(
             if snapshot.get("error"):
                 row_payload["error"] = snapshot.get("error")
             # Keep "current" vectors fresh between periodic Horizons syncs.
-            interpolated_position = _interpolate_position_xyz_au_at_epoch(
+            _refresh_payload_dynamics_at_epoch(
                 payload=row_payload,
                 epoch=epoch,
                 past_hours=past_hours,
                 future_hours=future_hours,
             )
-            if interpolated_position:
-                row_payload["position_xyz_au"] = interpolated_position
             _attach_observer_view_local(
                 row=row_payload,
                 epoch=epoch,
@@ -1732,11 +1849,12 @@ async def _fetch_celestial_with_cache(
                 earth_position_xyz_au=earth_position_xyz_au,
                 logger=logger,
             )
-            with _computed_cache_lock:
-                _computed_cache[cache_key] = CacheEntry(
-                    payload=dict(row_payload),
-                    fetched_at_monotonic=time.monotonic(),
-                )
+            if use_computed_cache:
+                with _computed_cache_lock:
+                    _computed_cache[cache_key] = CacheEntry(
+                        payload=dict(row_payload),
+                        fetched_at_monotonic=time.monotonic(),
+                    )
             rows.append(row_payload)
             if per_row_callback:
                 await per_row_callback(dict(row_payload), index + 1, total_targets)
@@ -1772,6 +1890,7 @@ async def build_celestial_scene(
     force_refresh: bool = False,
     allow_network_fetch: bool = True,
     per_row_callback: Optional[Any] = None,
+    use_computed_cache: bool = True,
 ) -> Dict[str, Any]:
     """Build a scene payload for UI rendering and backend sharing."""
     epoch = _parse_epoch(data)
@@ -1811,6 +1930,7 @@ async def build_celestial_scene(
         allow_network_fetch,
         logger,
         per_row_callback,
+        use_computed_cache,
     )
     celestial_passes = _build_celestial_passes(
         rows=celestial,
@@ -1864,8 +1984,9 @@ async def build_celestial_scene(
 async def build_solar_system_scene(
     data: Optional[Dict[str, Any]],
     logger,
+    allow_network_fetch: bool = True,
 ) -> Dict[str, Any]:
-    """Build only the Horizons-backed solar-system portion for fast initial render."""
+    """Build the solar-system portion for UI rendering."""
     epoch = _parse_epoch(data)
     past_hours, future_hours, step_minutes = _parse_projection_options(data)
     solar_meta, planets = await _build_horizons_solar_system_bodies(
@@ -1875,7 +1996,7 @@ async def build_solar_system_scene(
         step_minutes=step_minutes,
         observer_location=None,
         force_refresh=False,
-        allow_network_fetch=True,
+        allow_network_fetch=allow_network_fetch,
         logger=logger,
     )
     asteroid_zones, asteroid_resonance_gaps, asteroid_meta = get_static_asteroid_zones()
@@ -1914,13 +2035,16 @@ async def build_celestial_tracks(
     force_refresh: bool = False,
     allow_network_fetch: bool = True,
     per_row_callback: Optional[Any] = None,
+    register_targets: bool = True,
+    use_computed_cache: bool = True,
 ) -> Dict[str, Any]:
     """Build only Horizons-backed tracked celestial objects."""
     epoch = _parse_epoch(data)
     targets = _normalize_targets(data)
     past_hours, future_hours, step_minutes = _parse_projection_options(data)
     observer_location = await _load_observer_location()
-    await _ensure_scene_targets_registered(targets, logger)
+    if register_targets:
+        await _ensure_scene_targets_registered(targets, logger)
     earth_position_xyz_au, earth_orbit_samples = await _load_earth_observer_vectors(
         epoch=epoch,
         past_hours=past_hours,
@@ -1945,6 +2069,7 @@ async def build_celestial_tracks(
         allow_network_fetch,
         logger,
         per_row_callback,
+        use_computed_cache,
     )
     celestial_passes = _build_celestial_passes(
         rows=celestial,
@@ -2013,6 +2138,16 @@ async def refresh_celestial_vector_snapshots_cache(logger: Any) -> Dict[str, Any
                 dbsession,
                 enabled_only=True,
             )
+            map_settings_result = await crud_preferences.get_map_settings(
+                dbsession,
+                name=CELESTIAL_MAP_SETTINGS_NAME,
+            )
+
+        settings_row = map_settings_result.get("data") if map_settings_result.get("success") else {}
+        settings_value = settings_row.get("value") if isinstance(settings_row, dict) else {}
+        if isinstance(settings_value, dict):
+            payload = _projection_payload_from_map_settings(settings_value)
+            past_hours, future_hours, step_minutes = _parse_projection_options(payload)
 
         if not monitored_result.get("success"):
             return {

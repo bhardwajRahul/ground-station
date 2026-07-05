@@ -244,20 +244,6 @@ const CelestialTopBar = ({
 
     useEffect(() => {
         if (!socket) {
-            return undefined;
-        }
-
-        const fetchData = () => dispatch(fetchMonitoredCelestial({ socket }));
-        fetchData();
-
-        socket.on('connect', fetchData);
-        return () => {
-            socket.off('connect', fetchData);
-        };
-    }, [socket, dispatch]);
-
-    useEffect(() => {
-        if (!socket) {
             return;
         }
         let active = true;

@@ -1,14 +1,21 @@
 """Background task scheduler for the ground station."""
 
 import logging
-from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
+import crud.monitoredcelestial as crud_monitored
+import crud.preferences as crud_preferences
 import observations.events as obs_events
-from celestial.scene import refresh_celestial_vector_snapshots_cache
+from celestial.scene import (
+    SCHEDULED_SYNC_FUTURE_HOURS,
+    SCHEDULED_SYNC_PAST_HOURS,
+    SCHEDULED_SYNC_STEP_MINUTES,
+    build_celestial_tracks,
+    refresh_celestial_vector_snapshots_cache,
+)
 from common import auth as authsvc
 from common.arguments import arguments
 from common.logger import logger
@@ -24,6 +31,10 @@ logging.getLogger("apscheduler").setLevel(logging.WARNING)
 
 # Global scheduler instance
 scheduler: Optional[AsyncIOScheduler] = None
+CELESTIAL_TRACKS_BROADCAST_JOB_ID = "emit_cached_celestial_tracks"
+CELESTIAL_TRACKS_BROADCAST_INTERVAL_SECONDS = 5
+CELESTIAL_MAP_SETTINGS_NAME = "celestial-map-settings"
+MAX_CELESTIAL_PROJECTION_HOURS = 4320
 _ORBITAL_SYNC_TASK_PATTERNS = (
     "orbital data sync",
     "orbital_sync",
@@ -40,6 +51,138 @@ def _is_orbital_sync_task(task: Dict[str, Any]) -> bool:
     return any(
         pattern in task_name or pattern in task_command for pattern in _ORBITAL_SYNC_TASK_PATTERNS
     )
+
+
+def _coerce_int_setting(value: Any, fallback: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(float(value))
+    except (TypeError, ValueError):
+        return int(fallback)
+    return max(int(minimum), min(parsed, int(maximum)))
+
+
+def _projection_payload_from_map_settings(settings: Dict[str, Any]) -> Dict[str, int]:
+    """Return the global celestial projection window saved by the UI."""
+    return {
+        "past_hours": _coerce_int_setting(
+            settings.get("pastHours", settings.get("past_hours")),
+            SCHEDULED_SYNC_PAST_HOURS,
+            0,
+            MAX_CELESTIAL_PROJECTION_HOURS,
+        ),
+        "future_hours": _coerce_int_setting(
+            settings.get("futureHours", settings.get("future_hours")),
+            SCHEDULED_SYNC_FUTURE_HOURS,
+            1,
+            MAX_CELESTIAL_PROJECTION_HOURS,
+        ),
+        "step_minutes": _coerce_int_setting(
+            settings.get("stepMinutes", settings.get("step_minutes")),
+            SCHEDULED_SYNC_STEP_MINUTES,
+            1,
+            24 * 60,
+        ),
+    }
+
+
+async def _build_enabled_monitored_celestial_payload() -> Dict[str, Any]:
+    """Build a scene payload from enabled monitored celestial rows."""
+    async with AsyncSessionLocal() as dbsession:
+        monitored_result = await crud_monitored.fetch_monitored_celestial(
+            dbsession,
+            enabled_only=True,
+        )
+        map_settings_result = await crud_preferences.get_map_settings(
+            dbsession,
+            name=CELESTIAL_MAP_SETTINGS_NAME,
+        )
+
+    if not monitored_result.get("success"):
+        raise RuntimeError(
+            monitored_result.get("error") or "Failed loading monitored celestial targets"
+        )
+
+    entries_obj = monitored_result.get("data")
+    entries = entries_obj if isinstance(entries_obj, list) else []
+    settings_row = map_settings_result.get("data") if map_settings_result.get("success") else {}
+    settings_value = settings_row.get("value") if isinstance(settings_row, dict) else {}
+    projection_payload = _projection_payload_from_map_settings(
+        settings_value if isinstance(settings_value, dict) else {}
+    )
+    payload: Dict[str, Any] = {
+        **projection_payload,
+        "celestial": [],
+    }
+
+    for item in entries:
+        target_type = str(item.get("target_type") or "mission").strip().lower()
+        if target_type == "body":
+            body_id = str(item.get("body_id") or "").strip().lower()
+            if not body_id:
+                continue
+            payload["celestial"].append(
+                {
+                    "target_type": "body",
+                    "body_id": body_id,
+                    "name": item.get("display_name") or body_id,
+                    "color": item.get("color"),
+                }
+            )
+            continue
+
+        command = str(item.get("command") or "").strip()
+        if not command:
+            continue
+        payload["celestial"].append(
+            {
+                "target_type": "mission",
+                "command": command,
+                "name": item.get("display_name") or command,
+                "color": item.get("color"),
+            }
+        )
+
+    return payload
+
+
+async def emit_cached_celestial_tracks_job(sio):
+    """Broadcast current monitored celestial tracks using cached vectors only."""
+    try:
+        if await authsvc.is_setup_required(force_refresh=False):
+            return
+
+        payload = await _build_enabled_monitored_celestial_payload()
+        if not payload["celestial"]:
+            return
+
+        tracks = await build_celestial_tracks(
+            data=payload,
+            logger=logger,
+            force_refresh=False,
+            allow_network_fetch=False,
+            register_targets=False,
+            use_computed_cache=False,
+        )
+        if not tracks.get("success"):
+            logger.debug("Cached celestial tracks broadcast skipped: %s", tracks.get("error"))
+            return
+
+        scene_data_obj = tracks.get("data")
+        scene_data = scene_data_obj if isinstance(scene_data_obj, dict) else {}
+        rows_obj = scene_data.get("celestial")
+        rows = rows_obj if isinstance(rows_obj, list) else []
+        if not rows:
+            return
+
+        # Avoid replacing a valid browser state with startup cache misses.
+        if not any(isinstance(row.get("sky_position"), dict) for row in rows):
+            logger.debug("Cached celestial tracks broadcast skipped: no cached sky positions")
+            return
+
+        await sio.emit("celestial-tracks-update", scene_data)
+    except Exception as e:
+        logger.error(f"Error broadcasting cached celestial tracks: {e}")
+        logger.exception(e)
 
 
 def _normalize_target_type(tracking_state: Dict[str, Any]) -> str:
@@ -304,7 +447,7 @@ def start_scheduler(sio, process_manager, background_task_manager):
         celestial_sync_interval_minutes = 60
     celestial_sync_interval_minutes = max(5, celestial_sync_interval_minutes)
     if celestial_sync_enabled:
-        # Run once immediately at startup, then continue at the configured interval.
+        # Let startup settle before the first Horizons cache-fill run.
         scheduler.add_job(
             sync_celestial_vector_snapshots_job,
             trigger=IntervalTrigger(minutes=celestial_sync_interval_minutes),
@@ -314,8 +457,18 @@ def start_scheduler(sio, process_manager, background_task_manager):
             replace_existing=True,
             max_instances=1,
             coalesce=True,
-            next_run_time=datetime.now(timezone.utc),
         )
+
+    scheduler.add_job(
+        emit_cached_celestial_tracks_job,
+        trigger=IntervalTrigger(seconds=CELESTIAL_TRACKS_BROADCAST_INTERVAL_SECONDS),
+        args=[sio],
+        id=CELESTIAL_TRACKS_BROADCAST_JOB_ID,
+        name="Broadcast cached celestial tracks",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
 
     scheduler.start()
 

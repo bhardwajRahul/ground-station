@@ -20,7 +20,6 @@ import {
     TitleBar,
 } from '../common/common.jsx';
 import {
-    fetchCelestialTracks,
     fetchSolarSystemScene,
     getCelestialMapSettings,
     refreshMonitoredCelestialNow,
@@ -339,8 +338,13 @@ const CelestialMainLayout = () => {
 
     useEffect(() => {
         if (!socket) return;
-        dispatch(fetchSolarSystemScene({ socket, payload: sceneRequestPayload }));
-        dispatch(fetchCelestialTracks({ socket, payload: sceneRequestPayload }));
+        dispatch(fetchSolarSystemScene({
+            socket,
+            payload: {
+                ...sceneRequestPayload,
+                allow_network_fetch: false,
+            },
+        }));
     }, [socket, dispatch, sceneRequestPayload]);
 
     useEffect(() => {
@@ -418,6 +422,13 @@ const CelestialMainLayout = () => {
             },
         };
     }, [celestialState.solarScene, celestialState.celestialTracks]);
+    const timelineFutureHours = React.useMemo(() => {
+        // The live scene-manager stream may be produced with a different projection
+        // than the currently saved UI preference. Use the payload's projection for
+        // the timeline so the axis does not extend beyond the curve data.
+        const sceneProjection = combinedScene?.meta?.projection || {};
+        return parsePositiveNumber(sceneProjection.future_hours, projectionSettings.future_hours);
+    }, [combinedScene?.meta?.projection, projectionSettings.future_hours]);
 
     const solarBodies = Array.isArray(combinedScene?.planets) ? combinedScene.planets : [];
     const bodyTypeCounts = combinedScene?.meta?.solar_system?.body_type_counts || {};
@@ -490,19 +501,40 @@ const CelestialMainLayout = () => {
         return tCelestial('main_layout.loading');
     }, [solarSystemLoading, tracksLoading, tracksProgressText, viewMode, tCelestial]);
 
-    const updateProjectionSetting = React.useCallback((updates) => {
+    const updateProjectionSetting = React.useCallback(async (updates) => {
         if (!socket) return;
         const existing = celestialState.mapSettings || {};
         const nextSettings = { ...existing, ...updates };
         const unchanged = Object.keys(updates).every((key) => existing[key] === nextSettings[key]);
         if (unchanged) return;
 
-        dispatch(
+        const result = await dispatch(
             setCelestialMapSettings({
                 socket,
                 value: nextSettings,
             }),
         );
+        if (!setCelestialMapSettings.fulfilled.match(result)) return;
+
+        const projectionChanged = ['pastHours', 'futureHours', 'stepMinutes'].some(
+            (key) => Object.prototype.hasOwnProperty.call(updates, key),
+        );
+        if (!projectionChanged) return;
+
+        // The scene-manager stream is cache-only. When the user changes the
+        // projection window, explicitly fill that window so the table/timeline
+        // do not stay on the previously cached span.
+        await dispatch(
+            refreshMonitoredCelestialNow({
+                socket,
+                payload: {
+                    past_hours: parseNonNegativeNumber(nextSettings.pastHours, DEFAULT_PAST_HOURS),
+                    future_hours: parsePositiveNumber(nextSettings.futureHours, DEFAULT_FUTURE_HOURS),
+                    step_minutes: parsePositiveNumber(nextSettings.stepMinutes, DEFAULT_STEP_MINUTES),
+                },
+            }),
+        );
+        await dispatch(fetchMonitoredCelestial({ socket }));
     }, [socket, celestialState.mapSettings, dispatch]);
     const updateViewMode = React.useCallback((nextViewMode) => {
         if (!socket) return;
@@ -731,7 +763,7 @@ const CelestialMainLayout = () => {
                 passes={combinedScene?.celestial_passes || []}
                 loading={Boolean(celestialState.tracksLoading)}
                 gridEditable={isEditing}
-                projectionFutureHours={projectionSettings.future_hours}
+                projectionFutureHours={timelineFutureHours}
                 selectedTargetKey={selectedInfoTargetKey}
                 onRefresh={handleRefreshCelestial}
             />
