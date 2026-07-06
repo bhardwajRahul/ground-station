@@ -41,7 +41,7 @@ export default function WaterfallViewer({
     formatDate,
     formatFrequency,
     minZoom = 1,
-    maxZoom = 20,
+    maxZoom = 15,
     containerSx,
     hintDurationMs = 2800,
 }) {
@@ -162,24 +162,9 @@ export default function WaterfallViewer({
         return { start, end };
     }, []);
 
-    const nativeMaxZoom = useMemo(() => {
-        if (!Number.isFinite(sourceImageSize.width) || sourceImageSize.width <= 0) {
-            return null;
-        }
-        if (!Number.isFinite(containerSize.width) || containerSize.width <= 0) {
-            return null;
-        }
-        return sourceImageSize.width / containerSize.width;
-    }, [containerSize.width, sourceImageSize.width]);
-
     const effectiveMaxZoom = useMemo(() => {
-        let limit = maxZoom;
-        if (Number.isFinite(nativeMaxZoom) && nativeMaxZoom > 0) {
-            // Prevent zooming past 1:1 source pixels (no zoom-in upscaling).
-            limit = Math.min(limit, nativeMaxZoom);
-        }
-        return Math.max(minZoom, limit);
-    }, [maxZoom, minZoom, nativeMaxZoom]);
+        return Math.max(minZoom, maxZoom);
+    }, [maxZoom, minZoom]);
 
     const clampPositionForScale = useCallback(
         (candidate, nextScale) => {
