@@ -48,6 +48,7 @@ export default function WaterfallViewer({
     const containerRef = useRef(null);
     const canvasRef = useRef(null);
     const sourceImageRef = useRef(null);
+    const yScaledSourceCanvasRef = useRef(null);
     const activePointerIdRef = useRef(null);
     const isDraggingRef = useRef(false);
     const lastPointerXRef = useRef(0);
@@ -58,6 +59,8 @@ export default function WaterfallViewer({
     const pinchStartRef = useRef({ distance: 0, pointRatio: 0, scale: 1 });
     const scaleRef = useRef(1);
     const positionXRef = useRef(0);
+    const animationFrameRef = useRef(null);
+    const pendingTransformTickRef = useRef(false);
     const transformInteractionActiveRef = useRef(false);
     const transformInteractionIdleTimerRef = useRef(null);
 
@@ -72,6 +75,7 @@ export default function WaterfallViewer({
     const [loadedSrc, setLoadedSrc] = useState(null);
     const [failedSrc, setFailedSrc] = useState(null);
     const [transformTick, setTransformTick] = useState(0);
+    const [yScaledSourceTick, setYScaledSourceTick] = useState(0);
 
     const formatFrequencyValue = useCallback(
         (frequencyHz) => {
@@ -111,13 +115,50 @@ export default function WaterfallViewer({
         }
     }, []);
 
+    const cancelTransformAnimationFrame = useCallback(() => {
+        if (animationFrameRef.current !== null) {
+            cancelAnimationFrame(animationFrameRef.current);
+            animationFrameRef.current = null;
+        }
+        pendingTransformTickRef.current = false;
+    }, []);
+
+    const commitTransformState = useCallback((options = {}) => {
+        const { bumpTick = false } = options;
+        const nextScale = scaleRef.current;
+        const nextPositionX = positionXRef.current;
+        setScaleX((previous) => (previous === nextScale ? previous : nextScale));
+        setPositionX((previous) => (previous === nextPositionX ? previous : nextPositionX));
+        if (bumpTick) {
+            setTransformTick((tick) => tick + 1);
+        }
+    }, []);
+
+    const scheduleTransformStateCommit = useCallback((options = {}) => {
+        const { bumpTick = false } = options;
+        if (bumpTick) {
+            pendingTransformTickRef.current = true;
+        }
+        if (animationFrameRef.current !== null) {
+            return;
+        }
+        animationFrameRef.current = requestAnimationFrame(() => {
+            animationFrameRef.current = null;
+            const shouldBumpTick = pendingTransformTickRef.current;
+            pendingTransformTickRef.current = false;
+            commitTransformState({ bumpTick: shouldBumpTick });
+        });
+    }, [commitTransformState]);
+
     const endTransformInteraction = useCallback(() => {
         clearTransformInteractionTimer();
         if (transformInteractionActiveRef.current) {
             transformInteractionActiveRef.current = false;
             setIsTransformInteracting(false);
+            // Finalize labels/scale once interaction settles.
+            scheduleTransformStateCommit({ bumpTick: true });
         }
-    }, [clearTransformInteractionTimer]);
+    }, [clearTransformInteractionTimer, scheduleTransformStateCommit]);
 
     const markTransformInteraction = useCallback(() => {
         if (!transformInteractionActiveRef.current) {
@@ -130,21 +171,28 @@ export default function WaterfallViewer({
             transformInteractionIdleTimerRef.current = null;
             transformInteractionActiveRef.current = false;
             setIsTransformInteracting(false);
+            // Finalize labels/scale once interaction settles.
+            scheduleTransformStateCommit({ bumpTick: true });
         }, TRANSFORM_INTERACTION_IDLE_MS);
-    }, [clearTransformInteractionTimer]);
+    }, [clearTransformInteractionTimer, scheduleTransformStateCommit]);
 
     const applyTransform = useCallback((nextScale, nextPositionX, options = {}) => {
+        scaleRef.current = nextScale;
+        positionXRef.current = nextPositionX;
         if (options.trackInteraction) {
             // Defer frequency-scale measurement while zoom/pan interaction is still active.
             markTransformInteraction();
+            if (options.flushNow) {
+                commitTransformState();
+            } else {
+                // Keep wheel interaction updates cheap: coalesce React state updates to one per frame.
+                scheduleTransformStateCommit();
+            }
+            return;
         }
-        scaleRef.current = nextScale;
-        positionXRef.current = nextPositionX;
-        setScaleX(nextScale);
-        setPositionX(nextPositionX);
-        // Trigger a frequency-scale redraw after each zoom/pan update.
-        setTransformTick((tick) => tick + 1);
-    }, [markTransformInteraction]);
+        // Non-interactive updates can commit immediately.
+        commitTransformState({ bumpTick: true });
+    }, [commitTransformState, markTransformInteraction, scheduleTransformStateCommit]);
 
     const getVisibleXNormRange = useCallback((currentPositionX, currentScale, width) => {
         if (!Number.isFinite(width) || width <= 0) {
@@ -231,7 +279,7 @@ export default function WaterfallViewer({
     );
 
     const zoomOnXAxisOnly = useCallback(
-        (deltaScale, centerX) => {
+        (deltaScale, centerX, options = {}) => {
             if (!Number.isFinite(containerSize.width) || containerSize.width <= 0) {
                 return;
             }
@@ -254,7 +302,10 @@ export default function WaterfallViewer({
                 nextPositionX = clampPositionForScale(nextPositionX, nextScale);
             }
 
-            applyTransform(nextScale, nextPositionX, { trackInteraction: true });
+            applyTransform(nextScale, nextPositionX, {
+                trackInteraction: true,
+                flushNow: Boolean(options.flushNow),
+            });
         },
         [applyTransform, clampPositionForScale, containerSize.width, effectiveMaxZoom, minZoom]
     );
@@ -344,7 +395,7 @@ export default function WaterfallViewer({
             nextPositionX = clampPositionForScale(nextPositionX, nextScale);
         }
 
-        applyTransform(nextScale, nextPositionX, { trackInteraction: true });
+        applyTransform(nextScale, nextPositionX, { trackInteraction: true, flushNow: true });
     }, [
         applyTransform,
         beginPinchZoom,
@@ -615,10 +666,55 @@ export default function WaterfallViewer({
     useEffect(() => {
         if (!src) {
             setSourceImageSize({ width: 0, height: 0 });
+            yScaledSourceCanvasRef.current = null;
+            setYScaledSourceTick((tick) => tick + 1);
             return;
         }
         setSourceImageSize({ width: 0, height: 0 });
+        yScaledSourceCanvasRef.current = null;
+        setYScaledSourceTick((tick) => tick + 1);
     }, [src]);
+
+    useEffect(() => {
+        const sourceImage = sourceImageRef.current;
+        const imageWidth = sourceImageSize.width;
+        const imageHeight = sourceImageSize.height;
+        const viewportHeight = Math.max(1, containerSize.height - SCALE_STRIP_HEIGHT);
+
+        if (!sourceImage || !imageWidth || !imageHeight || viewportHeight <= 0) {
+            yScaledSourceCanvasRef.current = null;
+            setYScaledSourceTick((tick) => tick + 1);
+            return;
+        }
+
+        let yScaledCanvas = yScaledSourceCanvasRef.current;
+        if (!yScaledCanvas) {
+            yScaledCanvas = document.createElement('canvas');
+            yScaledSourceCanvasRef.current = yScaledCanvas;
+        }
+
+        if (yScaledCanvas.width !== imageWidth) {
+            yScaledCanvas.width = imageWidth;
+        }
+        if (yScaledCanvas.height !== viewportHeight) {
+            yScaledCanvas.height = viewportHeight;
+        }
+
+        const yScaledCtx = yScaledCanvas.getContext('2d');
+        if (!yScaledCtx) {
+            yScaledSourceCanvasRef.current = null;
+            setYScaledSourceTick((tick) => tick + 1);
+            return;
+        }
+
+        // Pre-scale Y once per image/viewport-height to avoid repeating this cost on every zoom step.
+        // Keep nearest-neighbor sampling so X bins remain crisp.
+        yScaledCtx.setTransform(1, 0, 0, 1, 0, 0);
+        yScaledCtx.clearRect(0, 0, imageWidth, viewportHeight);
+        yScaledCtx.imageSmoothingEnabled = false;
+        yScaledCtx.drawImage(sourceImage, 0, 0, imageWidth, imageHeight, 0, 0, imageWidth, viewportHeight);
+        setYScaledSourceTick((tick) => tick + 1);
+    }, [containerSize.height, sourceImageSize.height, sourceImageSize.width]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -658,18 +754,22 @@ export default function WaterfallViewer({
 
         // Draw the source slice directly from the full-resolution image.
         const { start, end } = getVisibleXNormRange(positionX, scaleX, viewportWidth);
-        const sourceX = start * imageWidth;
-        const sourceWidth = Math.max(1, (end - start) * imageWidth);
+        const sourceStartPx = clamp(Math.floor(start * imageWidth), 0, Math.max(0, imageWidth - 1));
+        const sourceEndPx = clamp(Math.ceil(end * imageWidth), sourceStartPx + 1, imageWidth);
+        const sourceWidth = Math.max(1, sourceEndPx - sourceStartPx);
+        const yScaledSourceCanvas = yScaledSourceCanvasRef.current;
+        const sourceSurface = yScaledSourceCanvas || sourceImage;
+        const sourceSurfaceHeight = yScaledSourceCanvas ? viewportHeight : imageHeight;
 
         // Keep X-bin data crisp while zooming/panning: do not interpolate canvas samples.
         ctx.imageSmoothingEnabled = false;
 
         ctx.drawImage(
-            sourceImage,
-            sourceX,
+            sourceSurface,
+            sourceStartPx,
             0,
             sourceWidth,
-            imageHeight,
+            sourceSurfaceHeight,
             0,
             0,
             viewportWidth,
@@ -681,6 +781,7 @@ export default function WaterfallViewer({
         getVisibleXNormRange,
         positionX,
         scaleX,
+        yScaledSourceTick,
         sourceImageSize.height,
         sourceImageSize.width,
     ]);
@@ -702,7 +803,8 @@ export default function WaterfallViewer({
 
     useEffect(() => () => {
         clearTransformInteractionTimer();
-    }, [clearTransformInteractionTimer]);
+        cancelTransformAnimationFrame();
+    }, [cancelTransformAnimationFrame, clearTransformInteractionTimer]);
 
     useEffect(() => {
         const clamped = clampPositionForScale(positionXRef.current, scaleRef.current);
@@ -922,7 +1024,7 @@ export default function WaterfallViewer({
                 <Tooltip title="Zoom Out X">
                     <IconButton
                         size="small"
-                        onClick={() => zoomOnXAxisOnly(-0.5, containerSize.width / 2)}
+                        onClick={() => zoomOnXAxisOnly(-0.5, containerSize.width / 2, { flushNow: true })}
                         sx={{
                             bgcolor: 'rgba(0, 0, 0, 0.55)',
                             color: 'common.white',
@@ -935,7 +1037,7 @@ export default function WaterfallViewer({
                 <Tooltip title="Zoom In X">
                     <IconButton
                         size="small"
-                        onClick={() => zoomOnXAxisOnly(0.5, containerSize.width / 2)}
+                        onClick={() => zoomOnXAxisOnly(0.5, containerSize.width / 2, { flushNow: true })}
                         sx={{
                             bgcolor: 'rgba(0, 0, 0, 0.55)',
                             color: 'common.white',
