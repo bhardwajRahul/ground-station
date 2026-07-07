@@ -77,9 +77,9 @@ single web interface.
 ---
 
 ### Waterfall Packet Decoding (GMSK)
-<img src="frontend/public/ground station - waterfall page - packet decoding gmsk.png" alt="Waterfall packet decoding view with GMSK" width="450"/>
+<img src="frontend/public/ground station - waterfall page - receiving GMSK and decoding with two VFOs.png" alt="Waterfall packet decoding view with GMSK and two VFOs" width="450"/>
 
-*Waterfall view with live GMSK packet decoding and decoded output details*
+*Waterfall view receiving GMSK and decoding with two VFOs*
 
 ---
 
