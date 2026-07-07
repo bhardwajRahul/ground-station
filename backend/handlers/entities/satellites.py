@@ -158,6 +158,20 @@ async def get_satellites_for_group_id(
         return {"success": satellites["success"], "data": satellites.get("data", [])}
 
 
+async def get_satellite_catalog_stats(
+    sio: Any, data: Optional[Dict], logger: Any, sid: str
+) -> Dict[str, Union[bool, dict, str, None]]:
+    """Get aggregate satellite catalog stats for the admin catalog page."""
+    async with AsyncSessionLocal() as dbsession:
+        logger.debug("Getting satellite catalog stats")
+        stats = await crud.satellites.fetch_satellite_catalog_stats(dbsession)
+        return {
+            "success": bool(stats.get("success")),
+            "data": stats.get("data", {}),
+            "error": stats.get("error"),
+        }
+
+
 async def search_satellites(
     sio: Any, data: Optional[Union[Dict[str, Any], str, int]], logger: Any, sid: str
 ) -> Dict[str, Union[bool, list]]:
@@ -512,6 +526,7 @@ def register_handlers(registry):
             "get-satellites": (get_satellites, "api_call"),
             "get-satellite": (get_satellite, "api_call"),
             "get-satellites-for-group-id": (get_satellites_for_group_id, "api_call"),
+            "get-satellite-catalog-stats": (get_satellite_catalog_stats, "api_call"),
             "get-satellite-search": (search_satellites, "api_call"),
             "get-target-search": (search_targets, "api_call"),
             "submit-satellite": (submit_satellite, "api_call"),

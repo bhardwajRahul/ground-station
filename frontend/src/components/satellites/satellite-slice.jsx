@@ -231,6 +231,28 @@ export const fetchSatelliteGroups = createAsyncThunk(
     }
 );
 
+export const fetchSatelliteCatalogStats = createAsyncThunk(
+    'satellites/fetchCatalogStats',
+    async ({socket}, {rejectWithValue}) => {
+        try {
+            return await new Promise((resolve, reject) => {
+                socket.emit("api.call", {
+  cmd: 'get-satellite-catalog-stats',
+  data: null
+}, res => {
+  if (res.success) {
+    resolve(res.data);
+  } else {
+    reject(new Error(res.error || 'Failed to fetch satellite catalog stats'));
+  }
+});
+            });
+        } catch (error) {
+            return rejectWithValue(error.message);
+        }
+    }
+);
+
 export const searchSatellites = createAsyncThunk(
     'satellites/search',
     async ({ socket, keyword }, { rejectWithValue }) => {
@@ -295,6 +317,7 @@ const satellitesSlice = createSlice({
         openDeleteConfirm: false,
         openAddDialog: false,
         clickedSatellite: defaultSatellite,
+        catalogStats: null,
     },
     reducers: {
         setSatellites: (state, action) => {
@@ -377,6 +400,12 @@ const satellitesSlice = createSlice({
                 state.status = 'failed';
                 state.loading = false;
                 state.error = action.error?.message;
+            })
+            .addCase(fetchSatelliteCatalogStats.fulfilled, (state, action) => {
+                state.catalogStats = action.payload || null;
+            })
+            .addCase(fetchSatelliteCatalogStats.rejected, (state) => {
+                state.catalogStats = null;
             })
             .addCase(submitTransmitter.pending, (state) => {
                 state.status = 'loading';

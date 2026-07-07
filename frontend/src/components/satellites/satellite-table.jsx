@@ -63,6 +63,7 @@ import {
 } from '../common/common.jsx';
 import {
     fetchSatellite,
+    fetchSatelliteCatalogStats,
     fetchSatelliteGroups,
     fetchSatellites,
     searchSatellites,
@@ -125,6 +126,7 @@ const SatelliteTable = React.memo(function SatelliteTable() {
         openDeleteConfirm,
         openAddDialog,
         clickedSatellite,
+        catalogStats,
     } = useSelector((state) => state.satellites);
 
     const [localSearchValue, setLocalSearchValue] = useState('');
@@ -201,6 +203,7 @@ const SatelliteTable = React.memo(function SatelliteTable() {
 
     const handleCloseTransmitters = () => {
         setTransmittersDialogOpen(false);
+        dispatch(fetchSatelliteCatalogStats({socket}));
     };
 
     const columns = [
@@ -427,6 +430,10 @@ const SatelliteTable = React.memo(function SatelliteTable() {
         dispatch(fetchSatelliteGroups({socket}));
     }, [dispatch, socket]);
 
+    useEffect(() => {
+        dispatch(fetchSatelliteCatalogStats({socket}));
+    }, [dispatch, socket]);
+
     // Debounced search effect
     useEffect(() => {
         if (localSearchValue.length >= 3) {
@@ -486,6 +493,10 @@ const SatelliteTable = React.memo(function SatelliteTable() {
         }
     }, [dispatch, satGroupId, searchKeyword, socket]);
 
+    const refreshCatalogStats = useCallback(() => {
+        dispatch(fetchSatelliteCatalogStats({socket}));
+    }, [dispatch, socket]);
+
     const handleAddClick = () => {
         latestEditRequestRef.current += 1;
         setEditingSatellite(null);
@@ -514,7 +525,8 @@ const SatelliteTable = React.memo(function SatelliteTable() {
         dispatch(setOpenAddDialog(false));
         setEditingSatellite(null);
         refreshSatellites();
-    }, [dispatch, refreshSatellites]);
+        refreshCatalogStats();
+    }, [dispatch, refreshCatalogStats, refreshSatellites]);
 
     const handleDeleteClick = () => {
         const deleteRequests = selected
@@ -527,11 +539,27 @@ const SatelliteTable = React.memo(function SatelliteTable() {
                 dispatch(setSelected([]));
                 dispatch(setOpenDeleteConfirm(false));
                 refreshSatellites();
+                refreshCatalogStats();
             })
             .catch((error) => {
                 toast.error(`${t('satellite_database.failed_delete')}: ${error}`, {autoClose: 5000});
             });
     };
+
+    const catalogStatsSuffix = React.useMemo(() => {
+        if (!catalogStats) {
+            return '';
+        }
+
+        return ` ${t('satellite_database.catalog_stats_summary', {
+            satellites: Number(catalogStats.satellites || 0),
+            groups: Number(catalogStats.groups || 0),
+            userGroups: Number(catalogStats.user_groups || 0),
+            systemGroups: Number(catalogStats.system_groups || 0),
+            transmitters: Number(catalogStats.satellite_transmitters || 0),
+            defaultValue: 'Current DB stats: {{satellites}} satellites, {{groups}} groups ({{userGroups}} user, {{systemGroups}} system), {{transmitters}} satellite transmitters.',
+        })}`;
+    }, [catalogStats, t]);
 
     const filterFieldSx = {
         '& .MuiOutlinedInput-root': {
@@ -734,6 +762,7 @@ const SatelliteTable = React.memo(function SatelliteTable() {
             <Alert severity="info" sx={{ mt: 2 }}>
                 <AlertTitle>{t('satellite_database.title')}</AlertTitle>
                 {t('satellite_database.subtitle')}
+                {catalogStatsSuffix}
             </Alert>
             <Dialog
                 open={openDeleteConfirm}
