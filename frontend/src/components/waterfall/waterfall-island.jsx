@@ -835,7 +835,7 @@ const MainWaterfallDisplay = React.memo(function MainWaterfallDisplay({
         }
     }, [waterfallRendererMode, bandscopeRateLimitEnabled]);
 
-    const { startStreaming, stopStreaming, playButtonEnabledOrNot } = useWaterfallStream({
+    const { startStreaming, stopStreaming, playButtonEnabledOrNot, takeoverDialog } = useWaterfallStream({
         workerRef,
         waterfallRendererMode,
         onDomTileFftData: handleDomTileFftData,
@@ -1329,6 +1329,7 @@ const MainWaterfallDisplay = React.memo(function MainWaterfallDisplay({
                 message={errorMessage}
                 onClose={() => dispatch(setErrorDialogOpen(false))}
             />
+            {takeoverDialog}
 
             {/* Bottom status bar */}
             <Box

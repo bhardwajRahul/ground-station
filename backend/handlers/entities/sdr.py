@@ -14,7 +14,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import asyncio
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import crud
 from common.pathguard import resolve_sigmf_meta_path
@@ -35,6 +35,9 @@ from server.snapshots import save_waterfall_snapshot
 from server.startup import audio_queue
 from session.service import session_service
 from session.tracker import session_tracker
+from vfos.state import VFOManager
+
+SDR_IN_USE_CONFLICT_CODE = "sdr_in_use_conflict"
 
 
 def _coerce_float(value, default, field_name, logger):
@@ -113,6 +116,81 @@ def _sanitize_overlap_percent(value, default, field_name, logger):
     return percent
 
 
+def _list_other_sdr_clients(sdr_id: str, client_id: str) -> List[str]:
+    """Return all connected client/session ids on the SDR excluding the caller."""
+    try:
+        process_info = process_manager.processes.get(sdr_id, {})
+    except Exception:
+        return []
+    clients = process_info.get("clients", set()) or set()
+    normalized_client_id = str(client_id)
+    return sorted(str(sid) for sid in clients if str(sid) != normalized_client_id)
+
+
+def _is_center_frequency_change(sdr_id: str, requested_center_freq: float) -> bool:
+    """
+    Compare requested center frequency against the running SDR process config.
+
+    We intentionally compare with the process-level effective config instead of the
+    caller's cached session config because the caller can be stale while other
+    sessions are actively using and retuning the same SDR.
+    """
+    try:
+        process_info = process_manager.processes.get(sdr_id, {})
+    except Exception:
+        return False
+    if not process_info:
+        return False
+    running_config = process_info.get("config", {}) or {}
+    running_center = running_config.get("center_freq")
+    if running_center is None:
+        # Unknown running center while process is active; treat as potentially disruptive.
+        return True
+    try:
+        return abs(float(running_center) - float(requested_center_freq)) > 1e-6
+    except Exception:
+        # Non-numeric running center cannot be compared safely; require confirmation.
+        return True
+
+
+def _build_sdr_in_use_conflict(
+    sdr_id: str,
+    other_clients: List[str],
+    operation: str,
+    message: Optional[str] = None,
+) -> Dict[str, Union[str, int, bool, list]]:
+    """Create a structured conflict payload for frontend takeover confirmation."""
+    other_sessions: List[Dict[str, Union[str, bool, None]]] = []
+    includes_internal_observation = False
+
+    for session_id in other_clients:
+        is_internal = VFOManager.is_internal_session(session_id)
+        includes_internal_observation = includes_internal_observation or is_internal
+        metadata = session_tracker.get_session_metadata(session_id) or {}
+        other_sessions.append(
+            {
+                "session_id": session_id,
+                "is_internal": is_internal,
+                "username": metadata.get("username"),
+            }
+        )
+
+    default_message = (
+        f"SDR '{sdr_id}' is currently in use by {len(other_clients)} other session(s). "
+        f"Confirm takeover to continue."
+    )
+    return {
+        "error_code": SDR_IN_USE_CONFLICT_CODE,
+        "operation": operation,
+        "sdr_id": sdr_id,
+        "other_session_count": len(other_clients),
+        "other_sessions": other_sessions,
+        "includes_internal_observation": includes_internal_observation,
+        "requires_force_takeover": True,
+        "message": message or default_message,
+    }
+
+
 async def sdr_command_routing(
     sio: Any, cmd: str, data: Dict[str, Any], logger: Any, client_id: str
 ) -> Dict[str, Union[bool, None, dict, list, str]]:
@@ -126,6 +204,9 @@ async def sdr_command_routing(
             try:
                 # SDR device id
                 sdr_id = data.get("selectedSDRId", None)
+                force_takeover = _coerce_bool(
+                    data.get("forceTakeover", False), False, "forceTakeover", logger
+                )
 
                 logger.info(f"Configuring SDR {sdr_id} for client {client_id}")
 
@@ -284,6 +365,33 @@ async def sdr_command_routing(
                     sdr_settings=sdr_settings,
                 ).to_dict()
 
+                # Takeover guard:
+                # If this SDR is actively used by other sessions and the requested center
+                # frequency would retune the running process, require explicit override.
+                other_clients = _list_other_sdr_clients(str(sdr_id), client_id)
+                if (
+                    other_clients
+                    and not force_takeover
+                    and _is_center_frequency_change(str(sdr_id), center_freq)
+                ):
+                    conflict = _build_sdr_in_use_conflict(
+                        str(sdr_id),
+                        other_clients,
+                        operation="configure-sdr:center-frequency",
+                    )
+                    logger.warning(
+                        "Blocked SDR configure center-frequency update for session %s on SDR %s "
+                        "because %d other session(s) are active; force takeover required.",
+                        client_id,
+                        sdr_id,
+                        len(other_clients),
+                    )
+                    reply["success"] = False
+                    reply["error"] = str(conflict.get("message") or "SDR in-use conflict")
+                    reply["error_code"] = SDR_IN_USE_CONFLICT_CODE
+                    reply["data"] = conflict
+                    return reply
+
                 # Create or update SDR session via SessionService (also updates tracker)
                 logger.info(f"Creating an SDR session for client {client_id}")
                 await session_service.configure_sdr(client_id, sdr_device, sdr_config)
@@ -325,6 +433,9 @@ async def sdr_command_routing(
             try:
                 # SDR device id
                 sdr_id = data.get("selectedSDRId", None)
+                force_takeover = _coerce_bool(
+                    data.get("forceTakeover", False), False, "forceTakeover", logger
+                )
 
                 # Handle hardcoded sigmfplayback SDR
                 if sdr_id == "sigmf-playback":
@@ -351,11 +462,36 @@ async def sdr_command_routing(
                 sdr_config = session_service.get_session_config(client_id)
                 logger.info(f"Starting streaming SDR data for client {client_id}")
 
+                # Takeover guard:
+                # Starting a stream on an already active SDR can impact existing sessions.
+                # Require explicit force flag when other sessions are already attached.
+                other_clients = _list_other_sdr_clients(str(sdr_id), client_id)
+                if other_clients and not force_takeover:
+                    conflict = _build_sdr_in_use_conflict(
+                        str(sdr_id),
+                        other_clients,
+                        operation="start-streaming",
+                    )
+                    logger.warning(
+                        "Blocked SDR start-streaming for session %s on SDR %s because %d "
+                        "other session(s) are active; force takeover required.",
+                        client_id,
+                        sdr_id,
+                        len(other_clients),
+                    )
+                    reply["success"] = False
+                    reply["error"] = str(conflict.get("message") or "SDR in-use conflict")
+                    reply["error_code"] = SDR_IN_USE_CONFLICT_CODE
+                    reply["data"] = conflict
+                    return reply
+
                 # Start or join the SDR process
                 process_sdr_id = await session_service.start_streaming(client_id, sdr_device)
                 logger.info(
                     f"SDR process started for client {client_id} with process id: {process_sdr_id}"
                 )
+                reply["success"] = True
+                reply["data"] = {"sdr_id": process_sdr_id}
 
             except Exception as e:
                 logger.error(f"Error starting SDR stream: {str(e)}")
@@ -403,6 +539,8 @@ async def sdr_command_routing(
 
                 await sio.emit("sdr-status", {"streaming": False}, room=client_id)
                 logger.info(f"Stopped streaming SDR data for client {client_id}")
+                reply["success"] = True
+                reply["data"] = {"sdr_id": sdr_id}
 
             except Exception as e:
                 logger.error(f"Error stopping SDR stream: {str(e)}")

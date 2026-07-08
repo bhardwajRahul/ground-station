@@ -102,6 +102,7 @@ import PlaybackAccordion from "./settings-playback.jsx";
 import { useTranslation } from 'react-i18next';
 import { selectRunningRigTransmitters } from "../target/transmitter-selectors.js";
 import { fetchFiles } from "../filebrowser/filebrowser-slice.jsx";
+import { useSdrTakeoverDialog } from './use-sdr-takeover-dialog.jsx';
 
 const PLAYBACK_DEFAULT_FFT_OVERLAP_PERCENT = 50;
 
@@ -213,6 +214,9 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
     const tunerAgc = sdrSettings?.tunerAgc ?? false;
     const rtlAgc = sdrSettings?.rtlAgc ?? false;
     const soapyAgc = sdrSettings?.soapyAgc ?? false;
+    const { requestTakeoverConfirmation, takeoverDialog } = useSdrTakeoverDialog({
+        defaultSdrId: selectedSDRId,
+    });
 
     const {
         selectedVFO,
@@ -422,13 +426,75 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
         return filtered;
     }, [getValidGainElements]);
 
+    const emitApiCall = useCallback((cmd, payload) => {
+        return new Promise((resolve) => {
+            if (!socket) {
+                resolve({ success: false, error: 'Socket is not connected' });
+                return;
+            }
+            socket.emit(
+                "api.call",
+                {
+                    cmd,
+                    data: payload,
+                },
+                (response) => {
+                    resolve(response || { success: false, error: 'No response from server' });
+                }
+            );
+        });
+    }, [socket]);
+
+    const getSdrInUseConflict = useCallback((response) => {
+        if (!response || typeof response !== 'object') {
+            return null;
+        }
+        const code = response.error_code || response?.data?.error_code;
+        if (code !== 'sdr_in_use_conflict') {
+            return null;
+        }
+        return response?.data && typeof response.data === 'object' ? response.data : {};
+    }, []);
+
+    const callWithTakeoverConfirmation = useCallback(async (cmd, payload, actionLabel) => {
+        const initialResponse = await emitApiCall(cmd, payload);
+        if (initialResponse?.success) {
+            return { ...initialResponse, takeoverConfirmed: false };
+        }
+
+        const conflict = getSdrInUseConflict(initialResponse);
+        if (!conflict) {
+            return { ...(initialResponse || {}), takeoverConfirmed: false };
+        }
+
+        const confirmed = await requestTakeoverConfirmation(conflict, actionLabel);
+        if (!confirmed) {
+            return {
+                ...(initialResponse || {}),
+                canceled: true,
+                takeoverConfirmed: false,
+            };
+        }
+
+        const forcedPayload = {
+            ...payload,
+            forceTakeover: true,
+        };
+        const forcedResponse = await emitApiCall(cmd, forcedPayload);
+        return {
+            ...(forcedResponse || { success: false, error: 'No response from server' }),
+            takeoverConfirmed: true,
+        };
+    }, [emitApiCall, getSdrInUseConflict, requestTakeoverConfirmation]);
+
     // Convert to useCallback to ensure stability of the function reference
     const sendSDRConfigToBackend = useCallback((updates = {}) => {
             const targetSDRId = updates.selectedSDRId ?? selectedSDRId;
+            const effectivePlaybackRecordingPath = updates.recordingPath ?? playbackRecordingPath;
             if (targetSDRId !== "none" && targetSDRId !== "") {
                 // For sigmfplayback, NEVER send configure without a recording path
                 // This prevents overwriting the session with empty recording_path
-                if (targetSDRId === "sigmf-playback" && !playbackRecordingPath) {
+                if (targetSDRId === "sigmf-playback" && !effectivePlaybackRecordingPath) {
                     return;
                 }
 
@@ -448,7 +514,7 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
                     soapyAgc: soapyAgc,
                     offsetFrequency: selectedOffsetValue,
                     fftAveraging: fftAveraging,
-                    recordingPath: playbackRecordingPath,
+                    recordingPath: effectivePlaybackRecordingPath,
                     sdrSettings: sdrSettingsById?.[targetSDRId]?.draft || {},
                 }
                 SDRSettings = {...SDRSettings, ...updates};
@@ -461,19 +527,35 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
                         },
                     };
                 }
-                socket.emit("api.call", {
-  cmd: "sdr.configure-sdr",
-  data: SDRSettings
-});
-                if (SDRSettings.sdrSettings) {
+
+                const operationLabel = Object.prototype.hasOwnProperty.call(updates, 'centerFrequency')
+                    ? 'retune the SDR center frequency'
+                    : 'reconfigure the SDR';
+
+                const applySdrSettingsLocally = (payload) => {
+                    if (!payload?.sdrSettings) {
+                        return;
+                    }
                     dispatch(
                         setSdrSettingsApplied({
                             sdrId: targetSDRId,
-                            settings: SDRSettings.sdrSettings,
+                            settings: payload.sdrSettings,
                         })
                     );
-                }
+                };
+
+                return callWithTakeoverConfirmation(
+                    "sdr.configure-sdr",
+                    SDRSettings,
+                    operationLabel
+                ).then((response) => {
+                    if (response?.success) {
+                        applySdrSettingsLocally(SDRSettings);
+                    }
+                    return response;
+                });
             }
+            return Promise.resolve({ success: false, skipped: true });
         }, [
             selectedSDRId,
             centerFrequency,
@@ -487,14 +569,13 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
             biasT,
             tunerAgc,
             rtlAgc,
-            socket,
             selectedOffsetValue,
             playbackRecordingPath,
             selectedAntenna,
             soapyAgc,
-            isStreaming,
             sdrSettingsById,
-            sdrCapabilities,
+            callWithTakeoverConfirmation,
+            dispatch,
         ]
     );
 
@@ -1234,40 +1315,36 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
                 dispatch(setExpandedPanels([...expandedPanels, 'sdr']));
             }
 
-            // Manually send configure-sdr with the recording path
-            // since the useEffect won't have the updated playbackRecordingPath yet
-            setTimeout(() => {
-                const SDRSettings = {
-                    selectedSDRId: sigmfSdr.id,
-                    centerFrequency: recordingCenterFreq || centerFrequency,
-                    sampleRate: recordingSampleRate || sampleRate,
-                    gain: 0,
-                    fftSize: fftSize,
-                    biasT: biasT,
-                    tunerAgc: tunerAgc,
-                    rtlAgc: rtlAgc,
-                    fftWindow: fftWindow,
-                    fftOverlapPercent: PLAYBACK_DEFAULT_FFT_OVERLAP_PERCENT,
-                    fftOverlapDepth: fftOverlapDepth,
-                    antenna: "RX",
-                    soapyAgc: soapyAgc,
-                    offsetFrequency: selectedOffsetValue,
-                    fftAveraging: fftAveraging,
-                    recordingPath: recordingPath,
-                };
-                socket.emit("api.call", {
-  cmd: "sdr.configure-sdr",
-  data: SDRSettings
-});
+            const SDRSettings = {
+                selectedSDRId: sigmfSdr.id,
+                centerFrequency: recordingCenterFreq || centerFrequency,
+                sampleRate: recordingSampleRate || sampleRate,
+                gain: 0,
+                fftSize: fftSize,
+                biasT: biasT,
+                tunerAgc: tunerAgc,
+                rtlAgc: rtlAgc,
+                fftWindow: fftWindow,
+                fftOverlapPercent: PLAYBACK_DEFAULT_FFT_OVERLAP_PERCENT,
+                fftOverlapDepth: fftOverlapDepth,
+                antenna: "RX",
+                soapyAgc: soapyAgc,
+                offsetFrequency: selectedOffsetValue,
+                fftAveraging: fftAveraging,
+                recordingPath: recordingPath,
+            };
 
-                // Now fetch SDR parameters after configure-sdr has set the recording path
-                setTimeout(() => {
+            sendSDRConfigToBackend(SDRSettings).then((response) => {
+                if (response?.success) {
+                    // Fetch parameters after configure-sdr has stored playback-specific config.
                     dispatch(getSDRConfigParameters({
                         socket,
-                        selectedSDRId: sigmfSdr.id
+                        selectedSDRId: sigmfSdr.id,
                     }));
-                }, 200);
-            }, 100);
+                } else if (!response?.canceled) {
+                    toast.error(`Failed to configure playback: ${response?.error || 'Unknown error'}`);
+                }
+            });
         } else {
             toast.error('SigMF Playback SDR not found. Please refresh the page.');
         }
@@ -1287,44 +1364,50 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
         handleRecordingSelect(recording);
     };
 
-    const handlePlaybackPlay = () => {
+    const handlePlaybackPlay = async () => {
         // Playback accordion play button handles full configuration and start
         if (!isStreaming && selectedSDRId === 'sigmf-playback' && playbackRecordingPath) {
             // First configure the SDR with playback recording
-            socket.emit("api.call", {
-  cmd: "sdr.configure-sdr",
-  data: {
-    selectedSDRId: 'sigmf-playback',
-    centerFrequency,
-    sampleRate,
-    gain,
-    fftSize,
-    biasT,
-    tunerAgc,
-    rtlAgc,
-    fftWindow,
-    fftOverlapPercent,
-    fftOverlapDepth,
-    antenna: selectedAntenna,
-    offsetFrequency: selectedOffsetValue,
-    soapyAgc,
-    fftAveraging,
-    recordingPath: playbackRecordingPath
-  }
-}, response => {
-  if (response['success']) {
-    // Then start streaming
-    socket.emit("api.call", {
-  cmd: "sdr.start-streaming",
-  data: {
-    selectedSDRId: 'sigmf-playback'
-  }
-});
-    dispatch(setPlaybackStartTime(new Date().toISOString()));
-  } else {
-    toast.error('Failed to configure playback: ' + (response['message'] || 'Unknown error'));
-  }
-});
+            const configureResponse = await sendSDRConfigToBackend({
+                selectedSDRId: 'sigmf-playback',
+                centerFrequency,
+                sampleRate,
+                gain,
+                fftSize,
+                biasT,
+                tunerAgc,
+                rtlAgc,
+                fftWindow,
+                fftOverlapPercent,
+                fftOverlapDepth,
+                antenna: selectedAntenna,
+                offsetFrequency: selectedOffsetValue,
+                soapyAgc,
+                fftAveraging,
+                recordingPath: playbackRecordingPath,
+            });
+            if (!configureResponse?.success) {
+                if (!configureResponse?.canceled) {
+                    toast.error(
+                        `Failed to configure playback: ${configureResponse?.error || 'Unknown error'}`
+                    );
+                }
+                return;
+            }
+
+            const startResponse = await callWithTakeoverConfirmation(
+                "sdr.start-streaming",
+                {
+                    selectedSDRId: 'sigmf-playback',
+                    forceTakeover: Boolean(configureResponse?.takeoverConfirmed),
+                },
+                'start playback streaming'
+            );
+            if (startResponse?.success) {
+                dispatch(setPlaybackStartTime(new Date().toISOString()));
+            } else if (!startResponse?.canceled) {
+                toast.error(`Failed to start playback stream: ${startResponse?.error || 'Unknown error'}`);
+            }
         } else if (!playbackRecordingPath) {
             toast.error('Please select a recording first');
         } else if (selectedSDRId !== 'sigmf-playback') {
@@ -1511,6 +1594,7 @@ const WaterfallSettings = forwardRef(function WaterfallSettings({ playbackRemain
                     playbackStartTime={playbackStartTime}
                     playbackRemainingSecondsRef={playbackRemainingSecondsRef}
                 />
+                {takeoverDialog}
             </div>
         </>
     );

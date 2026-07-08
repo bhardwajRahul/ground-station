@@ -13,6 +13,7 @@ import {
     stopRecording
 } from './waterfall-slice.jsx';
 import { toast } from '../../utils/toast-with-timestamp.jsx';
+import { useSdrTakeoverDialog } from './use-sdr-takeover-dialog.jsx';
 
 const useWaterfallStream = ({
     workerRef,
@@ -53,6 +54,9 @@ const useWaterfallStream = ({
     const tunerAgc = sdrSettingsById?.[selectedSDRId]?.draft?.tunerAgc ?? false;
     const rtlAgc = sdrSettingsById?.[selectedSDRId]?.draft?.rtlAgc ?? false;
     const soapyAgc = sdrSettingsById?.[selectedSDRId]?.draft?.soapyAgc ?? false;
+    const { requestTakeoverConfirmation, takeoverDialog } = useSdrTakeoverDialog({
+        defaultSdrId: selectedSDRId,
+    });
 
     const {
         vfoActive,
@@ -171,7 +175,68 @@ const useWaterfallStream = ({
         return false;
     }, []);
 
-    const startStreaming = useCallback(() => {
+    const emitApiCall = useCallback((cmd, data) => {
+        return new Promise((resolve) => {
+            if (!socket) {
+                resolve({ success: false, error: 'Socket is not connected' });
+                return;
+            }
+            socket.emit(
+                'api.call',
+                { cmd, data },
+                (response) => {
+                    resolve(response || { success: false, error: 'No response from server' });
+                }
+            );
+        });
+    }, [socket]);
+
+    const getSdrInUseConflict = useCallback((response) => {
+        if (!response || typeof response !== 'object') {
+            return null;
+        }
+        const responseCode = response.error_code || response?.data?.error_code;
+        if (responseCode !== 'sdr_in_use_conflict') {
+            return null;
+        }
+        return response?.data && typeof response.data === 'object' ? response.data : {};
+    }, []);
+
+    const callWithTakeoverConfirmation = useCallback(async (cmd, payload, actionLabel) => {
+        const initialResponse = await emitApiCall(cmd, payload);
+        if (initialResponse?.success) {
+            return { success: true, response: initialResponse, takeoverConfirmed: false };
+        }
+
+        const conflict = getSdrInUseConflict(initialResponse);
+        if (!conflict) {
+            return { success: false, response: initialResponse, canceled: false };
+        }
+
+        const confirmed = await requestTakeoverConfirmation(conflict, actionLabel);
+        if (!confirmed) {
+            return {
+                success: false,
+                response: initialResponse,
+                canceled: true,
+                takeoverConfirmed: false,
+            };
+        }
+
+        const forcedPayload = {
+            ...payload,
+            forceTakeover: true,
+        };
+        const forcedResponse = await emitApiCall(cmd, forcedPayload);
+        return {
+            success: Boolean(forcedResponse?.success),
+            response: forcedResponse,
+            canceled: false,
+            takeoverConfirmed: true,
+        };
+    }, [emitApiCall, getSdrInUseConflict, requestTakeoverConfirmation]);
+
+    const startStreaming = useCallback(async () => {
         if (!isStreaming) {
             const isSigmfPlayback = selectedSDRId === "sigmf-playback";
             if (isSigmfPlayback && !playbackRecordingPath) {
@@ -217,39 +282,49 @@ const useWaterfallStream = ({
                 }
             }
 
-            socket.emit("api.call", {
-  cmd: "sdr.configure-sdr",
-  data: {
-    selectedSDRId,
-    centerFrequency,
-    sampleRate,
-    gain,
-    fftSize,
-    biasT,
-    tunerAgc,
-    rtlAgc,
-    fftWindow,
-    fftOverlapPercent,
-    fftOverlapDepth,
-    antenna: selectedAntenna,
-    offsetFrequency: selectedOffsetValue,
-    recordingPath: playbackRecordingPath,
-    soapyAgc,
-    fftAveraging,
-    sdrSettings: sdrSettingsById?.[selectedSDRId]?.draft || {}
-  }
-}, response => {
-  if (response['success']) {
-    socket.emit("api.call", {
-  cmd: "sdr.start-streaming",
-  data: {
-    selectedSDRId
-  }
-});
-  }
-});
+            const configurePayload = {
+                selectedSDRId,
+                centerFrequency,
+                sampleRate,
+                gain,
+                fftSize,
+                biasT,
+                tunerAgc,
+                rtlAgc,
+                fftWindow,
+                fftOverlapPercent,
+                fftOverlapDepth,
+                antenna: selectedAntenna,
+                offsetFrequency: selectedOffsetValue,
+                recordingPath: playbackRecordingPath,
+                soapyAgc,
+                fftAveraging,
+                sdrSettings: sdrSettingsById?.[selectedSDRId]?.draft || {},
+            };
+
+            const configureResult = await callWithTakeoverConfirmation(
+                'sdr.configure-sdr',
+                configurePayload,
+                'reconfigure the SDR'
+            );
+            if (!configureResult.success) {
+                dispatch(setStartStreamingLoading(false));
+                return;
+            }
+
+            const startResult = await callWithTakeoverConfirmation(
+                'sdr.start-streaming',
+                {
+                    selectedSDRId,
+                    forceTakeover: Boolean(configureResult.takeoverConfirmed),
+                },
+                'start streaming'
+            );
+            if (!startResult.success) {
+                dispatch(setStartStreamingLoading(false));
+            }
         }
-    }, [isStreaming, dispatch, socket, selectedSDRId, centerFrequency, sampleRate, gain, fftSize, biasT, tunerAgc, rtlAgc, fftWindow, fftOverlapPercent, fftOverlapDepth, selectedAntenna, selectedOffsetValue, playbackRecordingPath, soapyAgc, fftAveraging, getAudioState, initializeAudio, isUnsetSelection, expandedPanels, sdrSettingsById]);
+    }, [isStreaming, dispatch, selectedSDRId, centerFrequency, sampleRate, gain, fftSize, biasT, tunerAgc, rtlAgc, fftWindow, fftOverlapPercent, fftOverlapDepth, selectedAntenna, selectedOffsetValue, playbackRecordingPath, soapyAgc, fftAveraging, getAudioState, initializeAudio, isUnsetSelection, expandedPanels, sdrSettingsById, callWithTakeoverConfirmation]);
 
     const stopStreaming = useCallback(async () => {
         if (isStreaming) {
@@ -296,7 +371,7 @@ const useWaterfallStream = ({
         return isStreamingActive || noSDRSelected || isLoadingParameters || missingPlaybackRecording;
     }, [isStreaming, selectedSDRId, gettingSDRParameters, playbackRecordingPath]);
 
-    return { startStreaming, stopStreaming, playButtonEnabledOrNot };
+    return { startStreaming, stopStreaming, playButtonEnabledOrNot, takeoverDialog };
 };
 
 export default useWaterfallStream;
