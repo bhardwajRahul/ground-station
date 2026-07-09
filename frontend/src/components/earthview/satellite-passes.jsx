@@ -515,7 +515,13 @@ const PassTypesCell = React.memo(function PassTypesCell({tags, t}) {
                     label={getPassTagLabel(tag, t)}
                     size="small"
                     variant="outlined"
-                    sx={{ fontSize: '0.68rem', height: 22 }}
+                    sx={{
+                        fontSize: '0.64rem',
+                        height: 20,
+                        '& .MuiChip-label': {
+                            px: 0.7,
+                        },
+                    }}
                 />
             ))}
         </Box>
