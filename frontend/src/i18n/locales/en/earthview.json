@@ -64,9 +64,9 @@
       "direction_cw": "CW",
       "direction_ccw": "CCW",
       "direction_mixed": "Mixed",
-      "elevation_low": "Low el",
-      "elevation_medium": "Medium el",
-      "elevation_high": "High el",
+      "elevation_low": "Low EL",
+      "elevation_medium": "Medium EL",
+      "elevation_high": "High EL",
       "elevation_overhead": "Overhead"
     },
     "progress": "Progress",
