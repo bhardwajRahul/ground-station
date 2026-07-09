@@ -11,6 +11,7 @@ single web interface.
 
 ## Recent Releases
 
+* **v0.7.16 (2026-07-09):** Added pass geometry classification with extended azimuth mode support in pass/rotator flows, improved satellite transmitters table performance and column handling, and removed the legacy pass-direction column logic.
 * **v0.7.15 (2026-07-08):** Added SDR takeover confirmation dialogs with structured conflict/session details and forced-takeover handling across frontend/backend streaming flows, and introduced satellite catalog statistics retrieval with frontend UI integration.
 * **v0.7.14 (2026-07-07):** Optimized celestial offscreen label rendering and viewport/selection handling, improved dialog theming consistency, added a center-frequency marker line in the waterfall viewer, and introduced Redux-based Earth View navigation status overlays with corrected loading-state defaults.
 * **v0.7.13 (2026-07-07):** Added filename sanitization utilities and integrated them into recording paths, expanded waterfall FFT size options, raised default/fallback FFT size to 16384 for improved resolution, and refined dialog footer responsiveness/consistency.
