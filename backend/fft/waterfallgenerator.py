@@ -18,7 +18,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Any, Mapping, Optional, Tuple
+from typing import Any, Callable, Mapping, Optional, Tuple
 
 import numpy as np
 from PIL import Image
@@ -34,6 +34,7 @@ class WaterfallConfig:
         "fft_size": 16384,
         "max_height": 6000,
         "window": "hann",
+        "color_map": "cosmic",
         "overlap": 0.5,
         "db_range": [-80, 0],
         "auto_scale_db_range": True,
@@ -42,7 +43,9 @@ class WaterfallConfig:
     }
     SUPPORTED_FFT_SIZES = (512, 1024, 2048, 4096, 8192, 16384, 32768, 65536)
     SUPPORTED_WINDOWS = {"hann", "hamming", "blackman"}
+    SUPPORTED_COLOR_MAPS = ("iceberg", "heat", "cosmic", "greyscale", "light", "sonar")
     MAX_ALLOWED_HEIGHT = 12000
+    _LUT_CACHE: dict[str, np.ndarray] = {}
 
     @staticmethod
     def _parse_bool(value: Any, field_name: str) -> bool:
@@ -65,6 +68,7 @@ class WaterfallConfig:
         fft_size: int = 16384,
         max_height: int = 6000,
         window: str = "hann",
+        color_map: str = "cosmic",
         overlap: float = 0.5,
         db_range: Tuple[float, float] = (-80, 0),
         auto_scale_db_range: bool = True,
@@ -74,6 +78,7 @@ class WaterfallConfig:
         self.fft_size = fft_size
         self.max_height = max_height
         self.window = window
+        self.color_map = color_map
         self.overlap = overlap
         self.db_range = db_range
         self.auto_scale_db_range = auto_scale_db_range
@@ -100,6 +105,7 @@ class WaterfallConfig:
             "fft_size",
             "max_height",
             "window",
+            "color_map",
             "overlap",
             "db_range",
             "auto_scale_db_range",
@@ -135,6 +141,14 @@ class WaterfallConfig:
                 )
             config_data["window"] = window
 
+        if "color_map" in overrides:
+            color_map = str(overrides["color_map"]).strip().lower()
+            if color_map not in cls.SUPPORTED_COLOR_MAPS:
+                raise ValueError(
+                    "color_map must be one of: " + ", ".join(sorted(cls.SUPPORTED_COLOR_MAPS))
+                )
+            config_data["color_map"] = color_map
+
         if "overlap" in overrides:
             overlap = float(overrides["overlap"])
             if overlap < 0.0 or overlap > 0.75:
@@ -159,53 +173,173 @@ class WaterfallConfig:
         return cls(**config_data)
 
     @staticmethod
-    def get_colormap_lut():
+    def get_colormap_lut(color_map: str = "cosmic") -> np.ndarray:
         """
-        Generate a 256-entry RGB lookup table for the Cosmic colormap.
+        Generate a 256-entry RGB lookup table for a supported waterfall colormap.
         Returns a numpy array of shape (256, 3) with RGB values 0-255.
-        Matches the frontend waterfall cosmic colormap.
         """
-        # Cosmic colormap - purple/blue to bright colors (from UI)
-        t = np.linspace(0, 1, 256)
-        r = np.zeros(256)
-        g = np.zeros(256)
-        b = np.zeros(256)
+        normalized = str(color_map or "cosmic").strip().lower()
+        if normalized not in WaterfallConfig.SUPPORTED_COLOR_MAPS:
+            normalized = "cosmic"
 
-        for i, val in enumerate(t):
-            if val < 0.2:
-                # #070208 to #100b56
-                factor = val / 0.2
-                r[i] = (7 + factor * 9) / 255.0
-                g[i] = (2 + factor * 9) / 255.0
-                b[i] = (8 + factor * 78) / 255.0
-            elif val < 0.4:
-                # #100b56 to #170d87
-                factor = (val - 0.2) / 0.2
-                r[i] = (16 + factor * 7) / 255.0
-                g[i] = (11 + factor * 2) / 255.0
-                b[i] = (86 + factor * 49) / 255.0
-            elif val < 0.6:
-                # #170d87 to #7400cd
-                factor = (val - 0.4) / 0.2
-                r[i] = (23 + factor * 93) / 255.0
-                g[i] = (13 + factor * 0) / 255.0
-                b[i] = (135 + factor * 70) / 255.0
-            elif val < 0.8:
-                # #7400cd to #cb5cff
-                factor = (val - 0.6) / 0.2
-                r[i] = (116 + factor * 87) / 255.0
-                g[i] = (0 + factor * 92) / 255.0
-                b[i] = (205 + factor * 50) / 255.0
-            else:
-                # #cb5cff to #f9f9ae
-                factor = (val - 0.8) / 0.2
-                r[i] = (203 + factor * 46) / 255.0
-                g[i] = (92 + factor * 167) / 255.0
-                b[i] = (255 - factor * 81) / 255.0
+        cached = WaterfallConfig._LUT_CACHE.get(normalized)
+        if cached is not None:
+            return cached
 
-        # Convert to 0-255 range and stack into RGB array
-        rgb = np.stack([r, g, b], axis=1)
-        return (rgb * 255).astype(np.uint8)
+        color_fn_map: dict[str, Callable[[float], tuple[int, int, int]]] = {
+            "cosmic": WaterfallConfig._cosmic_color,
+            "greyscale": WaterfallConfig._greyscale_color,
+            "light": WaterfallConfig._light_color,
+            "iceberg": WaterfallConfig._iceberg_color,
+            "heat": WaterfallConfig._heat_color,
+            "sonar": WaterfallConfig._sonar_color,
+        }
+        lut = WaterfallConfig._build_lut(color_fn_map[normalized])
+        WaterfallConfig._LUT_CACHE[normalized] = lut
+        return lut
+
+    @staticmethod
+    def _build_lut(color_fn: Callable[[float], tuple[int, int, int]]) -> np.ndarray:
+        lut = np.zeros((256, 3), dtype=np.uint8)
+        for i in range(256):
+            r, g, b = color_fn(i / 255.0)
+            lut[i, 0] = np.uint8(max(0, min(255, r)))
+            lut[i, 1] = np.uint8(max(0, min(255, g)))
+            lut[i, 2] = np.uint8(max(0, min(255, b)))
+        return lut
+
+    @staticmethod
+    def _cosmic_color(normalized_value: float) -> tuple[int, int, int]:
+        if normalized_value < 0.2:
+            factor = normalized_value / 0.2
+            return (
+                7 + int(factor * 9),
+                2 + int(factor * 9),
+                8 + int(factor * 78),
+            )
+        if normalized_value < 0.4:
+            factor = (normalized_value - 0.2) / 0.2
+            return (
+                16 + int(factor * 7),
+                11 + int(factor * 2),
+                86 + int(factor * 49),
+            )
+        if normalized_value < 0.6:
+            factor = (normalized_value - 0.4) / 0.2
+            return (
+                23 + int(factor * 93),
+                13,
+                135 + int(factor * 70),
+            )
+        if normalized_value < 0.8:
+            factor = (normalized_value - 0.6) / 0.2
+            return (
+                116 + int(factor * 87),
+                int(factor * 92),
+                205 + int(factor * 50),
+            )
+
+        factor = (normalized_value - 0.8) / 0.2
+        return (
+            203 + int(factor * 46),
+            92 + int(factor * 167),
+            255 - int(factor * 81),
+        )
+
+    @staticmethod
+    def _greyscale_color(normalized_value: float) -> tuple[int, int, int]:
+        curved_value = normalized_value**2.0
+        intensity = int(curved_value * 255)
+        return intensity, intensity, intensity
+
+    @staticmethod
+    def _light_color(normalized_value: float) -> tuple[int, int, int]:
+        curved_value = normalized_value**2.0
+        intensity = int((1 - curved_value) * 255)
+        return intensity, intensity, intensity
+
+    @staticmethod
+    def _iceberg_color(normalized_value: float) -> tuple[int, int, int]:
+        ice_curved_value = normalized_value**1.5
+
+        if ice_curved_value < 0.25:
+            factor = ice_curved_value / 0.25
+            return (
+                int(factor * 20),
+                int(factor * 30),
+                10 + int(factor * 70),
+            )
+        if ice_curved_value < 0.5:
+            factor = (ice_curved_value - 0.25) / 0.25
+            return (
+                20 + int(factor * 30),
+                30 + int(factor * 70),
+                80 + int(factor * 100),
+            )
+        if ice_curved_value < 0.75:
+            factor = (ice_curved_value - 0.5) / 0.25
+            return (
+                50 + int(factor * 100),
+                100 + int(factor * 155),
+                180 + int(factor * 75),
+            )
+
+        factor = (ice_curved_value - 0.75) / 0.25
+        return (
+            150 + int(factor * 105),
+            255,
+            255,
+        )
+
+    @staticmethod
+    def _heat_color(normalized_value: float) -> tuple[int, int, int]:
+        heat_curved_value = normalized_value**1.5
+
+        if heat_curved_value < 0.15:
+            factor = heat_curved_value / 0.15
+            return int(factor * 60), 0, 0
+        if heat_curved_value < 0.35:
+            factor = (heat_curved_value - 0.15) / 0.2
+            return 60 + int(factor * 100), int(factor * 20), 0
+        if heat_curved_value < 0.55:
+            factor = (heat_curved_value - 0.35) / 0.2
+            return 160 + int(factor * 95), 20 + int(factor * 70), 0
+        if heat_curved_value < 0.75:
+            factor = (heat_curved_value - 0.55) / 0.2
+            return 255, 90 + int(factor * 120), int(factor * 50)
+        if heat_curved_value < 0.9:
+            factor = (heat_curved_value - 0.75) / 0.15
+            return 255, 210 + int(factor * 45), 50 + int(factor * 100)
+
+        factor = (heat_curved_value - 0.9) / 0.1
+        return 255, 255, 150 + int(factor * 105)
+
+    @staticmethod
+    def _sonar_color(normalized_value: float) -> tuple[int, int, int]:
+        sonar_curved_value = normalized_value**1.7
+
+        if sonar_curved_value < 0.15:
+            factor = sonar_curved_value / 0.15
+            return int(factor * 8), int(factor * 10), int(factor * 15)
+        if sonar_curved_value < 0.3:
+            factor = (sonar_curved_value - 0.15) / 0.15
+            return (
+                8 + int(factor * 18),
+                10 + int(factor * 8),
+                15 - int(factor * 15),
+            )
+        if sonar_curved_value < 0.5:
+            factor = (sonar_curved_value - 0.3) / 0.2
+            return 26 + int(factor * 51), 18 + int(factor * 33), 0
+        if sonar_curved_value < 0.7:
+            factor = (sonar_curved_value - 0.5) / 0.2
+            return 77 + int(factor * 93), 51 + int(factor * 68), 0
+        if sonar_curved_value < 0.85:
+            factor = (sonar_curved_value - 0.7) / 0.15
+            return 170 + int(factor * 85), 119 + int(factor * 57), 0
+
+        factor = (sonar_curved_value - 0.85) / 0.15
+        return 255, 176 + int(factor * 45), int(factor * 136)
 
 
 class WaterfallGenerator:
@@ -337,26 +471,33 @@ class WaterfallGenerator:
 
             self.logger.info(
                 f"Generating waterfall for {recording_path.name}: "
-                f"{duration_sec:.1f}s, {total_samples:,} samples, {sample_rate/1e6:.2f} MS/s"
+                f"{duration_sec:.1f}s, {total_samples:,} samples, {sample_rate/1e6:.2f} MS/s, "
+                f"colormap={self.config.color_map}"
             )
 
             # Calculate dimensions
             dimensions = self._calculate_dimensions(duration_sec, sample_rate, total_samples)
             output_path = Path(f"{recording_base}.png")
+            # Keep early progress below 100%; save/finalization can still be expensive.
+            self.logger.info("Progress: 5%")
 
             if dimensions["total_frames"] < 3:
                 self.logger.warning(
                     "Recording is too short for a reliable waterfall "
                     f"({dimensions['total_frames']} FFT frames); saving transparent placeholder"
                 )
+                self.logger.info("Progress: 90%")
                 self._save_transparent_waterfall_image(
                     output_path, dimensions["width"], dimensions["height"]
                 )
+                self.logger.info("Progress: 95%")
                 if self.config.generate_thumbnail:
+                    self.logger.info("Progress: 97%")
                     thumbnail_path = recording_path.with_name(
                         f"{recording_path.name}_waterfall_thumb.png"
                     )
                     self._generate_thumbnail(output_path, thumbnail_path)
+                self.logger.info("Progress: 99%")
                 return True
 
             sample_reader = self._build_sample_reader(data_file, dtype_info)
@@ -385,10 +526,18 @@ class WaterfallGenerator:
                 )
 
             # Generate full waterfall
-            waterfall_data = self._generate_waterfall_data(sample_reader, total_samples, dimensions)
+            waterfall_data = self._generate_waterfall_data(
+                sample_reader,
+                total_samples,
+                dimensions,
+                progress_start=10.0,
+                progress_end=85.0,
+            )
 
             # Apply colormap and save
+            self.logger.info("Progress: 90%")
             self._save_waterfall_image(waterfall_data, output_path, metadata)
+            self.logger.info("Progress: 95%")
 
             self.logger.info(
                 f"Waterfall saved: {output_path.name} "
@@ -397,11 +546,13 @@ class WaterfallGenerator:
 
             # Generate thumbnail if requested
             if self.config.generate_thumbnail:
+                self.logger.info("Progress: 97%")
                 thumbnail_path = recording_path.with_name(
                     f"{recording_path.name}_waterfall_thumb.png"
                 )
                 self._generate_thumbnail(output_path, thumbnail_path)
                 self.logger.info(f"Thumbnail saved: {thumbnail_path.name}")
+            self.logger.info("Progress: 99%")
 
             return True
 
@@ -550,7 +701,12 @@ class WaterfallGenerator:
         }
 
     def _generate_waterfall_data(
-        self, sample_reader, total_samples: int, dimensions: dict
+        self,
+        sample_reader,
+        total_samples: int,
+        dimensions: dict,
+        progress_start: float = 10.0,
+        progress_end: float = 85.0,
     ) -> np.ndarray:
         """
         Generate waterfall data from IQ samples.
@@ -577,6 +733,7 @@ class WaterfallGenerator:
         waterfall = np.zeros((height, fft_size), dtype=np.float32)
 
         self.logger.info(f"Processing {dimensions['total_frames']} FFT frames into {height} rows")
+        progress_span = max(0.0, progress_end - progress_start)
 
         # Process in chunks to save memory
         row_idx = 0
@@ -615,11 +772,15 @@ class WaterfallGenerator:
 
             # Progress logging every 10%
             if row_idx % max(1, height // 10) == 0:
-                progress = (row_idx / height) * 100
+                row_fraction = (row_idx / height) if height else 1.0
+                progress = progress_start + (row_fraction * progress_span)
+                progress = min(progress_end, progress)
                 self.logger.info(f"Progress: {progress:.0f}%")
 
         # Trim to actual rows processed
         waterfall = waterfall[:row_idx]
+        # Force a final stage-boundary progress tick after FFT work completes.
+        self.logger.info(f"Progress: {progress_end:.0f}%")
 
         return waterfall
 
@@ -642,8 +803,8 @@ class WaterfallGenerator:
         # Convert to 0-255 range (already clamped, so no wrapping/magenta artifacts)
         indexed = (normalized * 255).astype(np.uint8)
 
-        # Get colormap LUT (Cosmic)
-        colormap_lut = WaterfallConfig.get_colormap_lut()
+        # Get colormap LUT selected via task options (defaults to cosmic).
+        colormap_lut = WaterfallConfig.get_colormap_lut(self.config.color_map)
 
         # Apply colormap
         rgb_image = colormap_lut[indexed]

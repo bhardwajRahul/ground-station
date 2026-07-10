@@ -79,26 +79,38 @@ def generate_waterfall_task(
         if _progress_queue:
             original_info = generator.logger.info
 
-            def progress_info(msg):
-                original_info(msg)
+            def progress_info(msg, *args, **kwargs):
+                original_info(msg, *args, **kwargs)
+                # Render the final message text so progress parsing works
+                # for both f-strings and printf-style logger calls.
+                if args:
+                    try:
+                        rendered = str(msg) % args
+                    except Exception:
+                        rendered = " ".join([str(msg), *[str(arg) for arg in args]])
+                else:
+                    rendered = str(msg)
+
                 # Parse progress from message if it contains "Progress: XX%"
-                if "Progress:" in msg and "%" in msg:
+                if "Progress:" in rendered and "%" in rendered:
                     try:
                         # Extract percentage from "Progress: 50%"
-                        progress_str = msg.split("Progress:")[1].split("%")[0].strip()
+                        progress_str = rendered.split("Progress:")[1].split("%")[0].strip()
                         progress = float(progress_str)
                         _progress_queue.put(
                             {
                                 "type": "output",
-                                "output": msg,
+                                "output": rendered,
                                 "stream": "stdout",
                                 "progress": progress,
                             }
                         )
                     except (ValueError, IndexError):
-                        _progress_queue.put({"type": "output", "output": msg, "stream": "stdout"})
+                        _progress_queue.put(
+                            {"type": "output", "output": rendered, "stream": "stdout"}
+                        )
                 else:
-                    _progress_queue.put({"type": "output", "output": msg, "stream": "stdout"})
+                    _progress_queue.put({"type": "output", "output": rendered, "stream": "stdout"})
 
             generator.logger.info = progress_info
 

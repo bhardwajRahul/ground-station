@@ -117,6 +117,7 @@ import ProcessingDialog from './processing-dialog.jsx';
 import ZoomableImage from '../common/zoomable-image.jsx';
 import DecodedFolderThumbnail from './decoded-folder-thumbnail.jsx';
 import { buildFileBrowserDisplayItem } from './filebrowser-display-item.js';
+import { getAvailableColorMaps } from '../waterfall/worker-modules/color-maps.js';
 
 function formatBytes(bytes) {
     if (bytes === 0) return '0 Bytes';
@@ -184,6 +185,7 @@ function getLanguageFlag(langCode) {
 
 const WATERFALL_FFT_OPTIONS = [512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
 const WATERFALL_WINDOW_OPTIONS = ['hann', 'hamming', 'blackman'];
+const WATERFALL_COLOR_MAP_OPTIONS = getAvailableColorMaps();
 const WATERFALL_OVERLAP_OPTIONS = [
     { value: 0, label: '0%' },
     { value: 0.1, label: '10%' },
@@ -198,6 +200,7 @@ const DEFAULT_WATERFALL_TASK_OPTIONS = Object.freeze({
     fft_size: 16384,
     max_height: 6000,
     window: 'hann',
+    color_map: 'cosmic',
     overlap: 0.5,
     auto_scale_db_range: true,
     db_min: -80,
@@ -220,11 +223,15 @@ const buildWaterfallTaskOptionsPayload = (options) => {
     const maxHeight = Math.round(clampNumber(options.max_height, 64, 12000, 6000));
     const dbMin = clampNumber(options.db_min, -220, 80, -80);
     const dbMax = clampNumber(options.db_max, -220, 80, 0);
+    const colorMap = WATERFALL_COLOR_MAP_OPTIONS.some((map) => map.id === options.color_map)
+        ? options.color_map
+        : 'cosmic';
 
     const payload = {
         fft_size: WATERFALL_FFT_OPTIONS.includes(fftSize) ? fftSize : 16384,
         max_height: maxHeight,
         window: WATERFALL_WINDOW_OPTIONS.includes(options.window) ? options.window : 'hann',
+        color_map: colorMap,
         overlap,
         auto_scale_db_range: Boolean(options.auto_scale_db_range),
     };
@@ -1942,6 +1949,24 @@ export default function FileBrowserMain() {
                                     {WATERFALL_WINDOW_OPTIONS.map((windowName) => (
                                         <MenuItem key={windowName} value={windowName}>
                                             {windowName}
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 6 }}>
+                            <FormControl fullWidth size="small">
+                                <InputLabel>Color Map</InputLabel>
+                                <Select
+                                    value={waterfallTaskOptions.color_map}
+                                    label="Color Map"
+                                    onChange={(event) =>
+                                        handleWaterfallOptionChange('color_map', event.target.value)
+                                    }
+                                >
+                                    {WATERFALL_COLOR_MAP_OPTIONS.map((map) => (
+                                        <MenuItem key={map.id} value={map.id}>
+                                            {map.name}
                                         </MenuItem>
                                     ))}
                                 </Select>
