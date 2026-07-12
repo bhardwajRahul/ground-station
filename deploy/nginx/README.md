@@ -15,6 +15,9 @@ Before use:
 4. Keep websocket upgrade headers:
    - `Upgrade`
    - `Connection`
+5. Keep proxy buffering disabled for large static asset stability:
+   - `proxy_buffering off`
+   - `proxy_max_temp_file_size 0`
 
 Why these headers matter:
 

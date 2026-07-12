@@ -42,6 +42,9 @@ server {
     location / {
         proxy_pass http://ground_station_backend;
         proxy_http_version 1.1;
+        # Prevent large proxied assets from being truncated on some client/TLS paths.
+        proxy_buffering off;
+        proxy_max_temp_file_size 0;
 
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
