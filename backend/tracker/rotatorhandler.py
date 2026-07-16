@@ -43,6 +43,11 @@ class RotatorHandler:
     def _fmt_state_value(value):
         return "none" if value is None else value
 
+    @staticmethod
+    def _signed_angular_delta_deg(current: float, previous: float) -> float:
+        """Signed shortest-path angular delta from previous -> current."""
+        return ((float(current) - float(previous) + 540.0) % 360.0) - 180.0
+
     def _reset_slew_state(self):
         """Reset in-flight rotator command tracking."""
         self.tracker.rotator_command_state.update(
@@ -55,6 +60,39 @@ class RotatorHandler:
             }
         )
         self.tracker.rotator_data["slewing"] = False
+
+    def _clear_overlap_lane_state(self):
+        """Clear 0_450 overlap lane/trend state when tracking context changes."""
+        self.tracker.rotator_command_state["overlap_lane"] = None
+        self.tracker.rotator_command_state["overlap_trend_sign"] = 0
+        self.tracker.rotator_command_state["overlap_trend_samples"] = 0
+        self.tracker.rotator_command_state["last_bearing_az"] = None
+
+    def _update_overlap_bearing_trend(self, bearing_az: float):
+        """
+        Track short-term azimuth direction near north overlap.
+
+        We only need a tiny, stable trend signal (CW/CCW) to decide whether
+        we should enter the +360 overlap lane proactively in 0_450 mode.
+        """
+        state = self.tracker.rotator_command_state
+        previous_bearing = state.get("last_bearing_az")
+        state["last_bearing_az"] = float(bearing_az) % 360.0
+
+        if not self._is_finite_number(previous_bearing):
+            return
+
+        delta = self._signed_angular_delta_deg(float(bearing_az), float(previous_bearing))
+        if abs(delta) < 0.5:
+            return
+
+        sign = 1 if delta > 0 else -1
+        prev_sign = int(state.get("overlap_trend_sign") or 0)
+        prev_samples = int(state.get("overlap_trend_samples") or 0)
+        samples = min(prev_samples + 1, 8) if sign == prev_sign else 1
+
+        state["overlap_trend_sign"] = sign
+        state["overlap_trend_samples"] = samples
 
     def _target_within_tolerance(self, current_az, current_el, target_az, target_el) -> bool:
         az_tol = float(self.tracker.az_tolerance)
@@ -110,10 +148,12 @@ class RotatorHandler:
     ) -> float | None:
         candidates = self._get_overlap_candidates_for_bearing(bearing_az)
         if not candidates:
+            self.tracker.rotator_command_state["overlap_lane"] = None
             return None
 
         minaz = float(self.tracker.azimuth_limits[0])
         maxaz = float(self.tracker.azimuth_limits[1])
+        state = self.tracker.rotator_command_state
 
         reference = None
         if self._is_finite_number(active_target_az) and minaz <= float(active_target_az) <= maxaz:
@@ -121,10 +161,56 @@ class RotatorHandler:
         elif self._is_finite_number(current_az) and minaz <= float(current_az) <= maxaz:
             reference = float(current_az)
 
-        if reference is None:
-            return float(candidates[0])
+        # Keep lane lock only while we are in the overlap-ambiguous region.
+        if len(candidates) == 1:
+            state["overlap_lane"] = None
 
-        return float(min(candidates, key=lambda candidate: (abs(candidate - reference), candidate)))
+        if reference is None:
+            chosen = float(candidates[0])
+        else:
+            chosen = float(
+                min(candidates, key=lambda candidate: (abs(candidate - reference), candidate))
+            )
+
+        if len(candidates) == 1:
+            return chosen
+
+        base = float(bearing_az) % 360.0
+        high_candidate = float(max(candidates))
+        low_candidate = float(min(candidates))
+        high_lane_available = high_candidate > 360.0
+        locked_lane = state.get("overlap_lane")
+
+        if locked_lane == 1 and high_lane_available:
+            return high_candidate
+        if locked_lane == 1 and not high_lane_available:
+            state["overlap_lane"] = None
+
+        # When we already operate on the high lane, keep it stable through
+        # overlap-bearing ambiguity to avoid flip-flopping near north.
+        if high_lane_available and reference is not None and float(reference) >= 360.0:
+            state["overlap_lane"] = 1
+            return high_candidate
+
+        # If short-term motion is confidently CW near north, proactively pick
+        # the overlap lane so the pass can continue through 0° without a late
+        # full-circle recovery move.
+        overlap_width = max(0.0, maxaz - 360.0)
+        switch_window = max(20.0, min(70.0, overlap_width * 0.75 if overlap_width else 45.0))
+        trend_sign = int(state.get("overlap_trend_sign") or 0)
+        trend_samples = int(state.get("overlap_trend_samples") or 0)
+        near_north_overlap = 0.0 <= base <= switch_window
+        should_lock_high_lane = bool(
+            high_lane_available and near_north_overlap and trend_sign < 0 and trend_samples >= 2
+        )
+        if should_lock_high_lane:
+            state["overlap_lane"] = 1
+            return high_candidate
+
+        # Keep the default nearest-reference behavior otherwise.
+        if chosen == low_candidate:
+            state["overlap_lane"] = None
+        return chosen
 
     def _unwrap_overlap_azimuth(self, raw_az: float) -> float:
         """
@@ -371,6 +457,7 @@ class RotatorHandler:
 
         if new == "connected":
             self._reset_slew_state()
+            self._clear_overlap_lane_state()
             await self.connect_to_rotator()
             if self.tracker.rotator_controller is not None and self.tracker.rotator_data.get(
                 "connected"
@@ -380,6 +467,7 @@ class RotatorHandler:
                 self.tracker.rotator_data["parked"] = False
         elif new == "tracking":
             self._reset_slew_state()
+            self._clear_overlap_lane_state()
             await self.connect_to_rotator()
             if self.tracker.rotator_controller is not None and self.tracker.rotator_data.get(
                 "connected"
@@ -389,18 +477,21 @@ class RotatorHandler:
                 self.tracker.rotator_data["parked"] = False
         elif new == "stopped":
             self._reset_slew_state()
+            self._clear_overlap_lane_state()
             self.tracker.rotator_data["tracking"] = False
             self.tracker.rotator_data["slewing"] = False
             self.tracker.rotator_data["stopped"] = True
             self.tracker.rotator_data["parked"] = False
         elif new == "disconnected":
             self._reset_slew_state()
+            self._clear_overlap_lane_state()
             await self.disconnect_rotator()
             self.tracker.rotator_data["tracking"] = False
             self.tracker.rotator_data["stopped"] = True
             self.tracker.rotator_data["parked"] = False
         elif new == "parked":
             self._reset_slew_state()
+            self._clear_overlap_lane_state()
             await self.park_rotator()
         else:
             logger.error(f"Unknown tracking state: {new}")
@@ -582,6 +673,7 @@ class RotatorHandler:
 
             target_az: float
             if mode == "0_450":
+                self._update_overlap_bearing_trend(sky_az)
                 resolved_target_az = self._resolve_overlap_target_azimuth(
                     bearing_az=sky_az,
                     current_az=current_az,
@@ -653,6 +745,7 @@ class RotatorHandler:
 
         elif self.tracker.rotator_controller and self.tracker.current_rotator_state != "tracking":
             self._reset_slew_state()
+            self._clear_overlap_lane_state()
             # Handle nudge commands when not tracking
             if self.tracker.nudge_offset["az"] != 0 or self.tracker.nudge_offset["el"] != 0:
                 new_az = self.tracker.rotator_data["az"] + self.tracker.nudge_offset["az"]
@@ -672,6 +765,7 @@ class RotatorHandler:
         else:
             # No rotator available or movement blocked by limits.
             self._reset_slew_state()
+            self._clear_overlap_lane_state()
 
     async def update_hardware_position(self):
         """Update current rotator position."""

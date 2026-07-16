@@ -100,6 +100,72 @@ async def test_tracking_command_uses_overlap_candidate_when_mode_is_0_450():
     assert sent == [(380.0, 45.0)]
 
 
+@pytest.mark.asyncio
+async def test_overlap_mode_locks_high_lane_for_cw_trend_near_north():
+    tracker = _DummyTracker("0_450")
+    tracker.rotator_data["az"] = 42.0
+    handler = RotatorHandler(tracker)
+    sent = []
+
+    async def _capture_issue(target_az, target_el):
+        sent.append((target_az, target_el))
+
+    handler._issue_rotator_command = _capture_issue
+
+    # Build a stable clockwise (decreasing) trend near north overlap.
+    await handler.control_rotator_position((50.0, 45.0))
+    await handler.control_rotator_position((45.0, 45.0))
+    await handler.control_rotator_position((40.0, 45.0))
+
+    assert sent == [(50.0, 45.0), (45.0, 45.0), (400.0, 45.0)]
+    assert tracker.rotator_command_state["overlap_lane"] == 1
+
+
+@pytest.mark.asyncio
+async def test_overlap_mode_keeps_locked_high_lane_until_ambiguity_ends():
+    tracker = _DummyTracker("0_450")
+    tracker.rotator_data["az"] = 385.0
+    tracker.rotator_command_state["overlap_lane"] = 1
+    handler = RotatorHandler(tracker)
+    sent = []
+
+    async def _capture_issue(target_az, target_el):
+        sent.append((target_az, target_el))
+
+    handler._issue_rotator_command = _capture_issue
+
+    # Ambiguous bearing keeps the locked +360 lane.
+    await handler.control_rotator_position((30.0, 45.0))
+    assert sent[-1] == (390.0, 45.0)
+    assert tracker.rotator_command_state["overlap_lane"] == 1
+
+    # Once bearing is no longer ambiguous in 0_450, lock is cleared.
+    await handler.control_rotator_position((350.0, 45.0))
+    assert sent[-1] == (350.0, 45.0)
+    assert tracker.rotator_command_state["overlap_lane"] is None
+
+
+@pytest.mark.asyncio
+async def test_overlap_mode_does_not_lock_high_lane_for_ccw_trend():
+    tracker = _DummyTracker("0_450")
+    tracker.rotator_data["az"] = 25.0
+    handler = RotatorHandler(tracker)
+    sent = []
+
+    async def _capture_issue(target_az, target_el):
+        sent.append((target_az, target_el))
+
+    handler._issue_rotator_command = _capture_issue
+
+    # Counterclockwise trend near north should not force +360 pre-positioning.
+    await handler.control_rotator_position((20.0, 45.0))
+    await handler.control_rotator_position((25.0, 45.0))
+    await handler.control_rotator_position((30.0, 45.0))
+
+    assert sent == [(20.0, 45.0), (25.0, 45.0), (30.0, 45.0)]
+    assert tracker.rotator_command_state.get("overlap_lane") is None
+
+
 def test_target_within_tolerance_handles_wraparound():
     tracker = _DummyTracker("0_360")
     handler = RotatorHandler(tracker)
