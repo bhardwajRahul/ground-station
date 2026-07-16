@@ -298,7 +298,9 @@ const getPassTagLabel = (tag, t) => {
 };
 
 const PassTypesCell = React.memo(function PassTypesCell({tags, t}) {
-    const tagList = Array.isArray(tags) ? tags.filter(Boolean) : [];
+    const tagList = Array.isArray(tags)
+        ? tags.filter(Boolean).filter((tag) => tag !== 'elevation_medium')
+        : [];
     if (tagList.length === 0) {
         return (
             <Typography variant="caption" color="text.secondary">
@@ -390,9 +392,9 @@ const MemoizedStyledDataGrid = React.memo(function MemoizedStyledDataGrid({
         },
         {
             field: 'pass_tags',
-            minWidth: 220,
+            minWidth: 170,
             headerName: t('next_passes.pass_types', { defaultValue: 'Pass Types' }),
-            flex: 2,
+            flex: 1.5,
             sortable: false,
             cellClassName: 'passes-cell-tags',
             renderCell: (params) => <PassTypesCell tags={params.value} t={t} />,
