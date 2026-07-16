@@ -37,6 +37,7 @@ import {
 } from './earthview-slice.jsx';
 
 const SATELLITE_NUMBER_LIMIT = 200;
+const TOP_BAR_PILL_SATELLITE_LIMIT = 500;
 const RECENT_GROUPS_KEY = 'satellite-recent-groups';
 
 const SatelliteGroupSelectorBar = React.memo(function SatelliteGroupSelectorBar() {
@@ -196,9 +197,15 @@ const SatelliteGroupSelectorBar = React.memo(function SatelliteGroupSelectorBar(
         });
     }, [satGroups, recentGroups, selectedSatGroupId]);
 
+    // Only render top-bar pills for reasonably sized groups.
+    const pillGroups = useMemo(
+        () => rankedGroups.filter((group) => group.satelliteCount <= TOP_BAR_PILL_SATELLITE_LIMIT),
+        [rankedGroups]
+    );
+
     // Use IntersectionObserver to detect which pills are visible
     useEffect(() => {
-        if (!containerRef.current || rankedGroups.length === 0) return;
+        if (!containerRef.current || pillGroups.length === 0) return;
 
         // Create observer with threshold to detect when pills start to overflow
         const observer = new IntersectionObserver(
@@ -250,7 +257,7 @@ const SatelliteGroupSelectorBar = React.memo(function SatelliteGroupSelectorBar(
             clearTimeout(timeoutId);
             observer.disconnect();
         };
-    }, [rankedGroups]);
+    }, [pillGroups]);
 
     const handleMoreClick = (event) => {
         setAnchorEl(event.currentTarget);
@@ -269,7 +276,7 @@ const SatelliteGroupSelectorBar = React.memo(function SatelliteGroupSelectorBar(
     }, []);
 
     // Determine which pills are hidden (not visible in container)
-    const hiddenPills = rankedGroups.filter(group => !visiblePillIds.has(group.id));
+    const hiddenPills = pillGroups.filter(group => !visiblePillIds.has(group.id));
     const hasHiddenPills = hiddenPills.length > 0;
     const userRankedGroups = rankedGroups.filter((group) => String(group.type || '').toLowerCase() === 'user');
     const tleRankedGroups = rankedGroups.filter((group) => String(group.type || '').toLowerCase() !== 'user');
@@ -381,7 +388,7 @@ const SatelliteGroupSelectorBar = React.memo(function SatelliteGroupSelectorBar(
                     }}
                 >
                     {/* All pills - let IntersectionObserver determine visibility */}
-                    {rankedGroups.map((group) => (
+                    {pillGroups.map((group) => (
                         <Tooltip
                             key={group.id}
                             title={`${group.name} (${group.satelliteCount} satellites)`}
