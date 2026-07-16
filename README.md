@@ -11,6 +11,7 @@ single web interface.
 
 ## Recent Releases
 
+* **v0.7.17 (2026-07-16):** Added east-west pass direction classification with updated pass/elevation labels, improved rotator overlap tracking for `0_450` mode with a high-lane lock, introduced custom waterfall colormap selection with better progress tracking, and refined EarthView selector behavior for very large groups.
 * **v0.7.16 (2026-07-09):** Added pass geometry classification with extended azimuth mode support in pass/rotator flows, improved satellite transmitters table performance and column handling, and removed the legacy pass-direction column logic.
 * **v0.7.15 (2026-07-08):** Added SDR takeover confirmation dialogs with structured conflict/session details and forced-takeover handling across frontend/backend streaming flows, and introduced satellite catalog statistics retrieval with frontend UI integration.
 * **v0.7.14 (2026-07-07):** Optimized celestial offscreen label rendering and viewport/selection handling, improved dialog theming consistency, added a center-frequency marker line in the waterfall viewer, and introduced Redux-based Earth View navigation status overlays with corrected loading-state defaults.
